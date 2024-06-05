@@ -45,9 +45,7 @@ export default function Room1() {
 
   async function joinRoom() {
     // var client = new Colyseus.Client('ws://localhost:2567');
-    var client = new Colyseus.Client(
-      'https://us-ewr-120d3744.colyseus.cloud:2567'
-    );
+    var client = new Colyseus.Client('https://us-ewr-120d3744.colyseus.cloud');
 
     try {
       roomRef.current = await client.joinOrCreate('dungeon', { name: name });
