@@ -46,7 +46,7 @@ export default function Room1() {
   async function joinRoom() {
     // var client = new Colyseus.Client('ws://localhost:2567');
     var client = new Colyseus.Client(
-      'ws://us-ewr-120d3744.colyseus.cloud:2567'
+      'https://us-ewr-120d3744.colyseus.cloud:2567'
     );
 
     try {
