@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Square from './square';
 
 const Grid = (props: {
-  squares: number[][];
+  squares: boolean[][];
   handleSquareClick: (x: number, y: number) => void;
 }) => {
   const renderSquares = () => {

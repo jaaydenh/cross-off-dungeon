@@ -8,6 +8,7 @@ import { Client, Room } from 'colyseus.js';
 import { DungeonState } from '@/types/DungeonState';
 import { Player } from '@/types/Player';
 import Grid from './grid';
+import { DungeonSquare } from '@/types/DungeonSquare';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export default function Room1() {
   const [players, setPlayers] = useState([]);
 
   const [squares, setSquares] = useState(
-    new Array(4).fill(0).map(() => new Array(4).fill(0))
+    new Array(4).fill(false).map(() => new Array(4).fill(false))
   );
 
   let roomRef = useRef<Room>();
@@ -44,8 +45,8 @@ export default function Room1() {
   };
 
   async function joinRoom() {
-    // var client = new Colyseus.Client('ws://localhost:2567');
-    var client = new Colyseus.Client('https://us-ewr-120d3744.colyseus.cloud');
+    var client = new Colyseus.Client('ws://localhost:2567');
+    // var client = new Colyseus.Client('https://us-ewr-120d3744.colyseus.cloud');
 
     try {
       roomRef.current = await client.joinOrCreate('dungeon', { name: name });
@@ -59,10 +60,18 @@ export default function Room1() {
         setPlayers((players) => [...players, player.name]);
       });
 
-      roomRef.current.state.board.onChange((value: number, index) => {
-        const x = index % 4;
-        const y = Math.floor(index / 4);
-        setGridSquares(x, y, value);
+      roomRef.current.state.board.onAdd((square, sessionId) => {
+        console.log(`square added: ${square.checked}`);
+
+        square.listen('checked', (checked: boolean, prevValue: boolean) => {
+          // console.log('listened for checked', checked);
+        });
+      });
+
+      roomRef.current.state.board.onChange((square: DungeonSquare, key) => {
+        const [x, y] = key.split(',').map(Number);
+        console.log('board onChange', square.checked, x, y);
+        setGridSquares(x, y, square.checked);
       });
 
       roomRef.current.state.players.onChange = (
@@ -72,13 +81,21 @@ export default function Room1() {
         console.log(`Player changed: ${player.name} (sessionId: ${sessionId})`);
       };
 
+      roomRef.current.onStateChange.once((state) => {
+        setInitialState(state);
+      });
+
       roomRef.current.onStateChange((state) => {
-        // console.log('state changed2', state);
+        // console.log('state changed', state);
       });
     } catch (e) {
       console.error('join error', e);
     }
   }
+
+  const setInitialState = (state: DungeonState) => {
+    console.log('setInitalState', state);
+  };
 
   return (
     <main className="flex min-h-screen flex-col p-24">

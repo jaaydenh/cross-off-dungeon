@@ -11,7 +11,7 @@ const Square = ({ x, y, checked, onClick }) => {
         border: '1px solid black',
       }}
     >
-      {checked === 1 ? 'X' : ''}
+      {checked === true ? 'X' : ''}
     </div>
   );
 };
