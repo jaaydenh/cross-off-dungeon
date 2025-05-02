@@ -6,4 +6,5 @@ export class DungeonSquare extends Schema {
   @type("boolean") exit: boolean = false;
   @type("boolean") treasure: boolean = false;
   @type("boolean") monster: boolean = false;
+  @type("boolean") wall: boolean = false;
 }

@@ -6,9 +6,13 @@
 // 
 
 import { Schema, type, ArraySchema, MapSchema, SetSchema, DataChange } from '@colyseus/schema';
-import { Player } from './Player'
+import { Player } from './Player';
+import { Room } from './Room';
+import { DungeonSquare } from './DungeonSquare';
 
 export class DungeonState extends Schema {
-    // @type({ map: Player }) players: MapSchema<Player> = new MapSchema<Player>();
-    @type({ map: "boolean" }) players = new MapSchema<boolean>();
+    @type({ map: Player }) players = new MapSchema<Player>();
+    @type({ map: DungeonSquare }) board = new MapSchema<DungeonSquare>();
+    @type([Room]) rooms = new ArraySchema<Room>();
+    @type("number") currentRoomIndex = 0;
 }

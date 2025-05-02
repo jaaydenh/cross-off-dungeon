@@ -4,11 +4,11 @@
 import * as Colyseus from 'colyseus.js';
 
 import { useEffect, useState, useRef } from 'react';
-import { Client, Room } from 'colyseus.js';
+import { Room } from 'colyseus.js';
 import { DungeonState } from '@/types/DungeonState';
 import { Player } from '@/types/Player';
 import Grid from './grid';
-import { DungeonSquare } from '@/types/DungeonSquare';
+import { Room as DungeonRoom } from '@/types/Room';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,31 +18,30 @@ export default function Room1() {
   const [name, setName] = useState('');
   const [inRoom, setInRoom] = useState(false);
   const [players, setPlayers] = useState([]);
-
-  const [squares, setSquares] = useState(
-    new Array(4).fill(false).map(() => new Array(4).fill(false))
-  );
+  const [currentRoom, setCurrentRoom] = useState<DungeonRoom | null>(null);
+  // Add a state update counter to force re-renders
+  const [updateCounter, setUpdateCounter] = useState(0);
 
   let roomRef = useRef<Room>();
 
   const handleSquareClick = (x, y) => {
+    console.log(`Clicked square at ${x}, ${y}`);
     roomRef.current?.send('crossSquare', { x: x, y: y });
   };
 
-  const setGridSquares = (x, y, value) => {
-    setSquares((prevSquares) => {
-      const newSquares = prevSquares.map((row, i) =>
-        row.map((square, j) => {
-          if (i === x && j === y) {
-            return value;
-          } else {
-            return square;
-          }
-        })
-      );
-      return newSquares;
-    });
-  };
+  // Set up global listener for all state changes
+  useEffect(() => {
+    // Will run once after initial render and whenever inRoom changes
+    const room = roomRef.current;
+    if (room) {
+      // Listen for ANY state changes from the server
+      room.onStateChange((state) => {
+        console.log("Full state update received");
+        // Force a complete re-render when state changes
+        setUpdateCounter(prev => prev + 1);
+      });
+    }
+  }, [inRoom]); // Only re-run when room connection status changes
 
   async function joinRoom() {
     var client = new Colyseus.Client('ws://localhost:2567');
@@ -60,18 +59,25 @@ export default function Room1() {
         setPlayers((players) => [...players, player.name]);
       });
 
-      roomRef.current.state.board.onAdd((square, sessionId) => {
-        console.log(`square added: ${square.checked}`);
-
-        square.listen('checked', (checked: boolean, prevValue: boolean) => {
-          // console.log('listened for checked', checked);
+      roomRef.current.state.rooms.onAdd((room, index) => {
+        console.log(`Room added at index ${index}, width: ${room.width}, height: ${room.height}`);
+        
+        // Listen for changes to the current room index
+        roomRef.current.state.listen("currentRoomIndex", (currentIndex) => {
+          console.log(`Current room index changed to ${currentIndex}`);
+          setCurrentRoom(roomRef.current.state.rooms[currentIndex]);
+          setUpdateCounter(prev => prev + 1);
         });
-      });
-
-      roomRef.current.state.board.onChange((square: DungeonSquare, key) => {
-        const [x, y] = key.split(',').map(Number);
-        console.log('board onChange', square.checked, x, y);
-        setGridSquares(x, y, square.checked);
+        
+        // Set the initial current room
+        if (index === roomRef.current.state.currentRoomIndex) {
+          setCurrentRoom(room);
+        }
+        
+        // Listen for changes to squares in the room
+        room.squares.onChange((square, squareIndex) => {   
+          console.log(`Square changed at index ${squareIndex}`);
+        });
       });
 
       roomRef.current.state.players.onChange = (
@@ -84,10 +90,6 @@ export default function Room1() {
       roomRef.current.onStateChange.once((state) => {
         setInitialState(state);
       });
-
-      roomRef.current.onStateChange((state) => {
-        // console.log('state changed', state);
-      });
     } catch (e) {
       console.error('join error', e);
     }
@@ -95,6 +97,9 @@ export default function Room1() {
 
   const setInitialState = (state: DungeonState) => {
     console.log('setInitalState', state);
+    if (state.rooms && state.rooms.length > 0) {
+      setCurrentRoom(state.rooms[state.currentRoomIndex]);
+    }
   };
 
   return (
@@ -119,7 +124,18 @@ export default function Room1() {
               <li key={index}>{player}</li>
             ))}
           </ul>
-          <Grid squares={squares} handleSquareClick={handleSquareClick} />
+          {currentRoom && (
+            <>
+              <p className="mb-4">
+                Room size: {currentRoom.width}x{currentRoom.height}, 
+                Update counter: {updateCounter}
+              </p>
+              <Grid 
+                room={currentRoom} 
+                handleSquareClick={handleSquareClick}
+              />
+            </>
+          )}
         </>
       )}
     </main>
