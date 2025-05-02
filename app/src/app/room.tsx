@@ -27,6 +27,7 @@ export default function Room1() {
 
   const handleSquareClick = (x, y) => {
     roomRef.current?.send('crossSquare', { x: x, y: y });
+    // Don't update local state here - wait for server to broadcast the change
   };
 
   const setGridSquares = (x, y, value) => {
@@ -62,9 +63,17 @@ export default function Room1() {
 
       roomRef.current.state.board.onAdd((square, sessionId) => {
         console.log(`square added: ${square.checked}`);
+        
+        // Get the coordinates from the sessionId (which is the key in the format "x,y")
+        const [x, y] = sessionId.split(',').map(Number);
+        
+        // Update the grid immediately when a square is added
+        setGridSquares(x, y, square.checked);
 
+        // Listen for changes to the 'checked' property
         square.listen('checked', (checked: boolean, prevValue: boolean) => {
-          // console.log('listened for checked', checked);
+          console.log(`Square ${sessionId} checked changed from ${prevValue} to ${checked}`);
+          setGridSquares(x, y, checked);
         });
       });
 
