@@ -9,6 +9,7 @@ import { DungeonState } from '@/types/DungeonState';
 import { Player } from '@/types/Player';
 import Grid from './grid';
 import { DungeonSquare } from '@/types/DungeonSquare';
+import { Room as DungeonRoom } from '@/types/Room';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,10 +19,7 @@ export default function Room1() {
   const [name, setName] = useState('');
   const [inRoom, setInRoom] = useState(false);
   const [players, setPlayers] = useState([]);
-
-  const [squares, setSquares] = useState(
-    new Array(4).fill(false).map(() => new Array(4).fill(false))
-  );
+  const [currentRoom, setCurrentRoom] = useState<DungeonRoom | null>(null);
 
   let roomRef = useRef<Room>();
 
@@ -60,18 +58,31 @@ export default function Room1() {
         setPlayers((players) => [...players, player.name]);
       });
 
-      roomRef.current.state.board.onAdd((square, sessionId) => {
-        console.log(`square added: ${square.checked}`);
-
-        square.listen('checked', (checked: boolean, prevValue: boolean) => {
-          // console.log('listened for checked', checked);
+      roomRef.current.state.rooms.onAdd((room, index) => {
+        console.log(`Room added at index ${index}, width: ${room.width}, height: ${room.height}`);
+        
+        // Listen for changes to the current room index
+        roomRef.current.state.listen("currentRoomIndex", (currentIndex) => {
+          console.log(`Current room index changed to ${currentIndex}`);
+          setCurrentRoom(roomRef.current.state.rooms[currentIndex]);
         });
-      });
-
-      roomRef.current.state.board.onChange((square: DungeonSquare, key) => {
-        const [x, y] = key.split(',').map(Number);
-        console.log('board onChange', square.checked, x, y);
-        setGridSquares(x, y, square.checked);
+        
+        // Set the initial current room
+        if (index === roomRef.current.state.currentRoomIndex) {
+          setCurrentRoom(room);
+        }
+        
+        // Listen for changes to squares in the room
+        room.squares.onChange((square, squareIndex) => {
+          console.log(`Square changed at index ${squareIndex}`);
+          // Force a re-render when a square changes
+          setCurrentRoom(prevRoom => {
+            if (prevRoom) {
+              return {...prevRoom};
+            }
+            return null;
+          });
+        });
       });
 
       roomRef.current.state.players.onChange = (
@@ -95,6 +106,9 @@ export default function Room1() {
 
   const setInitialState = (state: DungeonState) => {
     console.log('setInitalState', state);
+    if (state.rooms && state.rooms.length > 0) {
+      setCurrentRoom(state.rooms[state.currentRoomIndex]);
+    }
   };
 
   return (
@@ -119,7 +133,12 @@ export default function Room1() {
               <li key={index}>{player}</li>
             ))}
           </ul>
-          <Grid squares={squares} handleSquareClick={handleSquareClick} />
+          {currentRoom && (
+            <Grid 
+              room={currentRoom} 
+              handleSquareClick={handleSquareClick} 
+            />
+          )}
         </>
       )}
     </main>
