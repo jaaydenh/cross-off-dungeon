@@ -13,21 +13,29 @@ const Square: React.FC<SquareProps> = ({ x, y, square, onClick }) => {
   let bgColor = 'bg-gray-800'; // Default dark background
   let content = '';
   let clickable = true;
+  let borderColor = 'border-gray-700';
 
   if (square.wall) {
     bgColor = 'bg-gray-900'; // Darker for walls
     content = ''; // No content for walls
     clickable = false; // Walls are not clickable
+  } else if (square.entrance) {
+    bgColor = 'bg-green-700'; // Green for entrance
+    content = 'E';
+    borderColor = 'border-green-500';
+  } else if (square.exit) {
+    bgColor = 'bg-blue-700'; // Blue for exit
+    content = 'D';
+    borderColor = 'border-blue-500';
   } else if (square.checked) {
     content = 'X';
-  } else if (square.entrance) {
-    content = 'E';
-  } else if (square.exit) {
-    content = 'X';
+    bgColor = 'bg-gray-700'; // Lighter for checked squares
   } else if (square.treasure) {
     content = 'T';
+    bgColor = 'bg-yellow-700'; // Yellow for treasure
   } else if (square.monster) {
     content = 'M';
+    bgColor = 'bg-red-700'; // Red for monsters
   }
 
   return (
@@ -37,7 +45,7 @@ const Square: React.FC<SquareProps> = ({ x, y, square, onClick }) => {
       style={{
         width: '40px',
         height: '40px',
-        border: '1px solid rgba(255, 255, 255, 0.2)', // Subtle white border
+        border: `1px solid ${borderColor}`,
         color: 'white',
         fontWeight: 'bold',
         transition: 'all 0.2s ease',
