@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import Grid from './grid';
 import { Room } from '@/types/Room';
 
-interface MultiRoomDisplayProps {
+interface DungeonMapProps {
   rooms: {
     room: Room;
     x: number;
@@ -11,7 +11,7 @@ interface MultiRoomDisplayProps {
   handleSquareClick: (x: number, y: number, roomIndex?: number) => void;
 }
 
-const MultiRoomDisplay: React.FC<MultiRoomDisplayProps> = ({ 
+const DungeonMap: React.FC<DungeonMapProps> = ({ 
   rooms, 
   handleSquareClick 
 }) => {
@@ -56,7 +56,7 @@ const MultiRoomDisplay: React.FC<MultiRoomDisplayProps> = ({
   
   // Ensure the content area is large enough for all rooms
   const contentWidth = Math.max(totalWidth, 800); // Minimum width to ensure scrolling works
-  const contentHeight = Math.max(totalHeight, 600); // Minimum height
+  const contentHeight = Math.max(totalHeight, 600);
   
   // Update container size on resize
   useEffect(() => {
@@ -81,7 +81,7 @@ const MultiRoomDisplay: React.FC<MultiRoomDisplayProps> = ({
   
   const centeringOffsetY = containerSize.height ? 
     (containerSize.height - maxRoomHeight) / 2 : 
-    (700 - maxRoomHeight) / 2; // Fallback to container height specified in className
+    (700 - maxRoomHeight) / 2;
   
   return (
     <div 
@@ -127,5 +127,4 @@ const MultiRoomDisplay: React.FC<MultiRoomDisplayProps> = ({
   );
 };
 
-export default MultiRoomDisplay;
-
+export default DungeonMap; 

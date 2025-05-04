@@ -7,15 +7,14 @@ import { useEffect, useState, useRef } from 'react';
 import { Room } from 'colyseus.js';
 import { DungeonState } from '@/types/DungeonState';
 import { Player } from '@/types/Player';
-import Grid from './grid';
 import { Room as DungeonRoom } from '@/types/Room';
-import MultiRoomDisplay from './multiRoomDisplay';
+import DungeonMap from './DungeonMap';
 
 export const dynamic = 'force-dynamic';
 
 interface DungeonRoomState extends DungeonState {}
 
-export default function Room1() {
+export default function Game() {
   const [name, setName] = useState('');
   const [inRoom, setInRoom] = useState(false);
   const [players, setPlayers] = useState([]);
@@ -169,7 +168,7 @@ export default function Room1() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col p-24">
+    <main className="flex flex-col">
       {!inRoom && (
         <div className="flex flex-col items-center justify-center w-full h-full gap-4">
           <div>Character Name</div>
@@ -194,8 +193,7 @@ export default function Room1() {
           {/* Display all rooms */}
           {displayedRooms.length > 0 && (
             <div className="mt-8">
-              <h2 className="text-xl font-bold mb-4">Dungeon Map</h2>
-              <MultiRoomDisplay 
+              <DungeonMap 
                 rooms={displayedRooms} 
                 handleSquareClick={handleSquareClick}
               />
