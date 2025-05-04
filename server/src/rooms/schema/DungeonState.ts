@@ -12,6 +12,9 @@ export class DungeonState extends Schema {
   @type({ map: DungeonSquare }) board = new MapSchema<DungeonSquare>();
   @type([Room]) rooms = new ArraySchema<Room>();
   @type("number") currentRoomIndex = 0;
+  @type(["number"]) displayedRoomIndices = new ArraySchema<number>(); // Indices of rooms currently displayed
+  @type(["number"]) roomPositionsX = new ArraySchema<number>(); // X positions of displayed rooms
+  @type(["number"]) roomPositionsY = new ArraySchema<number>(); // Y positions of displayed rooms
 
   initializeBoard() {
     console.log('initializeBoard');
@@ -23,6 +26,14 @@ export class DungeonState extends Schema {
     
     // Create 10 random rooms
     this.generateRooms(10);
+    
+    // Initialize the displayed rooms array with the first room
+    this.displayedRoomIndices.push(0);
+    this.roomPositionsX.push(0); // First room is at position (0,0)
+    this.roomPositionsY.push(0);
+    
+    // Generate exits for the first room
+    this.rooms[0].generateExits();
   }
 
   generateRooms(count: number) {
@@ -68,6 +79,62 @@ export class DungeonState extends Schema {
   getCurrentRoom(): Room | undefined {
     return this.rooms[this.currentRoomIndex];
   }
+  
+  // Add a new room when a player exits through an exit
+  addNewRoom(exitDirection: string, exitIndex: number) {
+    // Get the current room
+    const currentRoom = this.getCurrentRoom();
+    if (!currentRoom) return;
+    
+    // Get the next room from the array
+    const nextRoomIndex = (this.currentRoomIndex + 1) % this.rooms.length;
+    const nextRoom = this.rooms[nextRoomIndex];
+    
+    // Set the entrance of the next room based on the exit direction of the current room
+    const entranceDirection = currentRoom.getOppositeDirection(exitDirection);
+    nextRoom.generateExits(entranceDirection);
+    
+    // Calculate the position of the new room relative to the current room
+    let offsetX = 0;
+    let offsetY = 0;
+    
+    // Determine the position offset based on the exit direction
+    switch (exitDirection) {
+      case "north":
+        offsetY = -1; // New room is above
+        break;
+      case "east":
+        offsetX = 1; // New room is to the right
+        break;
+      case "south":
+        offsetY = 1; // New room is below
+        break;
+      case "west":
+        offsetX = -1; // New room is to the left
+        break;
+    }
+    
+    // Get the current room's position
+    const currentRoomIndex = this.displayedRoomIndices.indexOf(this.currentRoomIndex);
+    const currentX = this.roomPositionsX[currentRoomIndex];
+    const currentY = this.roomPositionsY[currentRoomIndex];
+    
+    // Calculate the new room's position
+    const newX = currentX + offsetX;
+    const newY = currentY + offsetY;
+    
+    // Add the new room to the displayed rooms
+    this.displayedRoomIndices.push(nextRoomIndex);
+    this.roomPositionsX.push(newX);
+    this.roomPositionsY.push(newY);
+    
+    // Update the current room index
+    this.currentRoomIndex = nextRoomIndex;
+    
+    console.log(`Added new room at position (${newX}, ${newY}), direction: ${exitDirection}`);
+    
+    return nextRoom;
+  }
 
   createPlayer(id: string, name: string) {
     this.players.set(id, new Player(name))
@@ -92,6 +159,26 @@ export class DungeonState extends Schema {
         if (square && !square.wall) {
           square.checked = true;
           console.log(player.name, "crosses square", x, y);
+          
+          // Check if the square is an exit
+          if (square.exit) {
+            // Find which exit was crossed
+            let exitIndex = -1;
+            for (let i = 0; i < currentRoom.exitX.length; i++) {
+              if (currentRoom.exitX[i] === x && currentRoom.exitY[i] === y) {
+                exitIndex = i;
+                break;
+              }
+            }
+            
+            if (exitIndex !== -1) {
+              // Get the direction of the exit
+              const exitDirection = currentRoom.exitDirections[exitIndex];
+              
+              // Add a new room in that direction
+              this.addNewRoom(exitDirection, exitIndex);
+            }
+          }
         }
       }
     }
