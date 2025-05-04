@@ -25,7 +25,7 @@ const Square: React.FC<SquareProps> = ({ x, y, square, onClick }) => {
     borderColor = 'border-green-500';
   } else if (square.exit) {
     bgColor = 'bg-blue-700'; // Blue for exit
-    content = 'X';
+    content = 'D';
     borderColor = 'border-blue-500';
   } else if (square.checked) {
     content = 'X';

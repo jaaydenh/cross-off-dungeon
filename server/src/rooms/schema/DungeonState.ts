@@ -47,11 +47,17 @@ export class DungeonState extends Schema {
       
       const room = new Room(width, height);
       
-      // Add some random walls inside the room (not just on the border)
+      // Add some random inner walls (but not on the borders)
       const numInnerWalls = Math.floor(Math.random() * (width * height / 10));
       for (let j = 0; j < numInnerWalls; j++) {
-        const x = Math.floor(Math.random() * (width - 2)) + 1; // Avoid border
-        const y = Math.floor(Math.random() * (height - 2)) + 1; // Avoid border
+        const x = Math.floor(Math.random() * (width - 4)) + 2; // Keep away from borders (at least 1 square)
+        const y = Math.floor(Math.random() * (height - 4)) + 2; // Keep away from borders (at least 1 square)
+        
+        // Skip if this would be adjacent to an entrance or exit
+        if (this.isAdjacentToEntranceOrExit(room, x, y)) {
+          continue;
+        }
+        
         const square = room.getSquare(x, y);
         if (square) {
           square.wall = true;
@@ -146,26 +152,29 @@ export class DungeonState extends Schema {
 
   crossSquare(client: Client, data: any) {
     const player = this.players.get(client.sessionId);
-    const currentRoom = this.getCurrentRoom();
+    
+    // If a specific room index was provided, use that room instead of the current room
+    const roomIndex = data.roomIndex !== undefined ? data.roomIndex : this.currentRoomIndex;
+    const room = this.rooms[roomIndex];
 
-    if (client.sessionId && currentRoom) {
+    if (client.sessionId && room) {
       const { x, y } = data;
       
-      // Check if the coordinates are valid for the current room
-      if (currentRoom.isValidPosition(x, y)) {
-        const square = currentRoom.getSquare(x, y);
+      // Check if the coordinates are valid for the specified room
+      if (room.isValidPosition(x, y)) {
+        const square = room.getSquare(x, y);
         
         // Only allow crossing squares that are not walls
         if (square && !square.wall) {
           square.checked = true;
-          console.log(player.name, "crosses square", x, y);
+          console.log(player.name, "crosses square", x, y, "in room", roomIndex);
           
-          // Check if the square is an exit
-          if (square.exit) {
+          // Check if the square is an exit and we're in the current room
+          if (square.exit && roomIndex === this.currentRoomIndex) {
             // Find which exit was crossed
             let exitIndex = -1;
-            for (let i = 0; i < currentRoom.exitX.length; i++) {
-              if (currentRoom.exitX[i] === x && currentRoom.exitY[i] === y) {
+            for (let i = 0; i < room.exitX.length; i++) {
+              if (room.exitX[i] === x && room.exitY[i] === y) {
                 exitIndex = i;
                 break;
               }
@@ -173,7 +182,7 @@ export class DungeonState extends Schema {
             
             if (exitIndex !== -1) {
               // Get the direction of the exit
-              const exitDirection = currentRoom.exitDirections[exitIndex];
+              const exitDirection = room.exitDirections[exitIndex];
               
               // Add a new room in that direction
               this.addNewRoom(exitDirection, exitIndex);
@@ -182,5 +191,29 @@ export class DungeonState extends Schema {
         }
       }
     }
+  }
+
+  // Helper method to check if coordinates are adjacent to entrance or exit
+  isAdjacentToEntranceOrExit(room: Room, x: number, y: number): boolean {
+    // Check if this is near an entrance
+    if (room.entranceX !== -1 && room.entranceY !== -1) {
+      if ((Math.abs(x - room.entranceX) <= 1 && y === room.entranceY) ||
+          (Math.abs(y - room.entranceY) <= 1 && x === room.entranceX)) {
+        return true;
+      }
+    }
+    
+    // Check if this is near any exit
+    for (let i = 0; i < room.exitX.length; i++) {
+      const exitX = room.exitX[i];
+      const exitY = room.exitY[i];
+      
+      if ((Math.abs(x - exitX) <= 1 && y === exitY) ||
+          (Math.abs(y - exitY) <= 1 && x === exitX)) {
+        return true;
+      }
+    }
+    
+    return false;
   }
 }

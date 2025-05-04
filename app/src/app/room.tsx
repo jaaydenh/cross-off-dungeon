@@ -26,9 +26,22 @@ export default function Room1() {
 
   let roomRef = useRef<Room>();
 
-  const handleSquareClick = (x, y) => {
-    console.log(`Clicked square at ${x}, ${y}`);
-    roomRef.current?.send('crossSquare', { x: x, y: y });
+  const handleSquareClick = (x, y, roomIndex?) => {
+    console.log(`Clicked square at ${x}, ${y} in room index: ${roomIndex !== undefined ? roomIndex : 'current'}`);
+    
+    // If a room index is provided, find the correct room from displayedRooms
+    if (roomIndex !== undefined && displayedRooms[roomIndex]) {
+      const { room, x: roomX, y: roomY } = displayedRooms[roomIndex];
+      // Send the click to the server with the room information
+      roomRef.current?.send('crossSquare', { 
+        x, 
+        y, 
+        roomIndex: roomRef.current.state.displayedRoomIndices[roomIndex] 
+      });
+    } else {
+      // Default behavior for current room
+      roomRef.current?.send('crossSquare', { x, y });
+    }
   };
 
   // Set up global listener for all state changes
@@ -184,21 +197,6 @@ export default function Room1() {
               <h2 className="text-xl font-bold mb-4">Dungeon Map</h2>
               <MultiRoomDisplay 
                 rooms={displayedRooms} 
-                currentRoomIndex={roomRef.current?.state.currentRoomIndex || 0}
-                handleSquareClick={handleSquareClick}
-              />
-            </div>
-          )}
-          
-          {/* Display only the current room (for backward compatibility) */}
-          {currentRoom && (
-            <div className="mt-8 hidden">
-              <p className="mb-4">
-                Room size: {currentRoom.width}x{currentRoom.height}, 
-                Update counter: {updateCounter}
-              </p>
-              <Grid 
-                room={currentRoom} 
                 handleSquareClick={handleSquareClick}
               />
             </div>

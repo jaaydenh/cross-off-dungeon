@@ -28,7 +28,7 @@ export class Room extends Schema {
       for (let x = 0; x < this.width; x++) {
         const square = new DungeonSquare();
         
-        // Set some squares as walls (for example, border walls)
+        // Always set border squares as walls
         if (x === 0 || y === 0 || x === this.width - 1 || y === this.height - 1) {
           square.wall = true;
         }
@@ -132,6 +132,9 @@ export class Room extends Schema {
       square.wall = false;
       square.entrance = true;
     }
+    
+    // Ensure orthogonally adjacent squares are not walls
+    this.clearAdjacentWalls(x, y);
   }
   
   // Create an exit at the appropriate edge based on the direction
@@ -174,8 +177,61 @@ export class Room extends Schema {
       square.wall = false;
       square.exit = true;
     }
+    
+    // Ensure orthogonally adjacent squares are not walls
+    this.clearAdjacentWalls(x, y);
   }
   
+  // Clear walls from squares orthogonally adjacent to a point
+  clearAdjacentWalls(x: number, y: number) {
+    // For entrances/exits on the edge, only clear walls in the direction pointing into the room
+    const isNorthEdge = (y === 0);
+    const isEastEdge = (x === this.width - 1);
+    const isSouthEdge = (y === this.height - 1);
+    const isWestEdge = (x === 0);
+    
+    // If on north edge, only clear the square to the south
+    if (isNorthEdge) {
+      const southSquare = this.getSquare(x, y + 1);
+      if (southSquare) southSquare.wall = false;
+      return;
+    }
+    
+    // If on east edge, only clear the square to the west
+    if (isEastEdge) {
+      const westSquare = this.getSquare(x - 1, y);
+      if (westSquare) westSquare.wall = false;
+      return;
+    }
+    
+    // If on south edge, only clear the square to the north
+    if (isSouthEdge) {
+      const northSquare = this.getSquare(x, y - 1);
+      if (northSquare) northSquare.wall = false;
+      return;
+    }
+    
+    // If on west edge, only clear the square to the east
+    if (isWestEdge) {
+      const eastSquare = this.getSquare(x + 1, y);
+      if (eastSquare) eastSquare.wall = false;
+      return;
+    }
+    
+    // For non-edge squares, clear all adjacent walls
+    const northSquare = this.getSquare(x, y - 1);
+    if (northSquare) northSquare.wall = false;
+    
+    const eastSquare = this.getSquare(x + 1, y);
+    if (eastSquare) eastSquare.wall = false;
+    
+    const southSquare = this.getSquare(x, y + 1);
+    if (southSquare) southSquare.wall = false;
+    
+    const westSquare = this.getSquare(x - 1, y);
+    if (westSquare) westSquare.wall = false;
+  }
+
   // Get the opposite direction
   getOppositeDirection(direction: string): string {
     switch (direction) {
