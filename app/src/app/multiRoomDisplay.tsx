@@ -16,6 +16,7 @@ const MultiRoomDisplay: React.FC<MultiRoomDisplayProps> = ({
   handleSquareClick 
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   
   // Calculate the bounds of the dungeon
   const calculateBounds = () => {
@@ -57,6 +58,31 @@ const MultiRoomDisplay: React.FC<MultiRoomDisplayProps> = ({
   const contentWidth = Math.max(totalWidth, 800); // Minimum width to ensure scrolling works
   const contentHeight = Math.max(totalHeight, 600); // Minimum height
   
+  // Update container size on resize
+  useEffect(() => {
+    if (containerRef.current) {
+      const updateSize = () => {
+        setContainerSize({
+          width: containerRef.current?.clientWidth || 0,
+          height: containerRef.current?.clientHeight || 0
+        });
+      };
+      
+      updateSize();
+      window.addEventListener('resize', updateSize);
+      return () => window.removeEventListener('resize', updateSize);
+    }
+  }, []);
+  
+  // Calculate centering offsets for the initial room
+  const centeringOffsetX = containerSize.width ? 
+    (containerSize.width - maxRoomWidth) / 2 : 
+    (700 - maxRoomWidth) / 2; // Fallback to container width specified in className
+  
+  const centeringOffsetY = containerSize.height ? 
+    (containerSize.height - maxRoomHeight) / 2 : 
+    (700 - maxRoomHeight) / 2; // Fallback to container height specified in className
+  
   return (
     <div 
       ref={containerRef}
@@ -76,9 +102,9 @@ const MultiRoomDisplay: React.FC<MultiRoomDisplayProps> = ({
           const normalizedX = x - minX;
           const normalizedY = y - minY;
           
-          // Calculate pixel position with spacing
-          const posX = normalizedX * (maxRoomWidth + roomSpacing);
-          const posY = normalizedY * (maxRoomHeight + roomSpacing);
+          // Calculate pixel position with spacing and centering offset
+          const posX = normalizedX * (maxRoomWidth + roomSpacing) + centeringOffsetX;
+          const posY = normalizedY * (maxRoomHeight + roomSpacing) + centeringOffsetY;
           
           return (
             <div 

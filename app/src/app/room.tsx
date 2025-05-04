@@ -173,7 +173,7 @@ export default function Room1() {
       {!inRoom && (
         <div className="flex flex-col items-center justify-center w-full h-full gap-4">
           <div>Character Name</div>
-          <input type="text" onChange={(e) => setName(e.target.value)} />
+          <input className="border-2 border-gray-300 rounded-md p-2 text-black" type="text" onChange={(e) => setName(e.target.value)} />
           <button
             onClick={joinRoom}
             className="outline-none bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
