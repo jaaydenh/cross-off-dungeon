@@ -1,4 +1,4 @@
-import React from 'react';
+import { FC } from 'react';
 import Square from './square';
 import { Room } from '@/types/Room';
 
@@ -7,7 +7,7 @@ interface GridProps {
   handleSquareClick: (x: number, y: number) => void;
 }
 
-const Grid: React.FC<GridProps> = ({ room, handleSquareClick }) => {
+const Grid: FC<GridProps> = ({ room, handleSquareClick }) => {
   const renderSquares = () => {
     const squares = [];
     
@@ -35,11 +35,9 @@ const Grid: React.FC<GridProps> = ({ room, handleSquareClick }) => {
 
   return (
     <div 
-      className="flex flex-wrap bg-black p-1 mx-auto"
+      className="flex flex-wrap bg-black p-1"
       style={{ 
         width: `${room.width * 42}px`,
-        maxWidth: '100%',
-        overflow: 'auto'
       }}
     >
       {renderSquares()}

@@ -168,38 +168,54 @@ export default function Game() {
   };
 
   return (
-    <main className="flex flex-col">
+    <main className="fixed inset-0 h-screen w-screen overflow-hidden">
       {!inRoom && (
         <div className="flex flex-col items-center justify-center w-full h-full gap-4">
           <div>Character Name</div>
           <input className="border-2 border-gray-300 rounded-md p-2 text-black" type="text" onChange={(e) => setName(e.target.value)} />
           <button
             onClick={joinRoom}
-            className="outline-none bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+            className="outline-hidden bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
           >
             Join
           </button>
         </div>
       )}
       {inRoom && (
-        <>
-          <p>Players</p>
-          <ul>
-            {players.map((player, index) => (
-              <li key={index}>{player}</li>
-            ))}
-          </ul>
+        <div className="flex h-screen w-full">
+          {/* Left side panel for game information */}
+          <div className="w-64 flex-none bg-slate-800 p-4 overflow-y-auto border-r border-slate-700" >
+            <h2 className="text-xl font-bold mb-4">Players</h2>
+            <ul className="space-y-2">
+              {players.map((player, index) => (
+                <li key={index} className="p-2 bg-slate-700 rounded">{player}</li>
+              ))}
+            </ul>
+          </div>
           
-          {/* Display all rooms */}
-          {displayedRooms.length > 0 && (
-            <div className="mt-8">
+          {/* Main content area for dungeon map */}
+          <div className="flex-1 bg-slate-900 overflow-auto" >
+            {displayedRooms.length > 0 && (
               <DungeonMap 
                 rooms={displayedRooms} 
                 handleSquareClick={handleSquareClick}
               />
+            )}
+          </div>
+          
+          {/* Bottom drawer for player's area */}
+          <div className="fixed bottom-0 left-0 right-0 h-60 bg-slate-800 border-t border-slate-700 p-4">
+            <h2 className="text-xl font-bold mb-2">Player Area</h2>
+            <div className="flex gap-4">
+              <div className="bg-slate-700 p-2 rounded flex-1">
+                <p>Cards (Coming Soon)</p>
+              </div>
+              <div className="bg-slate-700 p-2 rounded flex-1">
+                <p>Skills (Coming Soon)</p>
+              </div>
             </div>
-          )}
-        </>
+          </div>
+        </div>
       )}
     </main>
   );

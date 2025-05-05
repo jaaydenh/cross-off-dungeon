@@ -47,16 +47,16 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
   const maxRoomWidth = Math.max(...rooms.map(r => r.room.width * 42), 100);
   const maxRoomHeight = Math.max(...rooms.map(r => r.room.height * 42), 100);
   
-  // Add spacing between rooms
-  const roomSpacing = 30; // pixels
+  // Add more spacing between rooms for better visibility
+  const roomSpacing = 20;
   
-  // Calculate the total width and height needed for all rooms
-  const totalWidth = gridWidth * (maxRoomWidth + roomSpacing);
-  const totalHeight = gridHeight * (maxRoomHeight + roomSpacing);
-  
-  // Ensure the content area is large enough for all rooms
-  const contentWidth = Math.max(totalWidth, 800); // Minimum width to ensure scrolling works
-  const contentHeight = Math.max(totalHeight, 600);
+  // Significantly increased padding to ensure rooms can be scrolled into view
+  const contentPadding = {
+    top: 300,
+    right: 300,
+    bottom: 500, // Extra padding at bottom for rooms below starting point
+    left: 300
+  };
   
   // Update container size on resize
   useEffect(() => {
@@ -74,25 +74,28 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
     }
   }, []);
   
-  // Calculate centering offsets for the initial room
-  const centeringOffsetX = containerSize.width ? 
-    (containerSize.width - maxRoomWidth) / 2 : 
-    (700 - maxRoomWidth) / 2; // Fallback to container width specified in className
+  // Calculate total dimensions needed for all rooms plus padding
+  const totalWidth = gridWidth * (maxRoomWidth + roomSpacing) + contentPadding.left + contentPadding.right;
+  const totalHeight = gridHeight * (maxRoomHeight + roomSpacing) + contentPadding.top + contentPadding.bottom;
   
-  const centeringOffsetY = containerSize.height ? 
-    (containerSize.height - maxRoomHeight) / 2 : 
-    (700 - maxRoomHeight) / 2;
+  // Get the center of the displayed area for initial positioning
+  const centerX = (contentPadding.left + (containerSize.width ? 
+    Math.max((containerSize.width - maxRoomWidth) / 2, 0) : 0));
+  
+  const centerY = (contentPadding.top + (containerSize.height ? 
+    Math.max((containerSize.height - maxRoomHeight) / 2, 0) : 0));
+  
   
   return (
     <div 
       ref={containerRef}
-      className="relative bg-gray-900 p-4 overflow-auto h-[700px] w-[700px] overscroll-none"
+      className="w-full h-full bg-slate-900"
     >
       <div 
         className="relative"
         style={{
-          width: `${contentWidth}px`,
-          height: `${contentHeight}px`,
+          width: `${totalWidth}px`,
+          height: `${totalHeight}px`,
         }}
       >
         {rooms.map((roomData, index) => {
@@ -102,14 +105,14 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
           const normalizedX = x - minX;
           const normalizedY = y - minY;
           
-          // Calculate pixel position with spacing and centering offset
-          const posX = normalizedX * (maxRoomWidth + roomSpacing) + centeringOffsetX;
-          const posY = normalizedY * (maxRoomHeight + roomSpacing) + centeringOffsetY;
+          // Calculate pixel position with spacing
+          const posX = normalizedX * (maxRoomWidth + roomSpacing) + contentPadding.left;
+          const posY = normalizedY * (maxRoomHeight + roomSpacing) + contentPadding.top;
           
           return (
             <div 
               key={index}
-              className="absolute transition duration-300"
+              className="absolute"
               style={{
                 left: `${posX}px`,
                 top: `${posY}px`,
