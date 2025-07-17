@@ -11,6 +11,14 @@ export class Room extends Schema {
   @type(["string"]) exitDirections = new ArraySchema<string>(); // Directions where exits are placed
   @type(["number"]) exitX = new ArraySchema<number>();
   @type(["number"]) exitY = new ArraySchema<number>();
+  
+  // Grid coordinate properties
+  @type("number") gridX: number = 0;
+  @type("number") gridY: number = 0;
+  
+  // Connection tracking properties
+  @type(["number"]) connectedRoomIndices = new ArraySchema<number>(); // Which rooms connect to each exit
+  @type(["boolean"]) exitConnected = new ArraySchema<boolean>(); // Whether each exit connects to discovered room
 
   constructor(width: number = 8, height: number = 8) {
     super();
@@ -28,10 +36,8 @@ export class Room extends Schema {
       for (let x = 0; x < this.width; x++) {
         const square = new DungeonSquare();
         
-        // Always set border squares as walls
-        if (x === 0 || y === 0 || x === this.width - 1 || y === this.height - 1) {
-          square.wall = true;
-        }
+        // No border walls - all squares start as walkable
+        square.wall = false;
         
         this.squares.push(square);
       }
@@ -40,10 +46,24 @@ export class Room extends Schema {
 
   // Generate random exits for the room
   generateExits(previousDirection: string = "none") {
-    // Clear existing exits
+    // Clear existing exits from coordinate arrays
     this.exitDirections.clear();
     this.exitX.clear();
     this.exitY.clear();
+    this.connectedRoomIndices.clear();
+    this.exitConnected.clear();
+    
+    // Clear exit flags from all squares to prevent mismatches when reusing rooms
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        const square = this.getSquare(x, y);
+        if (square) {
+          square.exit = false;
+          // Also clear entrance flag to prevent conflicts
+          square.entrance = false;
+        }
+      }
+    }
     
     // Determine how many exits to create (1-4)
     // Probability distribution: 1 exit: 20%, 2 exits: 50%, 3 exits: 20%, 4 exits: 10%
@@ -170,6 +190,10 @@ export class Room extends Schema {
     this.exitDirections.push(direction);
     this.exitX.push(x);
     this.exitY.push(y);
+    
+    // Initialize connection tracking for this exit
+    this.connectedRoomIndices.push(-1); // -1 indicates no connected room
+    this.exitConnected.push(false); // Initially not connected
     
     // Mark the square as an exit and not a wall
     const square = this.getSquare(x, y);

@@ -13,29 +13,14 @@ describe("Room", () => {
     assert.strictEqual(room.squares.length, width * height);
   });
   
-  it("should initialize squares with walls on the border", () => {
+  it("should initialize squares without border walls", () => {
     const width = 5;
     const height = 5;
     const room = new Room(width, height);
     
-    // Check border squares are walls
-    for (let x = 0; x < width; x++) {
-      // Top row
-      assert.strictEqual(room.getSquare(x, 0)?.wall, true);
-      // Bottom row
-      assert.strictEqual(room.getSquare(x, height - 1)?.wall, true);
-    }
-    
+    // Check that all squares are initially not walls
     for (let y = 0; y < height; y++) {
-      // Left column
-      assert.strictEqual(room.getSquare(0, y)?.wall, true);
-      // Right column
-      assert.strictEqual(room.getSquare(width - 1, y)?.wall, true);
-    }
-    
-    // Check inner squares are not walls
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
+      for (let x = 0; x < width; x++) {
         assert.strictEqual(room.getSquare(x, y)?.wall, false);
       }
     }
@@ -93,14 +78,12 @@ describe("Room", () => {
   it("should correctly identify walkable squares", () => {
     const room = new Room(5, 5);
     
-    // Border squares should not be walkable (they're walls)
-    assert.strictEqual(room.isWalkable(0, 0), false);
-    assert.strictEqual(room.isWalkable(4, 4), false);
-    
-    // Inner squares should be walkable
+    // All squares should be walkable by default (no border walls)
+    assert.strictEqual(room.isWalkable(0, 0), true);
+    assert.strictEqual(room.isWalkable(4, 4), true);
     assert.strictEqual(room.isWalkable(2, 2), true);
     
-    // Make an inner square a wall
+    // Make a square a wall
     const square = room.getSquare(2, 2);
     if (square) {
       square.wall = true;
@@ -112,6 +95,155 @@ describe("Room", () => {
     // Invalid coordinates should not be walkable
     assert.strictEqual(room.isWalkable(-1, 0), false);
     assert.strictEqual(room.isWalkable(5, 5), false);
+  });
+
+  describe("Grid Coordinate Properties", () => {
+    it("should initialize with default grid coordinates", () => {
+      const room = new Room(8, 8);
+      
+      assert.strictEqual(room.gridX, 0);
+      assert.strictEqual(room.gridY, 0);
+    });
+    
+    it("should allow setting and getting grid coordinates", () => {
+      const room = new Room(8, 8);
+      
+      room.gridX = 5;
+      room.gridY = -3;
+      
+      assert.strictEqual(room.gridX, 5);
+      assert.strictEqual(room.gridY, -3);
+    });
+    
+    it("should serialize grid coordinates properly", () => {
+      const room = new Room(8, 8);
+      room.gridX = 10;
+      room.gridY = -5;
+      
+      // Encode the room state
+      const encoded = room.encode();
+      
+      // Create a new room and decode
+      const newRoom = new Room();
+      newRoom.decode(encoded);
+      
+      assert.strictEqual(newRoom.gridX, 10);
+      assert.strictEqual(newRoom.gridY, -5);
+    });
+  });
+
+  describe("Connection Tracking Properties", () => {
+    it("should initialize with empty connection arrays", () => {
+      const room = new Room(8, 8);
+      
+      assert.strictEqual(room.connectedRoomIndices.length, 0);
+      assert.strictEqual(room.exitConnected.length, 0);
+    });
+    
+    it("should initialize connection arrays when exits are generated", () => {
+      const room = new Room(8, 8);
+      room.generateExits("none");
+      
+      const numExits = room.exitDirections.length;
+      
+      // Connection arrays should match the number of exits
+      assert.strictEqual(room.connectedRoomIndices.length, numExits);
+      assert.strictEqual(room.exitConnected.length, numExits);
+      
+      // All exits should initially be unconnected
+      for (let i = 0; i < numExits; i++) {
+        assert.strictEqual(room.connectedRoomIndices[i], -1);
+        assert.strictEqual(room.exitConnected[i], false);
+      }
+    });
+    
+    it("should allow setting connection data for exits", () => {
+      const room = new Room(8, 8);
+      room.generateExits("none");
+      
+      if (room.exitDirections.length > 0) {
+        // Set connection data for first exit
+        room.connectedRoomIndices[0] = 5;
+        room.exitConnected[0] = true;
+        
+        assert.strictEqual(room.connectedRoomIndices[0], 5);
+        assert.strictEqual(room.exitConnected[0], true);
+      }
+    });
+    
+    it("should serialize connection arrays properly", () => {
+      const room = new Room(8, 8);
+      room.generateExits("none");
+      
+      if (room.exitDirections.length >= 2) {
+        // Set some connection data
+        room.connectedRoomIndices[0] = 3;
+        room.exitConnected[0] = true;
+        room.connectedRoomIndices[1] = 7;
+        room.exitConnected[1] = false;
+        
+        // Encode the room state
+        const encoded = room.encode();
+        
+        // Create a new room and decode
+        const newRoom = new Room();
+        newRoom.decode(encoded);
+        
+        assert.strictEqual(newRoom.connectedRoomIndices[0], 3);
+        assert.strictEqual(newRoom.exitConnected[0], true);
+        assert.strictEqual(newRoom.connectedRoomIndices[1], 7);
+        assert.strictEqual(newRoom.exitConnected[1], false);
+      }
+    });
+    
+    it("should clear connection arrays when exits are regenerated", () => {
+      const room = new Room(8, 8);
+      room.generateExits("none");
+      
+      if (room.exitDirections.length > 0) {
+        // Set some connection data
+        room.connectedRoomIndices[0] = 5;
+        room.exitConnected[0] = true;
+      }
+      
+      // Regenerate exits
+      room.generateExits("north");
+      
+      // Arrays should be cleared and reinitialized
+      const numExits = room.exitDirections.length;
+      assert.strictEqual(room.connectedRoomIndices.length, numExits);
+      assert.strictEqual(room.exitConnected.length, numExits);
+      
+      // All exits should be unconnected again
+      for (let i = 0; i < numExits; i++) {
+        assert.strictEqual(room.connectedRoomIndices[i], -1);
+        assert.strictEqual(room.exitConnected[i], false);
+      }
+    });
+    
+    it("should maintain connection array consistency with exit arrays", () => {
+      const room = new Room(8, 8);
+      
+      // Test multiple generations to ensure consistency
+      for (let i = 0; i < 5; i++) {
+        const previousDirection = i === 0 ? "none" : ["north", "south", "east", "west"][i % 4];
+        room.generateExits(previousDirection);
+        
+        const numExits = room.exitDirections.length;
+        
+        // All arrays should have the same length
+        assert.strictEqual(room.exitX.length, numExits);
+        assert.strictEqual(room.exitY.length, numExits);
+        assert.strictEqual(room.connectedRoomIndices.length, numExits);
+        assert.strictEqual(room.exitConnected.length, numExits);
+        
+        // All connection data should be initialized properly
+        for (let j = 0; j < numExits; j++) {
+          assert.strictEqual(room.connectedRoomIndices[j], -1);
+          assert.strictEqual(room.exitConnected[j], false);
+        }
+      }
+    });
   });
 });
 

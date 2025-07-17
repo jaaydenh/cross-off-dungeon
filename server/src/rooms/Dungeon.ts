@@ -9,7 +9,11 @@ export class Dungeon extends Room<DungeonState> {
 
     this.state.initializeBoard();
 
-    this.onMessage("crossSquare", (client, message) => this.state.crossSquare(client, message));
+    this.onMessage("crossSquare", (client, message) => {
+      const result = this.state.crossSquare(client, message);
+      // Send response back to client with result
+      client.send("crossSquareResult", result);
+    });
   }
 
   onJoin(client: Client, options: any) {

@@ -11,6 +11,14 @@ export class Room extends Schema {
   @type(["string"]) exitDirections = new ArraySchema<string>(); // Directions where exits are placed
   @type(["number"]) exitX = new ArraySchema<number>();
   @type(["number"]) exitY = new ArraySchema<number>();
+  
+  // Grid coordinate properties
+  @type("number") gridX: number = 0;
+  @type("number") gridY: number = 0;
+  
+  // Connection tracking properties
+  @type(["number"]) connectedRoomIndices = new ArraySchema<number>(); // Which rooms connect to each exit
+  @type(["boolean"]) exitConnected = new ArraySchema<boolean>(); // Whether each exit connects to discovered room
 
   getSquare(x: number, y: number): DungeonSquare | undefined {
     if (x < 0 || x >= this.width || y < 0 || y >= this.height) {

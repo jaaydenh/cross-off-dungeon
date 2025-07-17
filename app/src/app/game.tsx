@@ -204,7 +204,7 @@ export default function Game() {
           </div>
           
           {/* Bottom drawer for player's area */}
-          <div className="fixed bottom-0 left-0 right-0 h-60 bg-slate-800 border-t border-slate-700 p-4">
+          <div className="fixed bottom-0 left-0 right-0 h-60 bg-slate-800 border-t border-slate-700 p-4 z-50">
             <h2 className="text-xl font-bold mb-2">Player Area</h2>
             <div className="flex gap-4">
               <div className="bg-slate-700 p-2 rounded flex-1">
