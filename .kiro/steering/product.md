@@ -14,7 +14,7 @@ This is a multiplayer dungeon exploration game built with real-time synchronizat
 - Rooms have walls, exits, and entrances
 - Exiting through a room's exit generates and connects to a new room
 - Multiple rooms can be displayed simultaneously as players explore
-- Each room has randomized dimensions (6-10 width/height) and wall placement
+- Each room has randomized dimensions (6 width/8 height) and wall placement
 
 ## Architecture
 The game uses a client-server architecture with:

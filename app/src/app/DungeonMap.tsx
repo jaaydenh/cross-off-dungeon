@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Grid from './grid';
-import DebugExitInfo from './DebugExitInfo';
 import { Room } from '@/types/Room';
 
 interface DungeonMapProps {
@@ -167,31 +166,6 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
       ref={containerRef}
       className="w-full h-full bg-slate-900 relative"
     >
-      {/* Debug Toggle Button */}
-      <button
-        onClick={() => setShowDebug(!showDebug)}
-        className="absolute top-4 right-4 z-50 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
-      >
-        {showDebug ? 'Hide Debug' : 'Show Debug'}
-      </button>
-
-      {/* Debug Panel */}
-      {showDebug && rooms.length > 0 && (
-        <div className="absolute top-16 right-4 z-50 w-80 max-h-96 overflow-y-auto">
-          <div className="bg-slate-800 p-4 rounded-lg text-white text-sm">
-            <h3 className="text-lg font-bold mb-3">All Rooms Debug Info</h3>
-            {rooms.map((roomData, index) => (
-              <div key={index} className="mb-4 border-b border-slate-600 pb-4">
-                <h4 className="font-semibold text-blue-300 mb-2">
-                  Room {index} at Grid ({roomData.room.gridX}, {roomData.room.gridY})
-                </h4>
-                <DebugExitInfo room={roomData.room} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div
         className="relative"
         style={{

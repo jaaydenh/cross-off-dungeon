@@ -324,8 +324,8 @@ describe("Grid Room Generation Integration Tests", () => {
         dungeonState.addNewRoom(dir, 0);
       }
       
-      // Verify state consistency
-      assert.equal(dungeonState.rooms.length, initialState.roomCount, "Room array length should remain constant");
+      // Verify state consistency - with real-time generation, room count should increase
+      assert(dungeonState.rooms.length >= initialState.roomCount, "Room array length should increase with real-time generation");
       assert(dungeonState.displayedRoomIndices.length >= initialState.displayedCount, "Displayed rooms should increase or stay same");
       assert(dungeonState.roomGridPositions.size >= initialState.gridMappingCount, "Grid mappings should increase or stay same");
       

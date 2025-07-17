@@ -15,7 +15,7 @@ describe("Dungeon Room", () => {
 
   beforeEach(async () => await colyseus.cleanup());
 
-  it("should initialize with 10 rooms", async () => {
+  it("should initialize with 1 room (real-time generation)", async () => {
     // Create a room
     const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
@@ -25,8 +25,8 @@ describe("Dungeon Room", () => {
     // Wait for state sync
     await room.waitForNextPatch();
 
-    // Check that 10 rooms were created
-    assert.strictEqual(room.state.rooms.length, 10);
+    // Check that 1 initial room was created (real-time generation)
+    assert.strictEqual(room.state.rooms.length, 1);
 
     // Check that the current room index is 0
     assert.strictEqual(room.state.currentRoomIndex, 0);
@@ -186,8 +186,11 @@ describe("Dungeon Room", () => {
       // Wait for state sync
       await room.waitForNextPatch();
 
-      // Assign grid coordinates to room 1
-      const roomIndex = 1;
+      // Create a new room first (since we don't pre-generate rooms anymore)
+      const newRoom = room.state.createNewRoom();
+      room.state.rooms.push(newRoom);
+      const roomIndex = room.state.rooms.length - 1;
+      
       const gridX = 5;
       const gridY = -3;
 
@@ -243,6 +246,10 @@ describe("Dungeon Room", () => {
       // Wait for state sync
       await room.waitForNextPatch();
 
+      // Create new rooms first (since we don't pre-generate rooms anymore)
+      room.state.rooms.push(room.state.createNewRoom());
+      room.state.rooms.push(room.state.createNewRoom());
+      
       // Assign grid coordinates to room 2
       const roomIndex = 2;
       const gridX = -7;
@@ -312,14 +319,20 @@ describe("Dungeon Room", () => {
       // Wait for state sync
       await room.waitForNextPatch();
 
+      const initialRoomCount = room.state.rooms.length;
+
       // Look for adjacent room to the north of origin (0, 0) where no room exists
       const adjacentRoomIndex = room.state.findOrCreateAdjacentRoom(0, 0, "north");
 
       // Should return a valid room index
-      assert.ok(adjacentRoomIndex >= 0 && adjacentRoomIndex < room.state.rooms.length);
+      assert.ok(adjacentRoomIndex >= 0);
+      assert.strictEqual(adjacentRoomIndex, initialRoomCount); // Should be the next room index
 
       // Wait for state sync
       await room.waitForNextPatch();
+
+      // Check that a new room was created
+      assert.strictEqual(room.state.rooms.length, initialRoomCount + 1);
 
       // Check that the room was assigned to the correct coordinates
       const coordinates = room.state.getGridCoordinates(adjacentRoomIndex);
@@ -350,7 +363,11 @@ describe("Dungeon Room", () => {
       ];
 
       for (const { dir, expectedX, expectedY } of directions) {
+        const initialRoomCount = room.state.rooms.length;
         const adjacentRoomIndex = room.state.findOrCreateAdjacentRoom(0, 0, dir);
+
+        // Should create a new room
+        assert.strictEqual(adjacentRoomIndex, initialRoomCount);
 
         // Wait for state sync
         await room.waitForNextPatch();
@@ -414,33 +431,38 @@ describe("Dungeon Room", () => {
       // Wait for state sync
       await room.waitForNextPatch();
 
+      // Create a new room first (since we don't pre-generate rooms anymore)
+      const newRoom = room.state.createNewRoom();
+      room.state.rooms.push(newRoom);
+      const roomIndex = room.state.rooms.length - 1;
+
       // Assign initial coordinates
-      room.state.assignGridCoordinates(1, 2, 3);
+      room.state.assignGridCoordinates(roomIndex, 2, 3);
 
       // Wait for state sync
       await room.waitForNextPatch();
 
       // Verify initial assignment
-      let coordinates = room.state.getGridCoordinates(1);
+      let coordinates = room.state.getGridCoordinates(roomIndex);
       assert.strictEqual(coordinates?.x, 2);
       assert.strictEqual(coordinates?.y, 3);
-      assert.strictEqual(room.state.roomGridPositions.get("2,3"), 1);
+      assert.strictEqual(room.state.roomGridPositions.get("2,3"), roomIndex);
 
       // Update coordinates
-      room.state.assignGridCoordinates(1, 5, 7);
+      room.state.assignGridCoordinates(roomIndex, 5, 7);
 
       // Wait for state sync
       await room.waitForNextPatch();
 
       // Verify updated assignment
-      coordinates = room.state.getGridCoordinates(1);
+      coordinates = room.state.getGridCoordinates(roomIndex);
       assert.strictEqual(coordinates?.x, 5);
       assert.strictEqual(coordinates?.y, 7);
-      assert.strictEqual(room.state.roomGridPositions.get("5,7"), 1);
+      assert.strictEqual(room.state.roomGridPositions.get("5,7"), roomIndex);
 
       // Old mapping should still exist (this is expected behavior - we don't clean up old mappings)
       // In a real implementation, you might want to clean up old mappings
-      assert.strictEqual(room.state.roomGridPositions.get("2,3"), 1);
+      assert.strictEqual(room.state.roomGridPositions.get("2,3"), roomIndex);
     });
   });
 });

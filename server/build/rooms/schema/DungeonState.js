@@ -37,51 +37,59 @@ class DungeonState extends schema_1.Schema {
                 this.board.set(`${x},${y}`, new DungeonSquare_1.DungeonSquare());
             }
         }
-        // Create 10 random rooms
-        this.generateRooms(10);
+        // Create the initial starting room
+        this.createInitialRoom();
         // Initialize the displayed rooms array with the first room
         this.displayedRoomIndices.push(0);
         this.roomPositionsX.push(0); // First room is at position (0,0)
         this.roomPositionsY.push(0);
         // Assign grid coordinates to the first room at the origin
         this.assignGridCoordinates(0, this.gridOriginX, this.gridOriginY);
-        // Generate exits for the first room
-        this.rooms[0].generateExits();
     }
-    generateRooms(count) {
-        // Clear existing rooms
-        this.rooms.clear();
-        for (let i = 0; i < count; i++) {
-            // Generate random width between 6-8 and height between 4-6
-            const width = Math.floor(Math.random() * 3) + 6; // 6-8
-            const height = Math.floor(Math.random() * 3) + 4; // 4-6
-            const room = new Room_1.Room(width, height);
-            // Add some random inner walls
-            const numInnerWalls = Math.floor(Math.random() * (width * height / 10));
-            for (let j = 0; j < numInnerWalls; j++) {
-                const x = Math.floor(Math.random() * width);
-                const y = Math.floor(Math.random() * height);
-                // Skip if this would be adjacent to an entrance or exit
-                if (this.isAdjacentToEntranceOrExit(room, x, y)) {
-                    continue;
-                }
-                const square = room.getSquare(x, y);
-                if (square) {
-                    square.wall = true;
-                }
-            }
-            this.rooms.push(room);
-        }
-        // Shuffle the rooms
-        this.shuffleRooms();
-        // Set the current room to the first one
+    /**
+     * Create the initial starting room
+     */
+    createInitialRoom() {
+        const room = this.createNewRoom();
+        room.generateExits(); // No entrance direction for the starting room
+        this.rooms.push(room);
         this.currentRoomIndex = 0;
     }
-    shuffleRooms() {
-        // Fisher-Yates shuffle algorithm
-        for (let i = this.rooms.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [this.rooms[i], this.rooms[j]] = [this.rooms[j], this.rooms[i]];
+    /**
+     * Create a new room with random dimensions and wall placement
+     * @param entranceDirection Optional entrance direction for the room
+     * @returns A new Room instance
+     */
+    createNewRoom(entranceDirection) {
+        // Generate random dimensions
+        const width = Math.floor(Math.random() * 3) + 6; // 6-8
+        const height = Math.floor(Math.random() * 3) + 4; // 4-6
+        const room = new Room_1.Room(width, height);
+        // Add random inner walls
+        this.addRandomWalls(room);
+        // Generate exits with entrance direction if provided
+        if (entranceDirection) {
+            room.generateExits(entranceDirection);
+        }
+        return room;
+    }
+    /**
+     * Add random walls to a room, avoiding entrance and exit areas
+     * @param room The room to add walls to
+     */
+    addRandomWalls(room) {
+        const numInnerWalls = Math.floor(Math.random() * (room.width * room.height / 10));
+        for (let i = 0; i < numInnerWalls; i++) {
+            const x = Math.floor(Math.random() * room.width);
+            const y = Math.floor(Math.random() * room.height);
+            // Skip if this would be adjacent to an entrance or exit
+            if (this.isAdjacentToEntranceOrExit(room, x, y)) {
+                continue;
+            }
+            const square = room.getSquare(x, y);
+            if (square) {
+                square.wall = true;
+            }
         }
     }
     getCurrentRoom() {
@@ -135,14 +143,15 @@ class DungeonState extends schema_1.Schema {
             this.establishConnection(fromRoomIndex, exitIndex, targetRoomIndex, exitDirection);
         }
         else {
-            // No room exists - find or create a new room
-            targetRoomIndex = this.findOrCreateAdjacentRoom(sourceCoords.x, sourceCoords.y, exitDirection);
-            targetRoom = this.rooms[targetRoomIndex];
+            // No room exists - create a new room with real-time generation
+            const entranceDirection = this.getOppositeDirection(exitDirection);
+            const newRoom = this.createNewRoom(entranceDirection);
+            // Add the new room to the rooms array
+            targetRoomIndex = this.rooms.length;
+            this.rooms.push(newRoom);
+            targetRoom = newRoom;
             // Assign proper grid coordinates to the new room
             this.assignGridCoordinates(targetRoomIndex, targetX, targetY);
-            // Set the entrance direction for the new room
-            const entranceDirection = this.getOppositeDirection(exitDirection);
-            targetRoom.generateExits(entranceDirection);
             console.log(`Created new room ${targetRoomIndex} at grid (${targetX}, ${targetY}) with entrance from ${entranceDirection}`);
             // Establish connection from source room to new room
             this.establishConnection(fromRoomIndex, exitIndex, targetRoomIndex, exitDirection);
@@ -291,7 +300,7 @@ class DungeonState extends schema_1.Schema {
      * @returns Room index of the adjacent room (existing or newly created)
      */
     findOrCreateAdjacentRoom(currentX, currentY, direction) {
-        // Calculate target coordinates based on direction (matching addNewRoom logic)
+        // Calculate target coordinates based on direction
         let targetX = currentX;
         let targetY = currentY;
         switch (direction) {
@@ -317,38 +326,16 @@ class DungeonState extends schema_1.Schema {
             // Room already exists at target coordinates
             return existingRoomIndex;
         }
-        // No room exists, find the next available room from the pre-generated rooms
-        let nextRoomIndex = -1;
-        for (let i = 0; i < this.rooms.length; i++) {
-            // Check if this room is already assigned to grid coordinates
-            const gridKey = `${this.rooms[i].gridX},${this.rooms[i].gridY}`;
-            const isAssigned = this.roomGridPositions.get(gridKey) === i;
-            if (!isAssigned) {
-                // This room hasn't been assigned to the grid yet
-                nextRoomIndex = i;
-                break;
-            }
-        }
-        if (nextRoomIndex === -1) {
-            // All rooms have been used, cycle back to reuse rooms
-            // Find a room that's not currently displayed
-            for (let i = 0; i < this.rooms.length; i++) {
-                if (!this.displayedRoomIndices.includes(i)) {
-                    nextRoomIndex = i;
-                    break;
-                }
-            }
-            // If all rooms are displayed, use the next room in sequence
-            if (nextRoomIndex === -1) {
-                nextRoomIndex = (this.currentRoomIndex + 1) % this.rooms.length;
-            }
-        }
-        // Assign grid coordinates to the new room
-        this.assignGridCoordinates(nextRoomIndex, targetX, targetY);
-        // Set up the room with appropriate entrance direction
+        // No room exists - create a new one with real-time generation
         const entranceDirection = this.getOppositeDirection(direction);
-        this.rooms[nextRoomIndex].generateExits(entranceDirection);
-        return nextRoomIndex;
+        const newRoom = this.createNewRoom(entranceDirection);
+        // Add the new room to the rooms array
+        const newRoomIndex = this.rooms.length;
+        this.rooms.push(newRoom);
+        // Assign grid coordinates to the new room
+        this.assignGridCoordinates(newRoomIndex, targetX, targetY);
+        console.log(`Created new room ${newRoomIndex} with entrance from ${entranceDirection}`);
+        return newRoomIndex;
     }
     /**
      * Establish a connection between two rooms through their exits
