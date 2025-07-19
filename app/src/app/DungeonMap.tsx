@@ -1,6 +1,9 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Grid from './grid';
 import { Room } from '@/types/Room';
+import { Player } from '@/types/Player';
+import CancelButton from './CancelButton';
+import ConfirmMoveButton from './ConfirmMoveButton';
 
 interface DungeonMapProps {
   rooms: {
@@ -9,6 +12,10 @@ interface DungeonMapProps {
     y: number;
   }[];
   handleSquareClick: (x: number, y: number, roomIndex?: number) => void;
+  player: Player | null;
+  colyseusRoom: any; // Colyseus room instance
+  invalidSquareHighlight?: {roomIndex: number, x: number, y: number} | null;
+  selectedSquares?: Array<{roomIndex: number, x: number, y: number}>;
 }
 
 interface GridConnection {
@@ -23,7 +30,11 @@ interface GridConnection {
 
 const DungeonMap: React.FC<DungeonMapProps> = ({
   rooms,
-  handleSquareClick
+  handleSquareClick,
+  player,
+  colyseusRoom,
+  invalidSquareHighlight,
+  selectedSquares
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -226,6 +237,15 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
           const posX = normalizedX * (ROOM_WIDTH + roomSpacing) + contentPadding.left;
           const posY = normalizedY * (ROOM_HEIGHT + roomSpacing) + contentPadding.top;
 
+          // Determine if cancel button should be visible for this room
+          // It should be visible if player has an active card and has selected at least one square
+          const hasActiveCard = player?.drawnCards.some(card => card.isActive) || false;
+          const shouldShowCancelButton = hasActiveCard;
+          
+          // Only show confirm button on the first room to avoid duplicates
+          const totalSelectedSquares = selectedSquares?.length || 0;
+          const shouldShowConfirmButton = hasActiveCard && totalSelectedSquares > 0 && index === 0;
+
           return (
             <div
               key={`room-${index}`}
@@ -238,6 +258,22 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
                 zIndex: 2,
               }}
             >
+              {/* Cancel Button - positioned at top right of room */}
+              <CancelButton
+                player={player}
+                room={colyseusRoom}
+                roomIndex={index}
+                isVisible={shouldShowCancelButton}
+              />
+              
+              {/* Confirm Move Button - positioned at top left of room */}
+              <ConfirmMoveButton
+                player={player}
+                room={colyseusRoom}
+                selectedCount={totalSelectedSquares}
+                isVisible={shouldShowConfirmButton}
+              />
+              
               <div className="text-xs text-slate-400 p-2 text-center">
                 Room ({room.gridX}, {room.gridY})
               </div>
@@ -245,6 +281,13 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
                 <Grid
                   room={room}
                   handleSquareClick={(x, y) => handleSquareClick(x, y, index)}
+                  invalidSquareHighlight={
+                    invalidSquareHighlight && invalidSquareHighlight.roomIndex === index
+                      ? { x: invalidSquareHighlight.x, y: invalidSquareHighlight.y }
+                      : null
+                  }
+                  selectedSquares={selectedSquares}
+                  roomIndex={index}
                 />
               </div>
             </div>

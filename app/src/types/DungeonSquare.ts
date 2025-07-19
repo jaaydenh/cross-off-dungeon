@@ -1,10 +1,18 @@
+// 
+// THIS FILE HAS BEEN GENERATED AUTOMATICALLY
+// DO NOT CHANGE IT MANUALLY UNLESS YOU KNOW WHAT YOU'RE DOING
+// 
+// GENERATED USING @colyseus/schema 2.0.32
+// 
+
 import { Schema, type, ArraySchema, MapSchema, SetSchema, DataChange } from '@colyseus/schema';
 
+
 export class DungeonSquare extends Schema {
-  @type("boolean") checked: boolean = false;
-  @type("boolean") entrance: boolean = false;
-  @type("boolean") exit: boolean = false;
-  @type("boolean") treasure: boolean = false;
-  @type("boolean") monster: boolean = false;
-  @type("boolean") wall: boolean = false;
+    @type("boolean") public checked!: boolean;
+    @type("boolean") public entrance!: boolean;
+    @type("boolean") public exit!: boolean;
+    @type("boolean") public treasure!: boolean;
+    @type("boolean") public monster!: boolean;
+    @type("boolean") public wall!: boolean;
 }

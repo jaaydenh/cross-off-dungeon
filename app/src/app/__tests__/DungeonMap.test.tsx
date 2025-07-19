@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import DungeonMap from '../DungeonMap';
 import { Room } from '@/types/Room';
 import { DungeonSquare } from '@/types/DungeonSquare';
+import { Player } from '@/types/Player';
 import { ArraySchema } from '@colyseus/schema';
 
 // Mock the Grid component since we're testing DungeonMap positioning logic
@@ -52,6 +53,8 @@ const addExitToRoom = (room: Room, direction: string, connected: boolean = false
 
 describe('DungeonMap Grid Positioning', () => {
     const mockHandleSquareClick = jest.fn();
+    const mockPlayer = null; // Most tests don't need a specific player
+    const mockColyseusRoom = {}; // Mock Colyseus room object
 
     beforeEach(() => {
         mockHandleSquareClick.mockClear();
@@ -67,7 +70,7 @@ describe('DungeonMap Grid Positioning', () => {
             { room: room2, x: 300, y: 400 }, // These x,y should be ignored
         ];
 
-        render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} />);
+        render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} />);
 
         // Verify that rooms are positioned based on their gridX, gridY properties
         expect(screen.getByTestId('grid-0-0')).toBeInTheDocument();
@@ -89,7 +92,7 @@ describe('DungeonMap Grid Positioning', () => {
             { room: room3, x: 0, y: 0 },
         ];
 
-        const { container } = render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} />);
+        const { container } = render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} />);
 
         // Get all room containers by looking for elements with width and height styles
         const roomContainers = container.querySelectorAll('[style*="width: 350px"]');
@@ -116,7 +119,7 @@ describe('DungeonMap Grid Positioning', () => {
             { room: room3, x: 0, y: 0 },
         ];
 
-        render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} />);
+        render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} />);
 
         // Verify coordinate labels are displayed for each room
         expect(screen.getByText('Room (0, 0)')).toBeInTheDocument();
@@ -138,7 +141,7 @@ describe('DungeonMap Grid Positioning', () => {
             { room: room2, x: 0, y: 0 },
         ];
 
-        const { container } = render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} />);
+        const { container } = render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} />);
 
         // Look for connection lines by their CSS classes
         const connectionLines = container.querySelectorAll('.bg-green-400.opacity-60');
@@ -162,7 +165,7 @@ describe('DungeonMap Grid Positioning', () => {
             { room: room3, x: 0, y: 0 },
         ];
 
-        render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} />);
+        render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} />);
 
         // All rooms should be rendered regardless of negative coordinates
         expect(screen.getByText('Room (-2, -1)')).toBeInTheDocument();
@@ -184,7 +187,7 @@ describe('DungeonMap Grid Positioning', () => {
             { room: room2, x: 0, y: 0 },
         ];
 
-        const { container } = render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} />);
+        const { container } = render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} />);
 
         // Should not have connection lines for unconnected exits
         const connectionLines = container.querySelectorAll('[style*="bg-green-400"]');
@@ -201,7 +204,7 @@ describe('DungeonMap Grid Positioning', () => {
             { room: largeRoom, x: 0, y: 0 },
         ];
 
-        const { container } = render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} />);
+        const { container } = render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} />);
 
         // Get all room containers
         const roomContainers = container.querySelectorAll('[style*="width: 350px"]');

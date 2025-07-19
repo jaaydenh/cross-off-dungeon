@@ -6,8 +6,13 @@
 // 
 
 import { Schema, type, ArraySchema, MapSchema, SetSchema, DataChange } from '@colyseus/schema';
-
+import { Card } from './Card'
 
 export class Player extends Schema {
-    @type("string") name!: string;
+    @type("string") public name!: string;
+    @type([ Card ]) public deck: ArraySchema<Card> = new ArraySchema<Card>();
+    @type([ Card ]) public drawnCards: ArraySchema<Card> = new ArraySchema<Card>();
+    @type([ Card ]) public discardPile: ArraySchema<Card> = new ArraySchema<Card>();
+    @type("string") public turnStatus!: string;
+    @type("boolean") public hasDrawnCard!: boolean;
 }

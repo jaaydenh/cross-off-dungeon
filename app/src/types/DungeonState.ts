@@ -5,21 +5,26 @@
 // GENERATED USING @colyseus/schema 2.0.32
 // 
 
-import { Schema, type, MapSchema, ArraySchema } from '@colyseus/schema';
-import { Player } from './Player';
-import { Room } from './Room';
-import { DungeonSquare } from './DungeonSquare';
+import { Schema, type, ArraySchema, MapSchema, SetSchema, DataChange } from '@colyseus/schema';
+import { Player } from './Player'
+import { DungeonSquare } from './DungeonSquare'
+import { Room } from './Room'
 
 export class DungeonState extends Schema {
-  @type({ map: Player }) players = new MapSchema<Player>();
-  @type({ map: DungeonSquare }) board = new MapSchema<DungeonSquare>();
-  @type([Room]) rooms = new ArraySchema<Room>();
-  @type("number") currentRoomIndex = 0;
-  @type(["number"]) displayedRoomIndices = new ArraySchema<number>(); // Indices of rooms currently displayed
-  @type(["number"]) roomPositionsX = new ArraySchema<number>(); // X positions of displayed rooms
-  @type(["number"]) roomPositionsY = new ArraySchema<number>(); // Y positions of displayed rooms
-  
-  getCurrentRoom(): Room | undefined {
-    return this.rooms[this.currentRoomIndex];
-  }
+    @type({ map: Player }) public players: MapSchema<Player> = new MapSchema<Player>();
+    @type({ map: DungeonSquare }) public board: MapSchema<DungeonSquare> = new MapSchema<DungeonSquare>();
+    @type([ Room ]) public rooms: ArraySchema<Room> = new ArraySchema<Room>();
+    @type("number") public currentRoomIndex!: number;
+    @type([ "number" ]) public displayedRoomIndices: ArraySchema<number> = new ArraySchema<number>();
+    @type([ "number" ]) public roomPositionsX: ArraySchema<number> = new ArraySchema<number>();
+    @type([ "number" ]) public roomPositionsY: ArraySchema<number> = new ArraySchema<number>();
+    @type("number") public gridOriginX!: number;
+    @type("number") public gridOriginY!: number;
+    @type({ map: "number" }) public roomGridPositions: MapSchema<number> = new MapSchema<number>();
+    @type("number") public currentTurn!: number;
+    @type("boolean") public turnInProgress!: boolean;
+    @type([ "string" ]) public turnOrder: ArraySchema<string> = new ArraySchema<string>();
+    @type({ map: "string" }) public activeCardPlayers: MapSchema<string> = new MapSchema<string>();
+    @type({ map: "string" }) public selectedSquares: MapSchema<string> = new MapSchema<string>();
+    @type({ map: "number" }) public selectedSquareCount: MapSchema<number> = new MapSchema<number>();
 }

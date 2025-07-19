@@ -31,3 +31,240 @@ body {
     text-wrap: balance;
   }
 }
+
+/* Card System Animations */
+@layer components {
+  /* Glow effect for undrawn deck */
+  .deck-glow {
+    animation: deck-glow 2s ease-in-out infinite alternate;
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.5), 0 0 40px rgba(59, 130, 246, 0.3);
+  }
+
+  @keyframes deck-glow {
+    0% {
+      box-shadow: 0 0 20px rgba(59, 130, 246, 0.5), 0 0 40px rgba(59, 130, 246, 0.3);
+    }
+    100% {
+      box-shadow: 0 0 30px rgba(59, 130, 246, 0.8), 0 0 60px rgba(59, 130, 246, 0.5);
+    }
+  }
+
+  /* Card flip animation for drawing cards */
+  .card-flip {
+    animation: card-flip 0.6s ease-in-out;
+    transform-style: preserve-3d;
+  }
+
+  @keyframes card-flip {
+    0% {
+      transform: rotateY(0deg);
+    }
+    50% {
+      transform: rotateY(90deg);
+    }
+    100% {
+      transform: rotateY(0deg);
+    }
+  }
+
+  /* Card draw animation */
+  .card-draw {
+    animation: card-draw 0.5s ease-out;
+  }
+
+  @keyframes card-draw {
+    0% {
+      transform: translateX(-100px) scale(0.8);
+      opacity: 0;
+    }
+    100% {
+      transform: translateX(0) scale(1);
+      opacity: 1;
+    }
+  }
+
+  /* Red highlight animation for invalid square selection */
+  .invalid-square-highlight {
+    animation: invalid-square-pulse 0.5s ease-in-out;
+  }
+
+  @keyframes invalid-square-pulse {
+    0% {
+      background-color: rgb(220, 38, 38);
+      box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+    }
+    50% {
+      background-color: rgb(239, 68, 68);
+      box-shadow: 0 0 0 10px rgba(220, 38, 38, 0);
+    }
+    100% {
+      background-color: rgb(220, 38, 38);
+      box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+    }
+  }
+
+  /* Turn controls styling */
+  .turn-button {
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
+    transition: all 0.3s ease;
+  }
+
+  .turn-button:hover {
+    background: linear-gradient(135deg, #b91c1c, #991b1b);
+    box-shadow: 0 6px 20px rgba(220, 38, 38, 0.6);
+    transform: translateY(-2px);
+  }
+
+  .turn-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 10px rgba(220, 38, 38, 0.4);
+  }
+
+  /* Status indicator animations */
+  .status-indicator {
+    transition: all 0.3s ease;
+  }
+
+  .status-not-started {
+    color: #9ca3af;
+    animation: status-pulse 2s ease-in-out infinite;
+  }
+
+  .status-playing {
+    color: #fbbf24;
+    animation: status-active 1.5s ease-in-out infinite;
+  }
+
+  .status-complete {
+    color: #10b981;
+    animation: status-complete 0.5s ease-out;
+  }
+
+  @keyframes status-pulse {
+    0%, 100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes status-active {
+    0%, 100% {
+      opacity: 0.8;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.05);
+    }
+  }
+
+  @keyframes status-complete {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.2);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  /* Card hover effects */
+  .card-hover {
+    transition: all 0.2s ease;
+  }
+
+  .card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Cancel button animation */
+  .cancel-button {
+    animation: cancel-button-appear 0.3s ease-out;
+  }
+
+  @keyframes cancel-button-appear {
+    0% {
+      opacity: 0;
+      transform: scale(0.8) translateY(-10px);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  /* Responsive card layout */
+  .card-container {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  @media (max-width: 768px) {
+    .card-container {
+      gap: 0.5rem;
+    }
+    
+    .card-deck, .card-drawn, .card-discard {
+      width: 60px;
+      height: 84px;
+    }
+    
+    .card-deck .card-count-badge,
+    .card-discard .card-count-badge {
+      width: 20px;
+      height: 20px;
+      font-size: 10px;
+    }
+
+    .turn-button {
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .card-container {
+      flex-direction: row;
+      gap: 0.25rem;
+    }
+
+    .card-deck, .card-drawn, .card-discard {
+      width: 50px;
+      height: 70px;
+    }
+
+    .card-deck .card-count-badge,
+    .card-discard .card-count-badge {
+      width: 18px;
+      height: 18px;
+      font-size: 8px;
+    }
+
+    .turn-button {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+    }
+  }
+
+  /* Player area responsive adjustments */
+  @media (max-width: 768px) {
+    .player-area {
+      height: 12rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .player-area {
+      height: 10rem;
+    }
+  }
+}

@@ -18,6 +18,8 @@ interface SquareProps {
   adjacentExitInfo?: ExitHighlightInfo;
   onExitHover?: (exitIndex: number | null) => void;
   isExitHovered?: boolean;
+  showInvalidHighlight?: boolean;
+  isSelected?: boolean;
 }
 
 const Square: React.FC<SquareProps> = ({ 
@@ -29,7 +31,9 @@ const Square: React.FC<SquareProps> = ({
   isAdjacentToExit, 
   adjacentExitInfo, 
   onExitHover, 
-  isExitHovered 
+  isExitHovered,
+  showInvalidHighlight,
+  isSelected
 }) => {
   // Determine the background color based on the square type
   let bgColor = 'bg-gray-800'; // Default dark background
@@ -38,6 +42,13 @@ const Square: React.FC<SquareProps> = ({
   let borderColor = 'border-gray-700';
   let additionalClasses = '';
   let hoverEffect = 'hover:bg-gray-700';
+
+  // Override colors for invalid square highlight (red highlight animation)
+  if (showInvalidHighlight) {
+    bgColor = 'bg-red-600';
+    borderColor = 'border-red-400';
+    additionalClasses = 'invalid-square-highlight';
+  }
 
   if (square.wall) {
     bgColor = 'bg-gray-900'; // Darker for walls
@@ -91,7 +102,12 @@ const Square: React.FC<SquareProps> = ({
   } else if (square.checked) {
     content = 'X';
     bgColor = 'bg-gray-700'; // Lighter for checked squares
-    
+  } else if (isSelected) {
+    // Show X for squares selected during card-based selection
+    content = 'X';
+    bgColor = 'bg-blue-600'; // Blue background for selected squares
+    borderColor = 'border-blue-400';
+    additionalClasses = 'shadow-lg shadow-blue-500/50';
   } else if (square.treasure) {
     content = 'T';
     bgColor = 'bg-yellow-700'; // Yellow for treasure

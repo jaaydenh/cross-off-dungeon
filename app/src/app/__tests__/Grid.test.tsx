@@ -17,7 +17,9 @@ jest.mock('../square', () => {
     isAdjacentToExit, 
     adjacentExitInfo, 
     onExitHover, 
-    isExitHovered 
+    isExitHovered,
+    showInvalidHighlight,
+    isSelected
   }: any) {
     const handleClick = () => onClick(x, y);
     const handleMouseEnter = () => {
@@ -103,7 +105,7 @@ describe('Grid Component - Exit Highlighting and User Feedback', () => {
       room.squares[1 * 3 + 1] = createMockSquare({ checked: true });
 
       const mockHandleClick = jest.fn();
-      render(<Grid room={room} handleSquareClick={mockHandleClick} />);
+      render(<Grid room={room} handleSquareClick={mockHandleClick} roomIndex={0} />);
 
       const exitSquare = screen.getByTestId('square-2-1');
       expect(exitSquare).toHaveAttribute('data-exit-navigable', 'true');
@@ -122,7 +124,7 @@ describe('Grid Component - Exit Highlighting and User Feedback', () => {
       room.exitConnected.push(false);
 
       const mockHandleClick = jest.fn();
-      render(<Grid room={room} handleSquareClick={mockHandleClick} />);
+      render(<Grid room={room} handleSquareClick={mockHandleClick} roomIndex={0} />);
 
       const exitSquare = screen.getByTestId('square-2-1');
       expect(exitSquare).toHaveAttribute('data-exit-navigable', 'false');
@@ -149,7 +151,7 @@ describe('Grid Component - Exit Highlighting and User Feedback', () => {
       room.squares[1 * 5 + 1] = createMockSquare({ checked: true }); // Northwest diagonal
 
       const mockHandleClick = jest.fn();
-      render(<Grid room={room} handleSquareClick={mockHandleClick} />);
+      render(<Grid room={room} handleSquareClick={mockHandleClick} roomIndex={0} />);
 
       const exitSquare = screen.getByTestId('square-2-2');
       expect(exitSquare).toHaveAttribute('data-exit-navigable', 'true');
@@ -175,7 +177,7 @@ describe('Grid Component - Exit Highlighting and User Feedback', () => {
       room.squares[2 * 3 + 1] = createMockSquare({ checked: true });
 
       const mockHandleClick = jest.fn();
-      render(<Grid room={room} handleSquareClick={mockHandleClick} />);
+      render(<Grid room={room} handleSquareClick={mockHandleClick} roomIndex={0} />);
 
       const connectedExit = screen.getByTestId('square-2-0');
       const unconnectedExit = screen.getByTestId('square-2-2');
@@ -198,7 +200,7 @@ describe('Grid Component - Exit Highlighting and User Feedback', () => {
       room.exitConnected.push(false);
 
       const mockHandleClick = jest.fn();
-      render(<Grid room={room} handleSquareClick={mockHandleClick} />);
+      render(<Grid room={room} handleSquareClick={mockHandleClick} roomIndex={0} />);
 
       // Check squares adjacent to the exit
       const adjacentSquares = [
@@ -228,7 +230,7 @@ describe('Grid Component - Exit Highlighting and User Feedback', () => {
       room.exitConnected.push(false);
 
       const mockHandleClick = jest.fn();
-      render(<Grid room={room} handleSquareClick={mockHandleClick} />);
+      render(<Grid room={room} handleSquareClick={mockHandleClick} roomIndex={0} />);
 
       // Diagonal squares should not be marked as adjacent
       const diagonalSquares = [
@@ -257,7 +259,7 @@ describe('Grid Component - Exit Highlighting and User Feedback', () => {
       room.exitConnected.push(false);
 
       const mockHandleClick = jest.fn();
-      render(<Grid room={room} handleSquareClick={mockHandleClick} />);
+      render(<Grid room={room} handleSquareClick={mockHandleClick} roomIndex={0} />);
 
       const exitSquare = screen.getByTestId('square-1-1');
 
@@ -278,7 +280,7 @@ describe('Grid Component - Exit Highlighting and User Feedback', () => {
       const room = createMockRoom(2, 2);
       const mockHandleClick = jest.fn();
       
-      render(<Grid room={room} handleSquareClick={mockHandleClick} />);
+      render(<Grid room={room} handleSquareClick={mockHandleClick} roomIndex={0} />);
 
       const square = screen.getByTestId('square-0-0');
       fireEvent.click(square);
@@ -312,7 +314,7 @@ describe('Grid Component - Exit Highlighting and User Feedback', () => {
       room.exitConnected.push(true, true, false, false);
 
       const mockHandleClick = jest.fn();
-      render(<Grid room={room} handleSquareClick={mockHandleClick} />);
+      render(<Grid room={room} handleSquareClick={mockHandleClick} roomIndex={0} />);
 
       // Test each exit state
       const exit1 = screen.getByTestId('square-2-0');
@@ -353,7 +355,7 @@ describe('Grid Component - Exit Highlighting and User Feedback', () => {
       
       // Should not throw errors
       expect(() => {
-        render(<Grid room={room} handleSquareClick={mockHandleClick} />);
+        render(<Grid room={room} handleSquareClick={mockHandleClick} roomIndex={0} />);
       }).not.toThrow();
     });
 
@@ -362,7 +364,7 @@ describe('Grid Component - Exit Highlighting and User Feedback', () => {
       const mockHandleClick = jest.fn();
       
       expect(() => {
-        render(<Grid room={room} handleSquareClick={mockHandleClick} />);
+        render(<Grid room={room} handleSquareClick={mockHandleClick} roomIndex={0} />);
       }).not.toThrow();
     });
   });

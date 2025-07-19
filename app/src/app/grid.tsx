@@ -5,6 +5,9 @@ import { Room } from '@/types/Room';
 interface GridProps {
   room: Room;
   handleSquareClick: (x: number, y: number) => void;
+  invalidSquareHighlight?: {x: number, y: number} | null;
+  selectedSquares?: Array<{roomIndex: number, x: number, y: number}>;
+  roomIndex: number;
 }
 
 interface ExitHighlightInfo {
@@ -14,7 +17,7 @@ interface ExitHighlightInfo {
   adjacentCrossedSquares: { x: number; y: number }[];
 }
 
-const Grid: FC<GridProps> = ({ room, handleSquareClick }) => {
+const Grid: FC<GridProps> = ({ room, handleSquareClick, invalidSquareHighlight, selectedSquares, roomIndex }) => {
   const [hoveredExit, setHoveredExit] = useState<number | null>(null);
 
   // Helper function to get square at coordinates
@@ -123,6 +126,15 @@ const Grid: FC<GridProps> = ({ room, handleSquareClick }) => {
           // Check if this square is adjacent to an exit
           const adjacentInfo = getSquareAdjacentToExitInfo(x, y);
 
+          // Check if this square should show invalid highlight
+          const shouldShowInvalidHighlight = invalidSquareHighlight && 
+            invalidSquareHighlight.x === x && invalidSquareHighlight.y === y;
+
+          // Check if this square is selected for card-based action
+          const isSelected = selectedSquares?.some(pos => 
+            pos.roomIndex === roomIndex && pos.x === x && pos.y === y
+          ) || false;
+
           squares.push(
             <Square
               key={`${x}-${y}`}
@@ -135,6 +147,8 @@ const Grid: FC<GridProps> = ({ room, handleSquareClick }) => {
               adjacentExitInfo={adjacentInfo.exitInfo}
               onExitHover={setHoveredExit}
               isExitHovered={hoveredExit !== null && exitInfo?.exitIndex === hoveredExit}
+              showInvalidHighlight={shouldShowInvalidHighlight}
+              isSelected={isSelected}
             />
           );
         }
