@@ -98,6 +98,17 @@ export class Dungeon extends Room<DungeonState> {
       const result = this.state.confirmCardAction(client.sessionId);
       client.send("confirmCardActionResult", result);
     });
+
+    // Monster system message handlers
+    this.onMessage("claimMonster", (client, { monsterId }) => {
+      const result = this.state.claimMonster(client.sessionId, monsterId);
+      client.send("claimMonsterResult", result);
+    });
+
+    this.onMessage("selectMonsterSquare", (client, { monsterId, x, y }) => {
+      const result = this.state.selectMonsterSquare(client.sessionId, monsterId, x, y);
+      client.send("selectMonsterSquareResult", result);
+    });
   }
 
   onJoin(client: Client, options: any) {
