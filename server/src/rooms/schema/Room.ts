@@ -1,5 +1,6 @@
 import { Schema, type, ArraySchema } from "@colyseus/schema";
 import { DungeonSquare } from "./DungeonSquare";
+import { Monster } from "./Monster";
 
 export class Room extends Schema {
   @type("number") width: number;
@@ -11,6 +12,9 @@ export class Room extends Schema {
   @type(["string"]) exitDirections = new ArraySchema<string>(); // Directions where exits are placed
   @type(["number"]) exitX = new ArraySchema<number>();
   @type(["number"]) exitY = new ArraySchema<number>();
+
+  // Monsters in this room
+  @type([ Monster ]) monsters = new ArraySchema<Monster>();
   
   // Grid coordinate properties
   @type("number") gridX: number = 0;
@@ -25,6 +29,15 @@ export class Room extends Schema {
     this.width = width;
     this.height = height;
     this.initializeSquares();
+    this.initializeMonsters();
+  }
+
+  private initializeMonsters() {
+    // Example: Add one goblin at a random position in the room
+    const x = Math.floor(Math.random() * this.width);
+    const y = Math.floor(Math.random() * this.height);
+    this.monsters.push(new Monster("Goblin", 10, x, y));
+    // Feel free to add more monsters or randomize them as needed!
   }
 
   private initializeSquares() {
