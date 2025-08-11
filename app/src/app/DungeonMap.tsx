@@ -2,8 +2,6 @@ import React, { useRef, useEffect, useState } from 'react';
 import Grid from './grid';
 import { Room } from '@/types/Room';
 import { Player } from '@/types/Player';
-import CancelButton from './CancelButton';
-import ConfirmMoveButton from './ConfirmMoveButton';
 
 interface DungeonMapProps {
   rooms: {
@@ -237,14 +235,6 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
           const posX = normalizedX * (ROOM_WIDTH + roomSpacing) + contentPadding.left;
           const posY = normalizedY * (ROOM_HEIGHT + roomSpacing) + contentPadding.top;
 
-          // Determine if cancel button should be visible for this room
-          // It should be visible if player has an active card and has selected at least one square
-          const hasActiveCard = player?.drawnCards.some(card => card.isActive) || false;
-          const shouldShowCancelButton = hasActiveCard;
-          
-          // Only show confirm button on the first room to avoid duplicates
-          const totalSelectedSquares = selectedSquares?.length || 0;
-          const shouldShowConfirmButton = hasActiveCard && totalSelectedSquares > 0 && index === 0;
 
           return (
             <div
@@ -258,22 +248,6 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
                 zIndex: 2,
               }}
             >
-              {/* Cancel Button - positioned at top right of room */}
-              <CancelButton
-                player={player}
-                room={colyseusRoom}
-                roomIndex={index}
-                isVisible={shouldShowCancelButton}
-              />
-              
-              {/* Confirm Move Button - positioned at top left of room */}
-              <ConfirmMoveButton
-                player={player}
-                room={colyseusRoom}
-                selectedCount={totalSelectedSquares}
-                isVisible={shouldShowConfirmButton}
-              />
-              
               <div className="text-xs text-slate-400 p-2 text-center">
                 Room ({room.gridX}, {room.gridY})
               </div>

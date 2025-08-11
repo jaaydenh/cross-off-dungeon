@@ -16,19 +16,14 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
   const [lastCardId, setLastCardId] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log('DrawnCard useEffect triggered, player:', player);
     if (player) {
-      console.log('Player drawnCards length:', player.drawnCards.length);
-      console.log('Player drawnCards:', player.drawnCards);
       if (player.drawnCards.length > 0) {
         // Get the most recently drawn card (last in array)
         const card = player.drawnCards[player.drawnCards.length - 1];
-        console.log('Setting drawn card:', card);
 
         // Check if this is a new card being drawn (different ID from last tracked)
         const isNewCardDrawn = lastCardId !== card.id;
         if (isNewCardDrawn) {
-          console.log('New card detected, triggering animation');
           setIsNewCard(true);
           setLastCardId(card.id);
           setTimeout(() => setIsNewCard(false), 500); // Match animation duration
@@ -56,7 +51,7 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
   if (!player || !drawnCard) {
     return (
       <div className="flex flex-col items-center gap-2">
-        <h3 className="text-lg font-semibold text-white">Drawn Card</h3>
+        <h3 className="text-md font-semibold text-white">Drawn Card</h3>
         <div className="w-20 h-28 bg-gray-700 border-2 border-gray-600 rounded-lg flex items-center justify-center">
           <p className="text-gray-400 text-xs text-center">No card drawn</p>
         </div>
@@ -66,13 +61,12 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <h3 className="text-lg font-semibold text-white">Drawn Card</h3>
+      <h3 className="text-md font-semibold text-white">Drawn Card</h3>
 
       {/* Drawn Card */}
       <div
         className={`
-          card-drawn relative w-20 h-28 bg-white border-2 rounded-lg card-hover
-          ${isNewCard ? 'card-draw' : ''}
+          relative w-20 h-28 bg-white border-2 rounded-lg card-hover
           ${drawnCard.isActive
             ? 'border-yellow-400 bg-yellow-100 shadow-lg shadow-yellow-400/50 cursor-not-allowed'
             : 'border-gray-300 cursor-pointer hover:border-blue-400'
@@ -81,8 +75,7 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
         onClick={handleCardClick}
       >
         {/* Card content */}
-        <div className="absolute inset-2 flex flex-col justify-between text-black">
-          {/* Card description in middle */}
+        <div className="mt-4 flex flex-col justify-between text-black">
           <div className="text-xs text-center leading-tight px-1">
             {drawnCard.description}
           </div>

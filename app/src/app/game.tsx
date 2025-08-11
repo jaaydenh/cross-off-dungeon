@@ -13,6 +13,8 @@ import CardDeck from './CardDeck';
 import DrawnCard from './DrawnCard';
 import DiscardPile from './DiscardPile';
 import TurnControls from './TurnControls';
+import CancelButton from './CancelButton';
+import ConfirmMoveButton from './ConfirmMoveButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -111,6 +113,11 @@ export default function Game() {
     );
     if (alreadySelected) {
       return { valid: false, reason: 'Square already selected' };
+    }
+
+    // Check maximum of 3 squares limit
+    if (selectedSquares.length >= 3) {
+      return { valid: false, reason: 'Maximum of 3 squares can be selected per card' };
     }
 
     // Validate connectivity for non-first squares
@@ -487,7 +494,22 @@ export default function Game() {
           </div>
 
           {/* Main content area for dungeon map */}
-          <div className="flex-1 bg-slate-900 overflow-auto" >
+          <div className="flex-1 bg-slate-900 overflow-auto relative" >
+            {/* Card Action Buttons - Fixed position at top center */}
+            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 flex gap-4">
+              <ConfirmMoveButton
+                player={currentPlayer}
+                room={roomRef.current}
+                selectedCount={selectedSquares?.length || 0}
+                isVisible={currentPlayer?.drawnCards.some(card => card.isActive) && (selectedSquares?.length || 0) > 0}
+              />
+              <CancelButton
+                player={currentPlayer}
+                room={roomRef.current}
+                isVisible={currentPlayer?.drawnCards.some(card => card.isActive)}
+              />
+            </div>
+
             {displayedRooms.length > 0 && (
               <DungeonMap
                 rooms={displayedRooms}
@@ -501,16 +523,13 @@ export default function Game() {
           </div>
 
           {/* Bottom drawer for player's area */}
-          <div className="player-area fixed bottom-0 left-0 right-0 h-60 bg-slate-800 border-t border-slate-700 p-4 z-50">
-
-            <h2 className="text-xl font-bold mb-2">Player Area</h2>
-
-            <div className="flex gap-4">
-              <div className="bg-slate-700 p-1 rounded flex-1">
-                <div className="card-container">
-                  <DiscardPile player={currentPlayer} room={roomRef.current} />
+          <div className="player-area fixed bottom-0 left-0 right-0 h-60 bg-slate-800 border-t border-slate-700 p-2 z-50">
+            <div className="flex gap-4 h-full">
+              <div className="bg-slate-700 p-4 rounded flex-1">
+                <div className="flex justify-start gap-6">
                   <CardDeck player={currentPlayer} room={roomRef.current} />
                   <DrawnCard player={currentPlayer} room={roomRef.current} key={updateCounter} />
+                  <DiscardPile player={currentPlayer} room={roomRef.current} />
                 </div>
               </div>
               <div className="bg-slate-700 p-2 rounded flex-1">

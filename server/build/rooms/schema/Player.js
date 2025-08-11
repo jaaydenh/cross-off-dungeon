@@ -30,7 +30,7 @@ class Player extends schema_1.Schema {
         // Create 10 cards of type "cross_connected_squares"
         const cards = [];
         for (let i = 1; i <= 10; i++) {
-            const card = new Card_1.Card(`card_${i}`, "cross_connected_squares", "Cross any 3 connected squares");
+            const card = new Card_1.Card(`card_${i}`, "cross_connected_squares", "Cross up to 3 connected squares");
             cards.push(card);
         }
         // Shuffle the cards using Fisher-Yates algorithm

@@ -26,14 +26,12 @@ const ConfirmMoveButton: React.FC<ConfirmMoveButtonProps> = ({
   }
 
   return (
-    <div className="absolute top-2 left-2 z-10">
-      <button
-        onClick={handleConfirmMove}
-        className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all duration-200 transform hover:scale-105 border-2 border-green-400"
-      >
-        ✓ Confirm Move ({selectedCount} square{selectedCount !== 1 ? 's' : ''})
-      </button>
-    </div>
+    <button
+      onClick={handleConfirmMove}
+      className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all duration-200 transform border-2 border-green-400"
+    >
+      Confirm Move ({selectedCount} square{selectedCount !== 1 ? 's' : ''})
+    </button>
   );
 };
 

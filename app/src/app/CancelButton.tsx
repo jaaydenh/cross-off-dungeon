@@ -6,14 +6,13 @@ import { Room } from 'colyseus.js';
 interface CancelButtonProps {
   player: Player | null;
   room: Room | undefined;
-  roomIndex: number;
   isVisible: boolean;
 }
 
-export default function CancelButton({ player, room, roomIndex, isVisible }: CancelButtonProps) {
+export default function CancelButton({ player, room, isVisible }: CancelButtonProps) {
   const handleCancelClick = () => {
     if (room) {
-      room.send('cancelCardAction', { roomIndex });
+      room.send('cancelCardAction', {});
     }
   };
 
@@ -33,10 +32,10 @@ export default function CancelButton({ player, room, roomIndex, isVisible }: Can
     <button
       onClick={handleCancelClick}
       className="
-        cancel-button absolute top-2 right-2 z-10
+        cancel-button
         bg-red-600 hover:bg-red-700 
         text-white font-bold 
-        px-3 py-1 rounded-md
+        px-4 py-2 rounded-md
         text-sm transition-all duration-200
         shadow-lg hover:shadow-xl
         border border-red-500

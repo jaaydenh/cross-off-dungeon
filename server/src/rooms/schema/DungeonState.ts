@@ -16,7 +16,7 @@ export class DungeonState extends Schema {
   @type(["number"]) displayedRoomIndices = new ArraySchema<number>(); // Indices of rooms currently displayed
   @type(["number"]) roomPositionsX = new ArraySchema<number>(); // X positions of displayed rooms
   @type(["number"]) roomPositionsY = new ArraySchema<number>(); // Y positions of displayed rooms
-  
+
   // Grid management properties
   @type("number") gridOriginX = 0; // Starting grid position X
   @type("number") gridOriginY = 0; // Starting grid position Y
@@ -42,15 +42,15 @@ export class DungeonState extends Schema {
         this.board.set(`${x},${y}`, new DungeonSquare());
       }
     }
-    
+
     // Create the initial starting room
     this.createInitialRoom();
-    
+
     // Initialize the displayed rooms array with the first room
     this.displayedRoomIndices.push(0);
     this.roomPositionsX.push(0); // First room is at position (0,0)
     this.roomPositionsY.push(0);
-    
+
     // Assign grid coordinates to the first room at the origin
     this.assignGridCoordinates(0, this.gridOriginX, this.gridOriginY);
   }
@@ -61,10 +61,10 @@ export class DungeonState extends Schema {
   createInitialRoom() {
     const room = this.createNewRoom();
     room.generateExits(); // No entrance direction for the starting room
-    
+
     // Add an entrance to the first room (players need a way to enter)
     room.createEntrance("south"); // Create entrance from the south
-    
+
     this.rooms.push(room);
     this.currentRoomIndex = 0;
   }
@@ -78,17 +78,17 @@ export class DungeonState extends Schema {
     // Generate random dimensions
     const width = Math.floor(Math.random() * 3) + 6; // 6-8
     const height = Math.floor(Math.random() * 3) + 4; // 4-6
-    
+
     const room = new Room(width, height);
-    
+
     // Add random inner walls
     this.addRandomWalls(room);
-    
+
     // Generate exits with entrance direction if provided
     if (entranceDirection) {
       room.generateExits(entranceDirection);
     }
-    
+
     return room;
   }
 
@@ -98,27 +98,27 @@ export class DungeonState extends Schema {
    */
   private addRandomWalls(room: Room) {
     const numInnerWalls = Math.floor(Math.random() * (room.width * room.height / 10));
-    
+
     for (let i = 0; i < numInnerWalls; i++) {
       const x = Math.floor(Math.random() * room.width);
       const y = Math.floor(Math.random() * room.height);
-      
+
       // Skip if this would be adjacent to an entrance or exit
       if (this.isAdjacentToEntranceOrExit(room, x, y)) {
         continue;
       }
-      
+
       const square = room.getSquare(x, y);
       if (square) {
         square.wall = true;
       }
     }
   }
-  
+
   getCurrentRoom(): Room | undefined {
     return this.rooms[this.currentRoomIndex];
   }
-  
+
   // Add a new room when a player exits through an exit from any room
   addNewRoomFromExit(fromRoomIndex: number, exitDirection: string, exitIndex: number) {
     // Get the source room
@@ -127,18 +127,18 @@ export class DungeonState extends Schema {
       console.error("Source room not found:", fromRoomIndex);
       return;
     }
-    
+
     // Get source room's grid coordinates
     const sourceCoords = this.getGridCoordinates(fromRoomIndex);
     if (!sourceCoords) {
       console.error("Source room has no grid coordinates assigned");
       return;
     }
-    
+
     // Calculate target grid coordinates based on exit direction
     let targetX = sourceCoords.x;
     let targetY = sourceCoords.y;
-    
+
     switch (exitDirection) {
       case "north":
         targetY = sourceCoords.y - 1; // North is negative Y (up on screen)
@@ -156,58 +156,58 @@ export class DungeonState extends Schema {
         console.error("Invalid exit direction:", exitDirection);
         return;
     }
-    
+
     // Check if a room already exists at target coordinates
     const gridKey = `${targetX},${targetY}`;
     const existingRoomIndex = this.roomGridPositions.get(gridKey);
-    
+
     let targetRoomIndex: number;
     let targetRoom: Room;
-    
+
     if (existingRoomIndex !== undefined) {
       // Room already exists at target coordinates - connect to it
       targetRoomIndex = existingRoomIndex;
       targetRoom = this.rooms[targetRoomIndex];
-      
+
       console.log(`Connecting to existing room ${targetRoomIndex} at grid (${targetX}, ${targetY})`);
-      
+
       // Establish bidirectional connection
       this.establishConnection(fromRoomIndex, exitIndex, targetRoomIndex, exitDirection);
     } else {
       // No room exists - create a new room with real-time generation
       const entranceDirection = this.getOppositeDirection(exitDirection);
       const newRoom = this.createNewRoom(entranceDirection);
-      
+
       // Add the new room to the rooms array
       targetRoomIndex = this.rooms.length;
       this.rooms.push(newRoom);
       targetRoom = newRoom;
-      
+
       // Assign proper grid coordinates to the new room
       this.assignGridCoordinates(targetRoomIndex, targetX, targetY);
-      
+
       console.log(`Created new room ${targetRoomIndex} at grid (${targetX}, ${targetY}) with entrance from ${entranceDirection}`);
-      
+
       // Establish connection from source room to new room
       this.establishConnection(fromRoomIndex, exitIndex, targetRoomIndex, exitDirection);
     }
-    
+
     // Add room to displayed rooms if not already displayed
     if (!this.displayedRoomIndices.includes(targetRoomIndex)) {
       this.displayedRoomIndices.push(targetRoomIndex);
-      
+
       // Calculate display position based on grid coordinates
       // Convert grid coordinates to display positions
       const displayX = targetX - this.gridOriginX;
       const displayY = targetY - this.gridOriginY;
-      
+
       this.roomPositionsX.push(displayX);
       this.roomPositionsY.push(displayY);
     }
-    
+
     // Update the current room index to the target room
     this.currentRoomIndex = targetRoomIndex;
-    
+
     return targetRoom;
   }
 
@@ -220,21 +220,21 @@ export class DungeonState extends Schema {
 
   createPlayer(id: string, name: string) {
     this.players.set(id, new Player(name));
-    
+
     // Add player to turn order if turn system is active
     this.addPlayerToTurnOrder(id);
   }
 
   removePlayer(id: string) {
     this.players.delete(id);
-    
+
     // Remove player from turn order
     this.removePlayerFromTurnOrder(id);
   }
 
   crossSquare(client: Client, data: any) {
     const player = this.players.get(client.sessionId);
-    
+
     // If a specific room index was provided, use that room instead of the current room
     const roomIndex = data.roomIndex !== undefined ? data.roomIndex : this.currentRoomIndex;
     const room = this.rooms[roomIndex];
@@ -244,20 +244,20 @@ export class DungeonState extends Schema {
     }
 
     const { x, y } = data;
-    
+
     // Check if player has an active card - if so, route to card-based selection
     const activeCardId = this.activeCardPlayers.get(client.sessionId);
     if (activeCardId) {
       return this.selectSquareForCard(client.sessionId, roomIndex, x, y);
     }
-    
+
     // Check if the coordinates are valid for the specified room
     if (!room.isValidPosition(x, y)) {
       return { success: false, error: "Invalid coordinates" };
     }
 
     const square = room.getSquare(x, y);
-    
+
     // Only allow crossing squares that are not walls
     if (!square || square.wall) {
       return { success: false, error: "Cannot cross wall squares" };
@@ -273,36 +273,36 @@ export class DungeonState extends Schema {
           break;
         }
       }
-      
+
       if (exitIndex !== -1) {
         // Validate exit navigation using NavigationValidator
         const canNavigate = this.navigationValidator.canNavigateToExit(room, exitIndex);
-        
+
         if (!canNavigate) {
-          return { 
-            success: false, 
-            error: "Cannot navigate through exit: no crossed squares orthogonally adjacent to exit" 
+          return {
+            success: false,
+            error: "Cannot navigate through exit: no crossed squares orthogonally adjacent to exit"
           };
         }
-        
+
         // Navigation is valid - cross the square and process exit
         square.checked = true;
         console.log(player?.name, "crosses exit square", x, y, "in room", roomIndex);
-        
+
         // Get the direction of the exit
         const exitDirection = room.exitDirections[exitIndex];
-        
+
         // Add a new room in that direction (works for any room index now)
         this.addNewRoomFromExit(roomIndex, exitDirection, exitIndex);
-        
+
         return { success: true, message: "Exit navigation successful" };
       }
     }
-    
+
     // Regular square crossing (not an exit)
     square.checked = true;
     console.log(player?.name, "crosses square", x, y, "in room", roomIndex);
-    
+
     return { success: true, message: "Square crossed successfully" };
   }
 
@@ -311,27 +311,27 @@ export class DungeonState extends Schema {
     // Check if this is near an entrance
     if (room.entranceX !== -1 && room.entranceY !== -1) {
       if ((Math.abs(x - room.entranceX) <= 1 && y === room.entranceY) ||
-          (Math.abs(y - room.entranceY) <= 1 && x === room.entranceX)) {
+        (Math.abs(y - room.entranceY) <= 1 && x === room.entranceX)) {
         return true;
       }
     }
-    
+
     // Check if this is near any exit
     for (let i = 0; i < room.exitX.length; i++) {
       const exitX = room.exitX[i];
       const exitY = room.exitY[i];
-      
+
       if ((Math.abs(x - exitX) <= 1 && y === exitY) ||
-          (Math.abs(y - exitY) <= 1 && x === exitX)) {
+        (Math.abs(y - exitY) <= 1 && x === exitX)) {
         return true;
       }
     }
-    
+
     return false;
   }
 
   // Grid management methods
-  
+
   /**
    * Assign grid coordinates to a room and update the room's grid properties
    * @param roomIndex Index of the room in the rooms array
@@ -342,16 +342,16 @@ export class DungeonState extends Schema {
     if (roomIndex < 0 || roomIndex >= this.rooms.length) {
       return; // Invalid room index
     }
-    
+
     const room = this.rooms[roomIndex];
     if (!room) {
       return;
     }
-    
+
     // Update the room's grid coordinates
     room.gridX = x;
     room.gridY = y;
-    
+
     // Update the grid position mapping
     const gridKey = `${x},${y}`;
     this.roomGridPositions.set(gridKey, roomIndex);
@@ -362,16 +362,16 @@ export class DungeonState extends Schema {
    * @param roomIndex Index of the room in the rooms array
    * @returns Grid coordinates or null if room doesn't exist
    */
-  getGridCoordinates(roomIndex: number): {x: number, y: number} | null {
+  getGridCoordinates(roomIndex: number): { x: number, y: number } | null {
     if (roomIndex < 0 || roomIndex >= this.rooms.length) {
       return null; // Invalid room index
     }
-    
+
     const room = this.rooms[roomIndex];
     if (!room) {
       return null;
     }
-    
+
     return {
       x: room.gridX,
       y: room.gridY
@@ -389,7 +389,7 @@ export class DungeonState extends Schema {
     // Calculate target coordinates based on direction
     let targetX = currentX;
     let targetY = currentY;
-    
+
     switch (direction) {
       case "north":
         targetY = currentY - 1; // North is negative Y (up on screen)
@@ -406,29 +406,29 @@ export class DungeonState extends Schema {
       default:
         return -1; // Invalid direction
     }
-    
+
     // Check if a room already exists at the target coordinates
     const gridKey = `${targetX},${targetY}`;
     const existingRoomIndex = this.roomGridPositions.get(gridKey);
-    
+
     if (existingRoomIndex !== undefined) {
       // Room already exists at target coordinates
       return existingRoomIndex;
     }
-    
+
     // No room exists - create a new one with real-time generation
     const entranceDirection = this.getOppositeDirection(direction);
     const newRoom = this.createNewRoom(entranceDirection);
-    
+
     // Add the new room to the rooms array
     const newRoomIndex = this.rooms.length;
     this.rooms.push(newRoom);
-    
+
     // Assign grid coordinates to the new room
     this.assignGridCoordinates(newRoomIndex, targetX, targetY);
-    
+
     console.log(`Created new room ${newRoomIndex} with entrance from ${entranceDirection}`);
-    
+
     return newRoomIndex;
   }
 
@@ -442,25 +442,25 @@ export class DungeonState extends Schema {
   establishConnection(fromRoomIndex: number, exitIndex: number, toRoomIndex: number, direction: string): void {
     const fromRoom = this.rooms[fromRoomIndex];
     const toRoom = this.rooms[toRoomIndex];
-    
+
     if (!fromRoom || !toRoom) {
       console.error("Invalid room indices for connection:", fromRoomIndex, toRoomIndex);
       return;
     }
-    
+
     // Update the from room's connection tracking
     if (exitIndex >= 0 && exitIndex < fromRoom.connectedRoomIndices.length) {
       fromRoom.connectedRoomIndices[exitIndex] = toRoomIndex;
       fromRoom.exitConnected[exitIndex] = true;
-      
+
       console.log(`Connected room ${fromRoomIndex} exit ${exitIndex} to room ${toRoomIndex}`);
     } else {
       console.warn(`Invalid exit index ${exitIndex} for room ${fromRoomIndex}`);
     }
-    
+
     // Find the corresponding entrance in the target room and establish reverse connection
     const oppositeDirection = this.getOppositeDirection(direction);
-    
+
     // Look for an exit in the target room that faces back to the source room
     let reverseConnectionEstablished = false;
     for (let i = 0; i < toRoom.exitDirections.length; i++) {
@@ -468,23 +468,23 @@ export class DungeonState extends Schema {
         // Found matching exit in target room - establish reverse connection
         toRoom.connectedRoomIndices[i] = fromRoomIndex;
         toRoom.exitConnected[i] = true;
-        
+
         console.log(`Established reverse connection from room ${toRoomIndex} exit ${i} to room ${fromRoomIndex}`);
         reverseConnectionEstablished = true;
         break;
       }
     }
-    
+
     // If no reverse exit exists, create one to ensure bidirectional connectivity
     if (!reverseConnectionEstablished) {
       console.log(`No reverse exit found in room ${toRoomIndex}, creating exit in ${oppositeDirection} direction`);
       toRoom.createExit(oppositeDirection);
-      
+
       // Connect the newly created exit
       const newExitIndex = toRoom.exitDirections.length - 1;
       toRoom.connectedRoomIndices[newExitIndex] = fromRoomIndex;
       toRoom.exitConnected[newExitIndex] = true;
-      
+
       console.log(`Created and connected reverse exit from room ${toRoomIndex} to room ${fromRoomIndex}`);
     }
   }
@@ -513,7 +513,7 @@ export class DungeonState extends Schema {
   initializeTurnState(): void {
     // Clear existing turn order
     this.turnOrder.clear();
-    
+
     // Add all current players to turn order
     this.players.forEach((player, sessionId) => {
       this.turnOrder.push(sessionId);
@@ -521,11 +521,11 @@ export class DungeonState extends Schema {
       player.turnStatus = "not_started";
       player.hasDrawnCard = false;
     });
-    
+
     // Initialize turn state
     this.currentTurn = 1;
     this.turnInProgress = true;
-    
+
     console.log(`Turn state initialized for ${this.turnOrder.length} players`);
   }
 
@@ -549,7 +549,7 @@ export class DungeonState extends Schema {
     if (index !== -1) {
       this.turnOrder.splice(index, 1);
       console.log(`Removed player ${sessionId} from turn order`);
-      
+
       // Check if we need to advance turn after player removal
       if (this.turnInProgress && this.areAllPlayersReady()) {
         this.advanceTurn();
@@ -565,14 +565,14 @@ export class DungeonState extends Schema {
     if (this.turnOrder.length === 0) {
       return false;
     }
-    
+
     for (const sessionId of this.turnOrder) {
       const player = this.players.get(sessionId);
       if (!player || player.turnStatus !== "turn_complete") {
         return false;
       }
     }
-    
+
     return true;
   }
 
@@ -585,16 +585,16 @@ export class DungeonState extends Schema {
       console.log("Cannot advance turn: not all players are ready");
       return;
     }
-    
+
     // Reset all player statuses for the new turn
     this.players.forEach((player) => {
       player.turnStatus = "not_started";
       player.hasDrawnCard = false;
     });
-    
+
     // Increment turn counter
     this.currentTurn++;
-    
+
     console.log(`Advanced to turn ${this.currentTurn}`);
   }
 
@@ -610,21 +610,21 @@ export class DungeonState extends Schema {
       console.error(`Player ${sessionId} not found`);
       return false;
     }
-    
+
     // Validate status transition
     if (!this.isValidStatusTransition(player.turnStatus, status)) {
       console.error(`Invalid status transition from ${player.turnStatus} to ${status} for player ${sessionId}`);
       return false;
     }
-    
+
     player.turnStatus = status;
     console.log(`Player ${sessionId} status updated to ${status}`);
-    
+
     // Check if we should advance turn after this status update
     if (status === "turn_complete" && this.areAllPlayersReady()) {
       this.advanceTurn();
     }
-    
+
     return true;
   }
 
@@ -660,14 +660,14 @@ export class DungeonState extends Schema {
   } {
     const playerStatuses: { [sessionId: string]: string } = {};
     let playersReady = 0;
-    
+
     this.players.forEach((player, sessionId) => {
       playerStatuses[sessionId] = player.turnStatus;
       if (player.turnStatus === "turn_complete") {
         playersReady++;
       }
     });
-    
+
     return {
       currentTurn: this.currentTurn,
       turnInProgress: this.turnInProgress,
@@ -688,7 +688,7 @@ export class DungeonState extends Schema {
     if (!player || !this.turnInProgress) {
       return false;
     }
-    
+
     switch (action) {
       case "drawCard":
         return player.turnStatus === "not_started" && !player.hasDrawnCard;
@@ -714,9 +714,9 @@ export class DungeonState extends Schema {
 
     // Validate that the player can draw a card
     if (!this.canPlayerPerformAction(sessionId, "drawCard")) {
-      return { 
-        success: false, 
-        error: "Cannot draw card: either not your turn, already drawn a card this turn, or turn not in progress" 
+      return {
+        success: false,
+        error: "Cannot draw card: either not your turn, already drawn a card this turn, or turn not in progress"
       };
     }
 
@@ -729,16 +729,16 @@ export class DungeonState extends Schema {
     const drawnCard = player.deck.shift(); // Remove first card from deck
     if (drawnCard) {
       player.drawnCards.push(drawnCard);
-      
+
       // Update player status
       player.hasDrawnCard = true;
       player.turnStatus = "playing_turn";
-      
+
       console.log(`Player ${sessionId} drew card: ${drawnCard.id}`);
-      
-      return { 
-        success: true, 
-        message: `Drew card: ${drawnCard.description}` 
+
+      return {
+        success: true,
+        message: `Drew card: ${drawnCard.description}`
       };
     }
 
@@ -759,9 +759,9 @@ export class DungeonState extends Schema {
 
     // Validate that the player can play a card
     if (!this.canPlayerPerformAction(sessionId, "playCard")) {
-      return { 
-        success: false, 
-        error: "Cannot play card: not in playing turn state or haven't drawn a card" 
+      return {
+        success: false,
+        error: "Cannot play card: not in playing turn state or haven't drawn a card"
       };
     }
 
@@ -772,7 +772,7 @@ export class DungeonState extends Schema {
     }
 
     const card = player.drawnCards[cardIndex];
-    
+
     // Check if player already has an active card
     if (this.activeCardPlayers.has(sessionId)) {
       return { success: false, error: "Player already has an active card" };
@@ -785,10 +785,10 @@ export class DungeonState extends Schema {
     this.selectedSquareCount.set(sessionId, 0);
 
     console.log(`Player ${sessionId} activated card: ${cardId}`);
-    
-    return { 
-      success: true, 
-      message: `Activated card: ${card.description}. Select 3 connected squares.` 
+
+    return {
+      success: true,
+      message: `Activated card: ${card.description}. Select 3 connected squares.`
     };
   }
 
@@ -800,9 +800,9 @@ export class DungeonState extends Schema {
    * @param y Y coordinate of the square
    * @returns Result object with success status and message
    */
-  selectSquareForCard(sessionId: string, roomIndex: number, x: number, y: number): { 
-    success: boolean; 
-    message?: string; 
+  selectSquareForCard(sessionId: string, roomIndex: number, x: number, y: number): {
+    success: boolean;
+    message?: string;
     error?: string;
     invalidSquare?: boolean;
     completed?: boolean;
@@ -839,6 +839,25 @@ export class DungeonState extends Schema {
       return { success: false, error: "Square already crossed", invalidSquare: true };
     }
 
+    // Special handling for exit squares
+    if (square.exit) {
+      // Find which exit was clicked
+      let exitIndex = -1;
+      for (let i = 0; i < room.exitX.length; i++) {
+        if (room.exitX[i] === x && room.exitY[i] === y) {
+          exitIndex = i;
+          break;
+        }
+      }
+
+      if (exitIndex !== -1) {
+        // For card-based selection, exits can be selected like regular squares
+        // The actual navigation validation will happen when the card action is confirmed
+        // This allows exits to be part of multi-square card selections
+        console.log(`Player ${sessionId} selected exit square ${x},${y} for card action`);
+      }
+    }
+
     // Get current selected squares
     const currentSelections = this.selectedSquares.get(sessionId) || "";
     const currentCount = this.selectedSquareCount.get(sessionId) || 0;
@@ -851,11 +870,16 @@ export class DungeonState extends Schema {
     }) : [];
 
     // Check if this square is already selected
-    const alreadySelected = selectedPositions.some(pos => 
+    const alreadySelected = selectedPositions.some(pos =>
       pos.roomIndex === roomIndex && pos.x === x && pos.y === y
     );
     if (alreadySelected) {
       return { success: false, error: "Square already selected", invalidSquare: true };
+    }
+
+    // Check maximum of 3 squares limit
+    if (currentCount >= 3) {
+      return { success: false, error: "Maximum of 3 squares can be selected per card", invalidSquare: true };
     }
 
     // Validate connectivity for non-first squares
@@ -882,9 +906,9 @@ export class DungeonState extends Schema {
 
     console.log(`Player ${sessionId} selected square ${x},${y} in room ${roomIndex} (${newCount})`);
 
-    return { 
-      success: true, 
-      message: `Square selected (${newCount}). Use confirm button to commit move.` 
+    return {
+      success: true,
+      message: `Square selected (${newCount}/3). Use confirm button to commit move.`
     };
   }
 
@@ -892,10 +916,10 @@ export class DungeonState extends Schema {
    * Check if a square is connected to the current selection
    */
   private isSquareConnectedToSelection(
-    roomIndex: number, 
-    x: number, 
-    y: number, 
-    selectedPositions: Array<{roomIndex: number, x: number, y: number}>,
+    roomIndex: number,
+    x: number,
+    y: number,
+    selectedPositions: Array<{ roomIndex: number, x: number, y: number }>,
     room: Room
   ): boolean {
     // Check if the square is orthogonally adjacent to any selected square in the same room
@@ -903,14 +927,14 @@ export class DungeonState extends Schema {
       if (pos.roomIndex === roomIndex) {
         const dx = Math.abs(x - pos.x);
         const dy = Math.abs(y - pos.y);
-        
+
         // Orthogonally adjacent means exactly one coordinate differs by 1
         if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
           return true;
         }
       }
     }
-    
+
     return false;
   }
 
@@ -922,7 +946,7 @@ export class DungeonState extends Schema {
     if (room.entranceX !== -1 && room.entranceY !== -1) {
       const dx = Math.abs(x - room.entranceX);
       const dy = Math.abs(y - room.entranceY);
-      
+
       if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
         return true;
       }
@@ -935,7 +959,7 @@ export class DungeonState extends Schema {
         if (square && square.checked) {
           const dx = Math.abs(x - checkX);
           const dy = Math.abs(y - checkY);
-          
+
           if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
             return true;
           }
@@ -950,8 +974,8 @@ export class DungeonState extends Schema {
    * Complete the card action by crossing all selected squares and moving card to discard pile
    */
   private completeCardAction(
-    sessionId: string, 
-    selectedPositions: Array<{roomIndex: number, x: number, y: number}>
+    sessionId: string,
+    selectedPositions: Array<{ roomIndex: number, x: number, y: number }>
   ): { success: boolean; message?: string; error?: string; completed: boolean } {
     const player = this.players.get(sessionId);
     if (!player) {
@@ -970,15 +994,53 @@ export class DungeonState extends Schema {
     }
 
     const card = player.drawnCards[cardIndex];
-    
+
     // Cross all selected squares
     for (const pos of selectedPositions) {
       const room = this.rooms[pos.roomIndex];
       if (room) {
         const square = room.getSquare(pos.x, pos.y);
         if (square) {
-          square.checked = true;
-          console.log(`Crossed square ${pos.x},${pos.y} in room ${pos.roomIndex} for player ${sessionId}`);
+          // Check if this is an exit square
+          if (square.exit) {
+            // Find which exit was clicked
+            let exitIndex = -1;
+            for (let i = 0; i < room.exitX.length; i++) {
+              if (room.exitX[i] === pos.x && room.exitY[i] === pos.y) {
+                exitIndex = i;
+                break;
+              }
+            }
+
+            if (exitIndex !== -1) {
+              // Validate exit navigation using NavigationValidator
+              const canNavigate = this.navigationValidator.canNavigateToExit(room, exitIndex);
+              
+              if (canNavigate) {
+                // Navigation is valid - cross the square and process exit
+                square.checked = true;
+                console.log(`Crossed exit square ${pos.x},${pos.y} in room ${pos.roomIndex} for player ${sessionId}`);
+
+                // Get the direction of the exit
+                const exitDirection = room.exitDirections[exitIndex];
+
+                // Add a new room in that direction
+                this.addNewRoomFromExit(pos.roomIndex, exitDirection, exitIndex);
+              } else {
+                console.log(`Exit navigation failed for square ${pos.x},${pos.y} in room ${pos.roomIndex} - no adjacent crossed squares`);
+                // Still cross the square but don't trigger navigation
+                square.checked = true;
+              }
+            } else {
+              // Exit square but couldn't find exit index - treat as regular square
+              square.checked = true;
+              console.log(`Crossed square ${pos.x},${pos.y} in room ${pos.roomIndex} for player ${sessionId}`);
+            }
+          } else {
+            // Regular square crossing
+            square.checked = true;
+            console.log(`Crossed square ${pos.x},${pos.y} in room ${pos.roomIndex} for player ${sessionId}`);
+          }
         }
       }
     }
@@ -995,8 +1057,8 @@ export class DungeonState extends Schema {
 
     console.log(`Player ${sessionId} completed card action with card ${activeCardId}`);
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: "Card action completed! 3 squares crossed and card moved to discard pile.",
       completed: true
     };
@@ -1031,9 +1093,9 @@ export class DungeonState extends Schema {
 
     console.log(`Player ${sessionId} cancelled card action for card ${activeCardId}`);
 
-    return { 
-      success: true, 
-      message: "Card action cancelled. Card returned to drawn cards." 
+    return {
+      success: true,
+      message: "Card action cancelled. Card returned to drawn cards."
     };
   }
 
@@ -1079,12 +1141,12 @@ export class DungeonState extends Schema {
     hasActiveCard: boolean;
     activeCardId?: string;
     selectedCount: number;
-    selectedSquares: Array<{roomIndex: number, x: number, y: number}>;
+    selectedSquares: Array<{ roomIndex: number, x: number, y: number }>;
   } {
     const activeCardId = this.activeCardPlayers.get(sessionId);
     const selectedCount = this.selectedSquareCount.get(sessionId) || 0;
     const selectionsString = this.selectedSquares.get(sessionId) || "";
-    
+
     const selectedSquares = selectionsString ? selectionsString.split(";").map(pos => {
       const [roomIdx, coords] = pos.split(":");
       const [x, y] = coords.split(",").map(Number);

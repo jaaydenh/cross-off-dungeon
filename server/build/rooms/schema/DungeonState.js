@@ -693,6 +693,23 @@ class DungeonState extends schema_1.Schema {
         if (square.checked) {
             return { success: false, error: "Square already crossed", invalidSquare: true };
         }
+        // Special handling for exit squares
+        if (square.exit) {
+            // Find which exit was clicked
+            let exitIndex = -1;
+            for (let i = 0; i < room.exitX.length; i++) {
+                if (room.exitX[i] === x && room.exitY[i] === y) {
+                    exitIndex = i;
+                    break;
+                }
+            }
+            if (exitIndex !== -1) {
+                // For card-based selection, exits can be selected like regular squares
+                // The actual navigation validation will happen when the card action is confirmed
+                // This allows exits to be part of multi-square card selections
+                console.log(`Player ${sessionId} selected exit square ${x},${y} for card action`);
+            }
+        }
         // Get current selected squares
         const currentSelections = this.selectedSquares.get(sessionId) || "";
         const currentCount = this.selectedSquareCount.get(sessionId) || 0;
@@ -706,6 +723,10 @@ class DungeonState extends schema_1.Schema {
         const alreadySelected = selectedPositions.some(pos => pos.roomIndex === roomIndex && pos.x === x && pos.y === y);
         if (alreadySelected) {
             return { success: false, error: "Square already selected", invalidSquare: true };
+        }
+        // Check maximum of 3 squares limit
+        if (currentCount >= 3) {
+            return { success: false, error: "Maximum of 3 squares can be selected per card", invalidSquare: true };
         }
         // Validate connectivity for non-first squares
         if (currentCount > 0) {
@@ -730,7 +751,7 @@ class DungeonState extends schema_1.Schema {
         console.log(`Player ${sessionId} selected square ${x},${y} in room ${roomIndex} (${newCount})`);
         return {
             success: true,
-            message: `Square selected (${newCount}). Use confirm button to commit move.`
+            message: `Square selected (${newCount}/3). Use confirm button to commit move.`
         };
     }
     /**
@@ -801,8 +822,45 @@ class DungeonState extends schema_1.Schema {
             if (room) {
                 const square = room.getSquare(pos.x, pos.y);
                 if (square) {
-                    square.checked = true;
-                    console.log(`Crossed square ${pos.x},${pos.y} in room ${pos.roomIndex} for player ${sessionId}`);
+                    // Check if this is an exit square
+                    if (square.exit) {
+                        // Find which exit was clicked
+                        let exitIndex = -1;
+                        for (let i = 0; i < room.exitX.length; i++) {
+                            if (room.exitX[i] === pos.x && room.exitY[i] === pos.y) {
+                                exitIndex = i;
+                                break;
+                            }
+                        }
+                        if (exitIndex !== -1) {
+                            // Validate exit navigation using NavigationValidator
+                            const canNavigate = this.navigationValidator.canNavigateToExit(room, exitIndex);
+                            if (canNavigate) {
+                                // Navigation is valid - cross the square and process exit
+                                square.checked = true;
+                                console.log(`Crossed exit square ${pos.x},${pos.y} in room ${pos.roomIndex} for player ${sessionId}`);
+                                // Get the direction of the exit
+                                const exitDirection = room.exitDirections[exitIndex];
+                                // Add a new room in that direction
+                                this.addNewRoomFromExit(pos.roomIndex, exitDirection, exitIndex);
+                            }
+                            else {
+                                console.log(`Exit navigation failed for square ${pos.x},${pos.y} in room ${pos.roomIndex} - no adjacent crossed squares`);
+                                // Still cross the square but don't trigger navigation
+                                square.checked = true;
+                            }
+                        }
+                        else {
+                            // Exit square but couldn't find exit index - treat as regular square
+                            square.checked = true;
+                            console.log(`Crossed square ${pos.x},${pos.y} in room ${pos.roomIndex} for player ${sessionId}`);
+                        }
+                    }
+                    else {
+                        // Regular square crossing
+                        square.checked = true;
+                        console.log(`Crossed square ${pos.x},${pos.y} in room ${pos.roomIndex} for player ${sessionId}`);
+                    }
                 }
             }
         }
@@ -814,7 +872,7 @@ class DungeonState extends schema_1.Schema {
         this.activeCardPlayers.delete(sessionId);
         this.selectedSquares.delete(sessionId);
         this.selectedSquareCount.delete(sessionId);
-        console.log(`Player ${sessionId} completed card action with card ${activeCardId} - moved to discard pile`);
+        console.log(`Player ${sessionId} completed card action with card ${activeCardId}`);
         return {
             success: true,
             message: "Card action completed! 3 squares crossed and card moved to discard pile.",

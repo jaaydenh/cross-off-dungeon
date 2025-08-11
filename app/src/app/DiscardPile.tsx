@@ -13,19 +13,45 @@ interface DiscardPileProps {
 export default function DiscardPile({ player, room }: DiscardPileProps) {
   const [discardCount, setDiscardCount] = useState(0);
   const [topCard, setTopCard] = useState<Card | null>(null);
-  const componentId = useState(() => Math.random().toString(36).substr(2, 5))[0];
 
   useEffect(() => {
     if (player) {
-      // Update discard pile count
-      setDiscardCount(player.discardPile.length);
+      console.log("SetDiscardPile - Initial setup")
 
-      // Get the top card (most recently discarded)
+      // Update initial state
+      setDiscardCount(player.discardPile.length);
       if (player.discardPile.length > 0) {
         setTopCard(player.discardPile[player.discardPile.length - 1]);
       } else {
         setTopCard(null);
       }
+
+      // Listen for changes to the discard pile
+      const onDiscardPileAdd = (card: Card, index: number) => {
+        console.log("Card added to discard pile:", card, "at index:", index);
+        setDiscardCount(player.discardPile.length);
+        setTopCard(player.discardPile[player.discardPile.length - 1]);
+      };
+
+      const onDiscardPileRemove = (card: Card, index: number) => {
+        console.log("Card removed from discard pile:", card, "at index:", index);
+        setDiscardCount(player.discardPile.length);
+        if (player.discardPile.length > 0) {
+          setTopCard(player.discardPile[player.discardPile.length - 1]);
+        } else {
+          setTopCard(null);
+        }
+      };
+
+      // Set up listeners - these return cleanup functions
+      const removeAddListener = player.discardPile.onAdd(onDiscardPileAdd);
+      const removeRemoveListener = player.discardPile.onRemove(onDiscardPileRemove);
+
+      // Cleanup function to remove listeners
+      return () => {
+        removeAddListener();
+        removeRemoveListener();
+      };
     }
   }, [player]);
 
@@ -39,7 +65,7 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <h3 className="text-lg font-semibold text-white">Discard ({componentId})</h3>
+      <h3 className="text-md font-semibold text-white">Discard</h3>
 
       {/* Discard Pile */}
       <div
@@ -54,20 +80,9 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
         {topCard ? (
           <>
             {/* Face-up card content */}
-            <div className="absolute inset-2 flex flex-col justify-between text-black">
-              {/* Card type at top */}
-              <div className="text-xs font-bold text-center text-blue-800">
-                {topCard.type.replace('_', ' ').toUpperCase()}
-              </div>
-
-              {/* Card description in middle */}
-              <div className="text-xs text-center leading-tight px-1">
+            <div className="mt-4 flex flex-col items-center justify-center text-black">
+              <div className="text-xs text-center leading-tight">
                 {topCard.description}
-              </div>
-
-              {/* Card ID at bottom */}
-              <div className="text-xs text-gray-500 text-center">
-                #{topCard.id.slice(-3)}
               </div>
             </div>
 
@@ -85,15 +100,6 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
               Empty
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Discard pile status text */}
-      <div className="text-center text-sm text-gray-300">
-        {discardCount > 0 ? (
-          <p>{discardCount} card{discardCount !== 1 ? 's' : ''} discarded</p>
-        ) : (
-          <p>No cards discarded</p>
         )}
       </div>
     </div>

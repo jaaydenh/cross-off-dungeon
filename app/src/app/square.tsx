@@ -60,7 +60,8 @@ const Square: React.FC<SquareProps> = ({
     content = 'E';
     borderColor = 'border-green-500';
   } else if (square.exit) {
-    content = 'D';
+    // Show X if exit has been crossed OR if it's currently selected for card action
+    content = (square.checked || isSelected) ? 'X' : 'D';
     
     // Apply exit highlighting based on navigation eligibility and connection status
     if (exitInfo) {
@@ -98,6 +99,27 @@ const Square: React.FC<SquareProps> = ({
       // Fallback for exits without info
       bgColor = 'bg-blue-700';
       borderColor = 'border-blue-500';
+    }
+    
+    // If exit is selected (for card action), show selection styling
+    if (isSelected && !square.checked) {
+      // Brighten the background and add selection effects for selected exits
+      additionalClasses += ' shadow-lg shadow-blue-500/50 ring-2 ring-blue-400';
+      // Keep the exit colors but make them more vibrant to show selection
+    } else if (square.checked) {
+      // If exit is checked, override with crossed styling while maintaining exit colors
+      // Darken the background slightly to indicate it's been used
+      if (bgColor.includes('emerald-600')) {
+        bgColor = 'bg-emerald-700';
+      } else if (bgColor.includes('blue-600')) {
+        bgColor = 'bg-blue-700';
+      } else if (bgColor.includes('green-800')) {
+        bgColor = 'bg-green-900';
+      } else if (bgColor.includes('blue-800')) {
+        bgColor = 'bg-blue-900';
+      } else {
+        bgColor = 'bg-blue-800'; // Fallback darkened blue
+      }
     }
   } else if (square.checked) {
     content = 'X';
