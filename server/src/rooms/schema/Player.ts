@@ -29,7 +29,7 @@ export class Player extends Schema {
       const card = new Card(
         `card_${i}`,
         "cross_connected_squares",
-        "Cross up to 3 connected squares"
+        "Cross any 3 connected squares"
       );
       cards.push(card);
     }

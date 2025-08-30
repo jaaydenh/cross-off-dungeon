@@ -906,6 +906,22 @@ export class DungeonState extends Schema {
 
     console.log(`Player ${sessionId} selected square ${x},${y} in room ${roomIndex} (${newCount})`);
 
+    // Auto-complete when 3 squares are selected
+    if (newCount === 3) {
+      const selectedPositions = updatedSelections.split(";").map(pos => {
+        const [roomIdx, coords] = pos.split(":");
+        const [posX, posY] = coords.split(",").map(Number);
+        return { roomIndex: parseInt(roomIdx), x: posX, y: posY };
+      });
+
+      const completionResult = this.completeCardAction(sessionId, selectedPositions);
+      return {
+        success: true,
+        message: completionResult.message || "Card action completed automatically",
+        completed: completionResult.completed
+      };
+    }
+
     return {
       success: true,
       message: `Square selected (${newCount}/3). Use confirm button to commit move.`
