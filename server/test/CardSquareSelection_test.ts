@@ -121,6 +121,32 @@ describe("Card-Based Square Selection System", () => {
       assert.strictEqual(cardState.selectedCount, 1, "Should have 1 selected square");
     });
 
+    it("should allow selecting the entrance square as a valid starting square", async () => {
+      const room = await colyseus.createRoom("dungeon", {});
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
+
+      // Draw and activate card
+      room.send(client, "drawCard", {});
+      await room.waitForNextPatch();
+      const player = room.state.players.get(client.sessionId);
+      const cardId = player!.drawnCards[0].id;
+      room.send(client, "playCard", { cardId });
+      await room.waitForNextPatch();
+
+      // Get entrance position
+      const currentRoom = room.state.getCurrentRoom();
+      assert(currentRoom, "Current room should exist");
+
+      const entranceX = currentRoom.entranceX;
+      const entranceY = currentRoom.entranceY;
+
+      const result = room.state.selectSquareForCard(client.sessionId, 0, entranceX, entranceY);
+      assert.strictEqual(result.success, true, "Should successfully select entrance square as starting square");
+
+      const cardState = room.state.getCardSelectionState(client.sessionId);
+      assert.strictEqual(cardState.selectedCount, 1, "Should have 1 selected square");
+    });
+
     it("should reject invalid starting square not adjacent to entrance or crossed square", async () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
@@ -161,7 +187,7 @@ describe("Card-Based Square Selection System", () => {
       
       assert.strictEqual(result.success, false, "Should fail to select invalid starting square");
       assert.strictEqual(result.invalidSquare, true, "Should mark as invalid square");
-      assert(result.error?.includes("adjacent to entrance"), "Should have appropriate error message");
+      assert(result.error?.includes("entrance"), "Should have appropriate error message");
     });
 
     it("should require orthogonal connectivity for subsequent squares", async () => {

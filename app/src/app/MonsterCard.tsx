@@ -2,7 +2,6 @@
 
 import { MonsterCard as MonsterCardType } from '@/types/MonsterCard';
 import { MonsterSquare } from '@/types/MonsterSquare';
-import { Room } from 'colyseus.js';
 import { useState } from 'react';
 
 interface MonsterCardProps {
@@ -35,12 +34,13 @@ export default function MonsterCard({
   const [isDragging, setIsDragging] = useState(false);
   const isInRoom = className.includes('monster-in-room');
   const isOwned = className.includes('monster-owned');
-  const sizeScale = isInRoom ? 0.7 : isOwned ? 0.8 : 1;
+  const sizeScale = isInRoom ? 0.7 : isOwned ? 0.55 : 1;
   const squareSize = Math.round(40 * sizeScale);
   const gridCellSize = squareSize + 2;
   const gridPadding = Math.round(4 * sizeScale);
   const cardPadding = Math.round(12 * sizeScale);
   const minWidth = Math.max(120, Math.round(200 * sizeScale));
+  const hoverZoomClasses = isOwned ? 'hover:scale-125 hover:z-50 hover:shadow-2xl' : '';
 
   const isSelectedSquare = (x: number, y: number): boolean =>
     selectedSquares.some((p) => p.x === x && p.y === y);
@@ -115,7 +115,7 @@ export default function MonsterCard({
 
   return (
     <div 
-      className={`monster-card bg-gray-800 border-2 border-gray-600 rounded-lg transition-all duration-200 ${
+      className={`monster-card relative bg-gray-800 border-2 border-gray-600 rounded-lg transition-all duration-200 transform-gpu ${hoverZoomClasses} ${
         canDrag ? 'cursor-grab hover:shadow-lg' : ''
       } ${
         isDragging ? 'rotate-3 shadow-2xl shadow-blue-500/50 scale-105 z-50' : ''

@@ -8,6 +8,7 @@ interface GridProps {
   invalidSquareHighlight?: {x: number, y: number} | null;
   selectedSquares?: Array<{roomIndex: number, x: number, y: number}>;
   roomIndex: number;
+  cellSizePx?: number;
 }
 
 interface ExitHighlightInfo {
@@ -17,7 +18,7 @@ interface ExitHighlightInfo {
   adjacentCrossedSquares: { x: number; y: number }[];
 }
 
-const Grid: FC<GridProps> = ({ room, handleSquareClick, invalidSquareHighlight, selectedSquares, roomIndex }) => {
+const Grid: FC<GridProps> = ({ room, handleSquareClick, invalidSquareHighlight, selectedSquares, roomIndex, cellSizePx = 42 }) => {
   const [hoveredExit, setHoveredExit] = useState<number | null>(null);
 
   // Helper function to get square at coordinates
@@ -142,6 +143,7 @@ const Grid: FC<GridProps> = ({ room, handleSquareClick, invalidSquareHighlight, 
               y={y}
               square={square}
               onClick={handleSquareClick}
+              sizePx={cellSizePx}
               exitInfo={exitInfo}
               isAdjacentToExit={adjacentInfo.isAdjacentToExit}
               adjacentExitInfo={adjacentInfo.exitInfo}
@@ -160,9 +162,10 @@ const Grid: FC<GridProps> = ({ room, handleSquareClick, invalidSquareHighlight, 
 
   return (
     <div
-      className="flex flex-wrap p-1"
+      className="grid"
       style={{
-        width: `${room.width * 42}px`,
+        gridTemplateColumns: `repeat(${room.width}, ${cellSizePx}px)`,
+        gridTemplateRows: `repeat(${room.height}, ${cellSizePx}px)`,
       }}
     >
       {renderSquares()}

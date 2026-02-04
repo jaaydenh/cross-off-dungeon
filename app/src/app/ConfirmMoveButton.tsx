@@ -7,7 +7,7 @@ interface ConfirmMoveButtonProps {
   selectedCount: number;
   isVisible: boolean;
   isReady: boolean;
-  selectedSquares?: Array<{ roomIndex: number; x: number; y: number }>;
+  selectedSquares?: Array<{ roomIndex: number; x: number; y: number; serverRoomIndex?: number }>;
   selectedMonsterSquares?: Array<{ monsterId: string; x: number; y: number }>;
 }
 
@@ -28,7 +28,11 @@ const ConfirmMoveButton: React.FC<ConfirmMoveButtonProps> = ({
 
     // Map UI display room indices -> server room indices at submit time.
     const roomSquares = (selectedSquares || []).map((pos) => ({
-      roomIndex: displayedRoomIndices?.[pos.roomIndex] ?? currentRoomIndex ?? pos.roomIndex,
+      roomIndex:
+        pos.serverRoomIndex ??
+        displayedRoomIndices?.[pos.roomIndex] ??
+        currentRoomIndex ??
+        pos.roomIndex,
       x: pos.x,
       y: pos.y
     }));

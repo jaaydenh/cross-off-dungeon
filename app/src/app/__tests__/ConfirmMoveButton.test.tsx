@@ -42,6 +42,35 @@ describe('ConfirmMoveButton', () => {
     });
   });
 
+  it('prefers serverRoomIndex when provided', () => {
+    const send = jest.fn();
+    const room: any = {
+      send,
+      state: {
+        displayedRoomIndices: [10, 11, 12],
+        currentRoomIndex: 10
+      }
+    };
+
+    render(
+      <ConfirmMoveButton
+        player={{} as Player}
+        room={room}
+        selectedCount={1}
+        isVisible={true}
+        isReady={true}
+        selectedSquares={[{ roomIndex: 1, serverRoomIndex: 999, x: 2, y: 3 }]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /confirm move/i }));
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith('confirmCardAction', {
+      roomSquares: [{ roomIndex: 999, x: 2, y: 3 }]
+    });
+  });
+
   it('submits pending monster selections only on confirm', () => {
     const send = jest.fn();
     const room: any = {
@@ -77,4 +106,3 @@ describe('ConfirmMoveButton', () => {
     });
   });
 });
-

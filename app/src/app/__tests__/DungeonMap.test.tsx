@@ -76,6 +76,8 @@ describe('DungeonMap Grid Positioning', () => {
         // Verify that rooms are positioned based on their gridX, gridY properties
         expect(screen.getByTestId('grid-0-0')).toBeInTheDocument();
         expect(screen.getByTestId('grid-2-1')).toBeInTheDocument();
+        expect(screen.getByTestId('room-tile-0-0')).toBeInTheDocument();
+        expect(screen.getByTestId('room-tile-2-1')).toBeInTheDocument();
 
         // Verify room coordinate labels are displayed
         expect(screen.getByText('Room (0, 0)')).toBeInTheDocument();
@@ -95,27 +97,33 @@ describe('DungeonMap Grid Positioning', () => {
 
         const { container } = render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} gameState={mockGameState} />);
 
-        const room00 = screen.getByText('Room (0, 0)').closest('div.absolute.border-2.border-slate-600') as HTMLElement;
-        const room10 = screen.getByText('Room (1, 0)').closest('div.absolute.border-2.border-slate-600') as HTMLElement;
-        const room01 = screen.getByText('Room (0, 1)').closest('div.absolute.border-2.border-slate-600') as HTMLElement;
+        const room00 = screen.getByTestId('room-tile-0-0') as HTMLElement;
+        const room10 = screen.getByTestId('room-tile-1-0') as HTMLElement;
+        const room01 = screen.getByTestId('room-tile-0-1') as HTMLElement;
 
-        expect(room00).toBeTruthy();
-        expect(room10).toBeTruthy();
-        expect(room01).toBeTruthy();
+        // Rooms should align to an even grid (interleaved tracks: room, hallway, room...)
+        expect(room00.style.gridColumnStart).toBe('1');
+        expect(room00.style.gridRowStart).toBe('1');
+        expect(room10.style.gridColumnStart).toBe('3');
+        expect(room10.style.gridRowStart).toBe('1');
+        expect(room01.style.gridColumnStart).toBe('1');
+        expect(room01.style.gridRowStart).toBe('3');
 
-        // Verify consistent spacing (based on internal constants)
-        expect(room00.style.left).toBe('300px');
-        expect(room00.style.top).toBe('300px');
-        expect(room10.style.left).toBe('960px'); // 300 + (600 + 60)
-        expect(room10.style.top).toBe('300px');
-        expect(room01.style.left).toBe('300px');
-        expect(room01.style.top).toBe('670px'); // 300 + (310 + 60)
-
-        // Verify room sizing: height fixed, width based on room grid width
+        // Room tiles are uniform squares
         [room00, room10, room01].forEach(roomContainer => {
-            expect(roomContainer.style.height).toBe('310px');
-            expect(roomContainer.style.width).toBe(`${8 * 42 + 16}px`);
+            expect(roomContainer.style.width).toBe('320px');
+            expect(roomContainer.style.height).toBe('320px');
         });
+
+        // Verify interleaved column/row sizes (room=320px, hallway=28px)
+        const gridContainer = Array.from(container.querySelectorAll('div')).find((el) => {
+            const style = (el as HTMLElement).style;
+            return style.display === 'grid' && !!style.gridTemplateColumns && !!style.gridTemplateRows;
+        }) as HTMLElement | undefined;
+
+        expect(gridContainer).toBeTruthy();
+        expect(gridContainer!.style.gridTemplateColumns).toBe('320px 28px 320px');
+        expect(gridContainer!.style.gridTemplateRows).toBe('320px 28px 320px');
     });
 
     test('should show grid-based relationships clearly with room coordinate labels', () => {
@@ -151,17 +159,11 @@ describe('DungeonMap Grid Positioning', () => {
             { room: room2, x: 0, y: 0 },
         ];
 
-        const { container } = render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} gameState={mockGameState} />);
+        render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} gameState={mockGameState} />);
 
-        // Look for connection lines by their CSS classes
-        const connectionLines = container.querySelectorAll('.bg-green-400.opacity-60');
-        expect(connectionLines.length).toBeGreaterThan(0);
-
-        // Verify connection line has proper styling
-        const connectionLine = connectionLines[0] as HTMLElement;
-        expect(connectionLine.style.height).toBe('4px');
-        expect(connectionLine.className).toContain('bg-green-400');
-        expect(connectionLine.className).toContain('opacity-60');
+        // Hallways are shown only for connected exits
+        expect(screen.getByTestId('hallway-0-0-east')).toBeInTheDocument();
+        expect(screen.getByTestId('hallway-1-0-west')).toBeInTheDocument();
     });
 
     test('should handle rooms at negative grid coordinates correctly', () => {
@@ -197,17 +199,16 @@ describe('DungeonMap Grid Positioning', () => {
             { room: room2, x: 0, y: 0 },
         ];
 
-        const { container } = render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} gameState={mockGameState} />);
+        render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} gameState={mockGameState} />);
 
-        // Should not have connection lines for unconnected exits
-        const connectionLines = container.querySelectorAll('.bg-green-400.opacity-60');
-        expect(connectionLines).toHaveLength(0);
+        expect(screen.queryByTestId('hallway-0-0-east')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('hallway-1-0-west')).not.toBeInTheDocument();
     });
 
-    test('should size rooms based on their grid content size', () => {
+    test('should keep room tiles uniform regardless of room dimensions', () => {
         // Create rooms with different internal dimensions
         const smallRoom = createMockRoom(0, 0, 6, 6);
-        const largeRoom = createMockRoom(1, 0, 10, 10);
+        const largeRoom = createMockRoom(1, 0, 8, 8);
 
         const rooms = [
             { room: smallRoom, x: 0, y: 0 },
@@ -216,16 +217,12 @@ describe('DungeonMap Grid Positioning', () => {
 
         render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} gameState={mockGameState} />);
 
-        const smallRoomContainer = screen.getByText('Room (0, 0)').closest('div.absolute.border-2.border-slate-600') as HTMLElement;
-        const largeRoomContainer = screen.getByText('Room (1, 0)').closest('div.absolute.border-2.border-slate-600') as HTMLElement;
+        const room00 = screen.getByTestId('room-tile-0-0') as HTMLElement;
+        const room10 = screen.getByTestId('room-tile-1-0') as HTMLElement;
 
-        expect(smallRoomContainer).toBeTruthy();
-        expect(largeRoomContainer).toBeTruthy();
-
-        // Both rooms should keep a consistent height but their width depends on the room grid width
-        expect(smallRoomContainer.style.height).toBe('310px');
-        expect(largeRoomContainer.style.height).toBe('310px');
-        expect(smallRoomContainer.style.width).toBe(`${6 * 42 + 16}px`);
-        expect(largeRoomContainer.style.width).toBe(`${10 * 42 + 16}px`);
+        expect(room00.style.width).toBe('320px');
+        expect(room00.style.height).toBe('320px');
+        expect(room10.style.width).toBe('320px');
+        expect(room10.style.height).toBe('320px');
     });
 });

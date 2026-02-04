@@ -4,7 +4,7 @@ import { Room } from '@/types/Room';
 import { Player } from '@/types/Player';
 import { MonsterCard as MonsterCardType } from '@/types/MonsterCard';
 import { DungeonState } from '@/types/DungeonState';
-import MonsterCard from './MonsterCard';
+import MonsterBadge from './MonsterBadge';
 
 interface DungeonMapProps {
   rooms: {
@@ -15,8 +15,8 @@ interface DungeonMapProps {
   handleSquareClick: (x: number, y: number, roomIndex?: number) => void;
   player: Player | null;
   colyseusRoom: any; // Colyseus room instance
-  invalidSquareHighlight?: {roomIndex: number, x: number, y: number} | null;
-  selectedSquares?: Array<{roomIndex: number, x: number, y: number}>;
+  invalidSquareHighlight?: { roomIndex: number; x: number; y: number } | null;
+  selectedSquares?: Array<{ roomIndex: number; x: number; y: number }>;
   gameState: DungeonState | null;
   onMonsterDragStart?: () => void;
   onMonsterDragEnd?: () => void;
@@ -24,21 +24,42 @@ interface DungeonMapProps {
   bottomOverlayRef?: React.RefObject<HTMLElement>;
 }
 
-interface GridConnection {
-  fromRoom: number;
-  toRoom: number;
-  fromX: number;
-  fromY: number;
-  toX: number;
-  toY: number;
-  direction: string;
-}
+const ROOM_TILE_SIZE = 320;
+const HALLWAY_LENGTH = 28;
+const HALLWAY_THICKNESS = 24;
+const BASE_CONTENT_PADDING = 200;
+const ROOM_TILE_INNER_PADDING = 12;
+
+const buildInterleavedTracks = (count: number, roomSizePx: number, hallwaySizePx: number): string => {
+  const sizes: string[] = [];
+  for (let i = 0; i < count; i++) {
+    sizes.push(`${roomSizePx}px`);
+    if (i < count - 1) sizes.push(`${hallwaySizePx}px`);
+  }
+  return sizes.join(' ');
+};
+
+const getDirectionDelta = (
+  direction: string
+): { dx: number; dy: number; orientation: 'horizontal' | 'vertical' } | null => {
+  switch (direction) {
+    case 'north':
+      return { dx: 0, dy: -1, orientation: 'vertical' };
+    case 'south':
+      return { dx: 0, dy: 1, orientation: 'vertical' };
+    case 'east':
+      return { dx: 1, dy: 0, orientation: 'horizontal' };
+    case 'west':
+      return { dx: -1, dy: 0, orientation: 'horizontal' };
+    default:
+      return null;
+  }
+};
 
 const DungeonMap: React.FC<DungeonMapProps> = ({
   rooms,
   handleSquareClick,
   player,
-  colyseusRoom,
   invalidSquareHighlight,
   selectedSquares,
   gameState,
@@ -49,10 +70,8 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [showDebug, setShowDebug] = useState(false);
   const hasCenteredInitialRoom = useRef(false);
 
-  // Calculate the bounds of the dungeon using actual grid coordinates from Room schema
   const calculateBounds = () => {
     if (rooms.length === 0) return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
 
@@ -62,14 +81,10 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
     let maxY = -Infinity;
 
     rooms.forEach(({ room }) => {
-      // Use actual grid coordinates from the Room schema
-      const gridX = room.gridX;
-      const gridY = room.gridY;
-
-      minX = Math.min(minX, gridX);
-      maxX = Math.max(maxX, gridX);
-      minY = Math.min(minY, gridY);
-      maxY = Math.max(maxY, gridY);
+      minX = Math.min(minX, room.gridX);
+      maxX = Math.max(maxX, room.gridX);
+      minY = Math.min(minY, room.gridY);
+      maxY = Math.max(maxY, room.gridY);
     });
 
     return { minX, maxX, minY, maxY };
@@ -77,98 +92,67 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
 
   const { minX, maxX, minY, maxY } = calculateBounds();
 
-  // Calculate the size of the grid in cells
-  const gridWidth = maxX - minX + 1;
-  const gridHeight = maxY - minY + 1;
+  const gridWidth = Math.max(1, maxX - minX + 1);
+  const gridHeight = Math.max(1, maxY - minY + 1);
 
-  // Dynamic room dimensions to fit content
-  const ROOM_HEIGHT = 310; // Fixed height for all rooms
-  
-  // Function to calculate room width based on content
-  const calculateRoomWidth = (room: Room, monster?: MonsterCardType | null): number => {
-    // Base room grid width: room.width * 42px (40px squares + 2px margin)
-    const roomGridWidth = room.width * 42;
-    
-    // Monster card width if present
-    let monsterWidth = 0;
-    if (monster) {
-      // In-room monster cards are scaled down without shrinking text.
-      const monsterScale = 0.7;
-      const squareSize = Math.round(40 * monsterScale);
-      const gridCellSize = squareSize + 2;
-      const monsterGridWidth = monster.width * gridCellSize;
-      const gridPadding = Math.round(4 * monsterScale);
-      const gridBorder = 2; // 1px each side
-      const cardPadding = Math.round(12 * monsterScale);
-      const cardBorder = 4; // border-2
-      const headerWidth = 150; // typical header content width
-      const minCardWidth = Math.max(120, Math.round(200 * monsterScale));
-      
-      const contentWidth = Math.max(monsterGridWidth + gridPadding * 2 + gridBorder, headerWidth);
-      const fullCardWidth = Math.max(minCardWidth, contentWidth + cardPadding * 2 + cardBorder);
-      monsterWidth = Math.ceil(fullCardWidth) + 8; // Safety margin
-    }
-    
-    // Total width: room grid + gap + monster + container padding
-    const gap = monster ? 12 : 0; // gap-3 = 12px
-    const containerPadding = 16; // p-2 = 8px each side
-    
-    return roomGridWidth + gap + monsterWidth + containerPadding;
+  const columnTracks = buildInterleavedTracks(gridWidth, ROOM_TILE_SIZE, HALLWAY_LENGTH);
+  const rowTracks = buildInterleavedTracks(gridHeight, ROOM_TILE_SIZE, HALLWAY_LENGTH);
+
+  const innerGridWidth =
+    gridWidth * ROOM_TILE_SIZE + Math.max(0, gridWidth - 1) * HALLWAY_LENGTH;
+  const innerGridHeight =
+    gridHeight * ROOM_TILE_SIZE + Math.max(0, gridHeight - 1) * HALLWAY_LENGTH;
+
+  // Use dynamic padding so the first room can be centered even when the dungeon is smaller
+  // than the viewport (still scrollable/pannable).
+  const contentPaddingX = Math.max(BASE_CONTENT_PADDING, Math.ceil(containerSize.width / 2));
+  const contentPaddingY = Math.max(BASE_CONTENT_PADDING, Math.ceil(containerSize.height / 2));
+
+  const contentWidth = innerGridWidth + contentPaddingX * 2;
+  const contentHeight = innerGridHeight + contentPaddingY * 2;
+
+  const getMonsterForRoom = useCallback(
+    (roomIndex: number): MonsterCardType | null => {
+      if (!gameState?.activeMonsters || !gameState?.displayedRoomIndices) return null;
+
+      const actualRoomIndex = gameState.displayedRoomIndices[roomIndex];
+      if (actualRoomIndex === undefined) return null;
+
+      const monster = gameState.activeMonsters.find(
+        (m) => m.connectedToRoomIndex === actualRoomIndex && m.playerOwnerId === ''
+      );
+      return monster || null;
+    },
+    [gameState]
+  );
+
+  const canPlayerDragMonster = (monster: MonsterCardType): boolean => {
+    return monster.connectedToRoomIndex !== -1 && monster.playerOwnerId === '' && player !== null;
   };
 
-  // Add spacing between rooms for better visibility
-  const roomSpacing = 60;
-
-  // Significantly increased padding to ensure rooms can be scrolled into view
-  const contentPadding = {
-    top: 300,
-    right: 300,
-    bottom: 500, // Extra padding at bottom for rooms below starting point
-    left: 300
-  };
-
-  // Update container size on resize
+  // Track viewport size (for initial centering + resize)
   useEffect(() => {
-    if (containerRef.current) {
-      const updateSize = () => {
-        setContainerSize({
-          width: containerRef.current?.clientWidth || 0,
-          height: containerRef.current?.clientHeight || 0
-        });
-      };
+    const scrollContainer = scrollContainerRef?.current ?? containerRef.current?.parentElement ?? containerRef.current;
+    if (!scrollContainer) return;
 
-      updateSize();
-      window.addEventListener('resize', updateSize);
-      return () => window.removeEventListener('resize', updateSize);
-    }
-  }, []);
+    const updateSize = () => {
+      setContainerSize({
+        width: scrollContainer?.clientWidth || 0,
+        height: scrollContainer?.clientHeight || 0
+      });
+    };
 
-  // Use a reasonable default maximum width for layout calculation
-  // Individual rooms will size themselves dynamically
-  const DEFAULT_MAX_ROOM_WIDTH = 600;
-  
-  // Calculate total dimensions needed for all rooms plus padding
-  const totalWidth = gridWidth * (DEFAULT_MAX_ROOM_WIDTH + roomSpacing) + contentPadding.left + contentPadding.right;
-  const totalHeight = gridHeight * (ROOM_HEIGHT + roomSpacing) + contentPadding.top + contentPadding.bottom;
-
-  const getMonsterForRoom = useCallback((roomIndex: number): MonsterCardType | null => {
-    if (!gameState?.activeMonsters) return null;
-
-    // Find the actual room index in the displayed rooms
-    const actualRoomIndex = gameState.displayedRoomIndices[roomIndex];
-
-    const monster = gameState.activeMonsters.find(monster =>
-      monster.connectedToRoomIndex === actualRoomIndex && monster.playerOwnerId === ""
-    );
-
-    return monster || null;
-  }, [gameState]);
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, [scrollContainerRef]);
 
   // Center the first room in the viewport on initial display
   useEffect(() => {
     if (hasCenteredInitialRoom.current) return;
     if (rooms.length === 0) return;
     if (!containerRef.current) return;
+    if (containerSize.width === 0 || containerSize.height === 0) return;
 
     const scrollContainer = scrollContainerRef?.current ?? containerRef.current.parentElement;
     if (!scrollContainer) return;
@@ -182,206 +166,160 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
     const firstRoom = rooms[0].room;
     const normalizedX = firstRoom.gridX - minX;
     const normalizedY = firstRoom.gridY - minY;
-    const firstMonster = getMonsterForRoom(0);
-    const roomWidth = calculateRoomWidth(firstRoom, firstMonster);
 
-    const posX = normalizedX * (DEFAULT_MAX_ROOM_WIDTH + roomSpacing) + contentPadding.left;
-    const posY = normalizedY * (ROOM_HEIGHT + roomSpacing) + contentPadding.top;
+    const centerX =
+      contentPaddingX +
+      normalizedX * (ROOM_TILE_SIZE + HALLWAY_LENGTH) +
+      ROOM_TILE_SIZE / 2;
+    const centerY =
+      contentPaddingY +
+      normalizedY * (ROOM_TILE_SIZE + HALLWAY_LENGTH) +
+      ROOM_TILE_SIZE / 2;
 
-    const targetLeft = posX + roomWidth / 2 - viewportWidth / 2;
-    const targetTop = posY + ROOM_HEIGHT / 2 - viewportHeight / 2;
+    const targetLeft = centerX - viewportWidth / 2;
+    const targetTop = centerY - viewportHeight / 2;
 
-    const maxScrollLeft = Math.max(0, scrollContainer.scrollWidth - scrollContainer.clientWidth);
-    const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+    const maxScrollLeft = Math.max(0, contentWidth - viewportWidth);
+    const maxScrollTop = Math.max(0, contentHeight - scrollContainer.clientHeight);
 
     scrollContainer.scrollLeft = Math.min(Math.max(0, targetLeft), maxScrollLeft);
     scrollContainer.scrollTop = Math.min(Math.max(0, targetTop), maxScrollTop);
 
     hasCenteredInitialRoom.current = true;
-  }, [
-    rooms,
-    minX,
-    minY,
-    contentPadding.left,
-    contentPadding.top,
-    containerSize.width,
-    containerSize.height,
-    scrollContainerRef,
-    bottomOverlayRef,
-    getMonsterForRoom,
-    gameState
-  ]);
+	  }, [
+	    rooms,
+	    minX,
+	    minY,
+	    containerSize.width,
+	    containerSize.height,
+	    scrollContainerRef,
+	    bottomOverlayRef,
+	    contentPaddingX,
+	    contentPaddingY,
+	    contentWidth,
+	    contentHeight
+	  ]);
 
-  // Detect connections between rooms with aligned exits
-  const detectConnections = (): GridConnection[] => {
-    const connections: GridConnection[] = [];
+  const roomCoords = new Set<string>();
+  rooms.forEach(({ room }) => {
+    roomCoords.add(`${room.gridX},${room.gridY}`);
+  });
 
-    rooms.forEach((roomData, fromIndex) => {
-      const { room: fromRoom } = roomData;
+  const renderHallways = () => {
+    const hallways: React.ReactNode[] = [];
 
-      // Check each exit of this room
-      for (let exitIndex = 0; exitIndex < fromRoom.exitDirections.length; exitIndex++) {
-        const exitDirection = fromRoom.exitDirections[exitIndex];
-        const connectedRoomIndex = fromRoom.connectedRoomIndices[exitIndex];
-        const isConnected = fromRoom.exitConnected[exitIndex];
+    rooms.forEach(({ room }) => {
+      for (let exitIndex = 0; exitIndex < room.exitDirections.length; exitIndex++) {
+        const direction = room.exitDirections[exitIndex];
+        const isConnected = room.exitConnected?.[exitIndex];
+        const connectedRoomIndex = room.connectedRoomIndices?.[exitIndex] ?? -1;
 
-        // Only show connections for connected exits
-        if (isConnected && connectedRoomIndex >= 0) {
-          // Find the connected room in our displayed rooms by matching the room's global index
-          // connectedRoomIndex is the global room index from the server, not the displayed rooms array index
-          let toRoomData = null;
-          let toIndex = -1;
+        // Only show hallways for connected exits.
+        if (!isConnected || connectedRoomIndex < 0) continue;
 
-          for (let i = 0; i < rooms.length; i++) {
-            // We need to check if this displayed room corresponds to the connected room
-            // Since we don't have direct access to the global room index, we need to find it by grid coordinates
-            // or other identifying properties. For now, let's check if this room has a reverse connection
-            const candidateRoom = rooms[i].room;
+        const delta = getDirectionDelta(direction);
+        if (!delta) continue;
 
-            // Check if this candidate room has an exit that connects back to our fromRoom
-            for (let candidateExitIndex = 0; candidateExitIndex < candidateRoom.connectedRoomIndices.length; candidateExitIndex++) {
-              if (candidateRoom.exitConnected[candidateExitIndex] &&
-                candidateRoom.connectedRoomIndices[candidateExitIndex] >= 0) {
+        const targetKey = `${room.gridX + delta.dx},${room.gridY + delta.dy}`;
+        if (!roomCoords.has(targetKey)) continue;
 
-                // Check if the grid coordinates match what we expect for the connection direction
-                const expectedToX = exitDirection === 'east' ? fromRoom.gridX + 1 :
-                  exitDirection === 'west' ? fromRoom.gridX - 1 : fromRoom.gridX;
-                const expectedToY = exitDirection === 'north' ? fromRoom.gridY - 1 :
-                  exitDirection === 'south' ? fromRoom.gridY + 1 : fromRoom.gridY;
+        const normalizedX = room.gridX - minX;
+        const normalizedY = room.gridY - minY;
 
-                if (candidateRoom.gridX === expectedToX && candidateRoom.gridY === expectedToY) {
-                  toRoomData = rooms[i];
-                  toIndex = i;
-                  break;
-                }
+        const roomCol = normalizedX * 2 + 1;
+        const roomRow = normalizedY * 2 + 1;
+
+        const hallwayCol = roomCol + delta.dx;
+        const hallwayRow = roomRow + delta.dy;
+
+        hallways.push(
+          <div
+            key={`hallway-${room.gridX},${room.gridY}-${exitIndex}`}
+            data-testid={`hallway-${room.gridX}-${room.gridY}-${direction}`}
+            className="relative flex items-center justify-center"
+            style={{
+              gridColumnStart: hallwayCol,
+              gridRowStart: hallwayRow,
+              zIndex: 1
+            }}
+          >
+            <div
+              className="bg-slate-700 border border-slate-600 rounded-md shadow-inner"
+              style={
+                delta.orientation === 'horizontal'
+                  ? { width: '100%', height: `${HALLWAY_THICKNESS}px` }
+                  : { width: `${HALLWAY_THICKNESS}px`, height: '100%' }
               }
-            }
-            if (toRoomData) break;
-          }
-
-          if (toRoomData && toIndex >= 0) {
-            connections.push({
-              fromRoom: fromIndex,
-              toRoom: toIndex,
-              fromX: fromRoom.gridX,
-              fromY: fromRoom.gridY,
-              toX: toRoomData.room.gridX,
-              toY: toRoomData.room.gridY,
-              direction: exitDirection
-            });
-          }
-        }
+            />
+          </div>
+        );
       }
     });
 
-    return connections;
-  };
-
-  const connections = detectConnections();
-
-  // Monster helper functions
-  const handleMonsterSquareClick = (monsterId: string, x: number, y: number) => {
-    if (!colyseusRoom) return;
-    colyseusRoom.send('crossMonsterSquare', { monsterId, x, y });
-  };
-
-  const canPlayerDragMonster = (monster: MonsterCardType): boolean => {
-    return monster.connectedToRoomIndex !== -1 && 
-           monster.playerOwnerId === "" && 
-           player !== null;
+    return hallways;
   };
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full bg-slate-900 relative"
-    >
-      <div
-        className="relative"
-        style={{
-          width: `${totalWidth}px`,
-          height: `${totalHeight}px`,
-        }}
-      >
-        {/* Render connection lines between rooms */}
-        {connections.map((connection, index) => {
-          const fromRoom = rooms[connection.fromRoom];
-          const toRoom = rooms[connection.toRoom];
+    <div ref={containerRef} className="min-w-full min-h-full bg-slate-900 relative">
+      <div className="relative" style={{ width: `${contentWidth}px`, height: `${contentHeight}px` }}>
+        <div
+          className="absolute"
+          style={{
+            left: `${contentPaddingX}px`,
+            top: `${contentPaddingY}px`,
+            width: `${innerGridWidth}px`,
+            height: `${innerGridHeight}px`,
+            display: 'grid',
+            gridTemplateColumns: columnTracks,
+            gridTemplateRows: rowTracks
+          }}
+        >
+          {renderHallways()}
 
-          if (!fromRoom || !toRoom) return null;
+          {rooms.map((roomData, index) => {
+            const { room } = roomData;
 
-          // Calculate positions using actual grid coordinates
-          const fromNormalizedX = fromRoom.room.gridX - minX;
-          const fromNormalizedY = fromRoom.room.gridY - minY;
-          const toNormalizedX = toRoom.room.gridX - minX;
-          const toNormalizedY = toRoom.room.gridY - minY;
+            const normalizedX = room.gridX - minX;
+            const normalizedY = room.gridY - minY;
 
-          const fromPosX = fromNormalizedX * (DEFAULT_MAX_ROOM_WIDTH + roomSpacing) + contentPadding.left + DEFAULT_MAX_ROOM_WIDTH / 2;
-          const fromPosY = fromNormalizedY * (ROOM_HEIGHT + roomSpacing) + contentPadding.top + ROOM_HEIGHT / 2;
-          const toPosX = toNormalizedX * (DEFAULT_MAX_ROOM_WIDTH + roomSpacing) + contentPadding.left + DEFAULT_MAX_ROOM_WIDTH / 2;
-          const toPosY = toNormalizedY * (ROOM_HEIGHT + roomSpacing) + contentPadding.top + ROOM_HEIGHT / 2;
+            const gridColumnStart = normalizedX * 2 + 1;
+            const gridRowStart = normalizedY * 2 + 1;
 
-          // Calculate line properties
-          const deltaX = toPosX - fromPosX;
-          const deltaY = toPosY - fromPosY;
-          const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-          const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+            const maxDim = Math.max(1, Math.max(room.width, room.height));
+            const usableSize = ROOM_TILE_SIZE - ROOM_TILE_INNER_PADDING * 2;
+            const cellSizePx = Math.max(1, Math.floor(usableSize / maxDim));
 
-          return (
-            <div
-              key={`connection-${index}`}
-              className="absolute bg-green-400 opacity-60"
-              style={{
-                left: `${fromPosX}px`,
-                top: `${fromPosY - 2}px`,
-                width: `${length}px`,
-                height: '4px',
-                transformOrigin: '0 50%',
-                transform: `rotate(${angle}deg)`,
-                zIndex: 1,
-              }}
-            />
-          );
-        })}
+            const monster = getMonsterForRoom(index);
 
-        {/* Render rooms using actual grid coordinates */}
-        {rooms.map((roomData, index) => {
-          const { room } = roomData;
+            return (
+              <div
+                key={`room-${index}`}
+                data-testid={`room-tile-${room.gridX}-${room.gridY}`}
+                className="relative border-2 border-slate-600 rounded-lg bg-slate-800 overflow-visible"
+                style={{
+                  width: `${ROOM_TILE_SIZE}px`,
+                  height: `${ROOM_TILE_SIZE}px`,
+                  gridColumnStart,
+                  gridRowStart,
+                  zIndex: 2
+                }}
+              >
+                <div className="absolute top-1 left-2 text-[10px] text-slate-400 select-none pointer-events-none">
+                  Room ({room.gridX}, {room.gridY})
+                </div>
 
-          // Use actual grid coordinates from the Room schema
-          const normalizedX = room.gridX - minX;
-          const normalizedY = room.gridY - minY;
+                {monster && (
+                  <div className="absolute top-2 right-2 z-20">
+                    <MonsterBadge
+                      monster={monster}
+                      canDrag={canPlayerDragMonster(monster)}
+                      onDragStart={onMonsterDragStart}
+                      onDragEnd={onMonsterDragEnd}
+                    />
+                  </div>
+                )}
 
-          // Calculate pixel position with consistent spacing (using default width for positioning)
-          const posX = normalizedX * (DEFAULT_MAX_ROOM_WIDTH + roomSpacing) + contentPadding.left;
-          const posY = normalizedY * (ROOM_HEIGHT + roomSpacing) + contentPadding.top;
-
-          // Get monster for this room
-          const monster = getMonsterForRoom(index);
-          
-          // Calculate dynamic width for this specific room
-          const roomWidth = calculateRoomWidth(room, monster);
-
-          return (
-            <div
-              key={`room-${index}`}
-              className="absolute border-2 border-slate-600 rounded-lg bg-slate-800 flex flex-col"
-              style={{
-                left: `${posX}px`,
-                top: `${posY}px`,
-                width: `${roomWidth}px`,
-                height: `${ROOM_HEIGHT}px`,
-                zIndex: 2,
-              }}
-            >
-              <div className="text-xs text-slate-400 p-2 text-center">
-                Room ({room.gridX}, {room.gridY})
-              </div>
-              
-              {/* Room content area with grid and monster side by side */}
-              <div className="flex-1 flex items-start justify-center p-2 gap-3">
-                {/* Room Grid */}
-                <div className="flex items-center justify-center">
+                <div className="w-full h-full flex items-center justify-center" style={{ padding: `${ROOM_TILE_INNER_PADDING}px` }}>
                   <Grid
                     room={room}
                     handleSquareClick={(x, y) => handleSquareClick(x, y, index)}
@@ -392,29 +330,16 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
                     }
                     selectedSquares={selectedSquares}
                     roomIndex={index}
+                    cellSizePx={cellSizePx}
                   />
                 </div>
-                
-                {/* Monster Card */}
-                {monster && (
-                  <div className="flex items-start">
-                    <MonsterCard
-                      monster={monster}
-                      isOwnedByPlayer={false}
-                      canDrag={canPlayerDragMonster(monster)}
-                      onDragStart={onMonsterDragStart}
-                      onDragEnd={onMonsterDragEnd}
-                      className="monster-in-room"
-                    />
-                  </div>
-                )}
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 };
 
-export default DungeonMap; 
+export default DungeonMap;

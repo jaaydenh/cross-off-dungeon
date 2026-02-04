@@ -844,15 +844,6 @@ export class DungeonState extends Schema {
       return { success: false, error: "Invalid room index" };
     }
 
-    // Room squares cannot be crossed while an unclaimed monster is connected to this room.
-    if (this.isRoomBlockedByMonster(roomIndex)) {
-      return {
-        success: false,
-        error: "Cannot cross squares in rooms with adjacent monsters. Claim the monster first!",
-        invalidSquare: true
-      };
-    }
-
     // Validate coordinates
     if (!room.isValidPosition(x, y)) {
       return { success: false, error: "Invalid coordinates" };
@@ -915,10 +906,14 @@ export class DungeonState extends Schema {
         return { success: false, error: "Square must be orthogonally connected to selected squares", invalidSquare: true };
       }
     } else {
-      // First square must be adjacent to entrance or existing crossed square
+      // First square must be the entrance, adjacent to the entrance, or adjacent to an existing crossed square.
       const isValidStart = this.isValidStartingSquare(room, x, y);
       if (!isValidStart) {
-        return { success: false, error: "First square must be adjacent to entrance or existing crossed square", invalidSquare: true };
+        return {
+          success: false,
+          error: "First square must be the entrance, adjacent to the entrance, or adjacent to an existing crossed square",
+          invalidSquare: true
+        };
       }
     }
 
@@ -966,16 +961,19 @@ export class DungeonState extends Schema {
   }
 
   /**
-   * Check if a square is a valid starting position (adjacent to entrance or existing crossed square)
+   * Check if a square is a valid starting position (entrance, adjacent to entrance, or adjacent to existing crossed square)
    */
   private isValidStartingSquare(room: Room, x: number, y: number): boolean {
-    // For the first square of a card action, allow placement adjacent (orthogonally)
-    // to the entrance OR to any already-crossed square.
+    // For the first square of a card action, allow placement on the entrance square,
+    // adjacent (orthogonally) to the entrance, OR adjacent to any already-crossed square.
     const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
       (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
 
     // Adjacent to entrance
     if (room.entranceX !== -1 && room.entranceY !== -1) {
+      if (x === room.entranceX && y === room.entranceY) {
+        return true;
+      }
       if (isOrthAdjacent(x, y, room.entranceX, room.entranceY)) {
         return true;
       }

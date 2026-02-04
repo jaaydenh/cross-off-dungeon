@@ -3,7 +3,7 @@
 
 import * as Colyseus from 'colyseus.js';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Room } from 'colyseus.js';
 import { DungeonState } from '@/types/DungeonState';
 import { Player } from '@/types/Player';
@@ -33,7 +33,9 @@ export default function Game() {
   const [updateCounter, setUpdateCounter] = useState(0);
 
   // Card-based square selection state
-  const [selectedSquares, setSelectedSquares] = useState<Array<{ roomIndex: number, x: number, y: number }>>([]);
+  const [selectedSquares, setSelectedSquares] = useState<
+    Array<{ roomIndex: number; x: number; y: number; serverRoomIndex?: number }>
+  >([]);
   const [selectedMonsterSquares, setSelectedMonsterSquares] = useState<Array<{ monsterId: string, x: number, y: number }>>([]);
   const [invalidSquareHighlight, setInvalidSquareHighlight] = useState<{ roomIndex: number, x: number, y: number } | null>(null);
   
@@ -41,8 +43,10 @@ export default function Game() {
   const [isMonsterBeingDragged, setIsMonsterBeingDragged] = useState(false);
 
   const hasActiveCard = currentPlayer?.drawnCards?.some(card => card.isActive) || false;
+  const cancelIsActive = !!currentPlayer && hasActiveCard;
   const mapScrollRef = useRef<HTMLDivElement>(null);
   const playerAreaRef = useRef<HTMLDivElement>(null);
+  const roomRef = useRef<Room>();
 
   useEffect(() => {
     if (!hasActiveCard) {
@@ -50,6 +54,47 @@ export default function Game() {
       setSelectedMonsterSquares([]);
     }
   }, [hasActiveCard]);
+
+  const handleCancelCleanup = useCallback(() => {
+    setSelectedSquares([]);
+    setSelectedMonsterSquares([]);
+  }, []);
+
+  const triggerCancelAction = useCallback(() => {
+    if (!cancelIsActive) return;
+
+    if (roomRef.current) {
+      roomRef.current.send('cancelCardAction', {});
+    }
+
+    handleCancelCleanup();
+  }, [cancelIsActive, handleCancelCleanup]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.repeat) return;
+
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (!cancelIsActive) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      triggerCancelAction();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cancelIsActive, triggerCancelAction]);
 
   const canContinueMonsterSelection = (): boolean => {
     if (!gameState || selectedMonsterSquares.length === 0) return false;
@@ -90,8 +135,6 @@ export default function Game() {
     setIsMonsterBeingDragged(false);
   };
 
-  let roomRef = useRef<Room>();
-
   const handleSquareClick = (x, y, roomIndex?) => {
     console.log(`Clicked square at ${x}, ${y} in room index: ${roomIndex !== undefined ? roomIndex : 'current'}`);
 
@@ -129,9 +172,14 @@ export default function Game() {
       return;
     }
 
+    const serverRoomIndex = gameState?.displayedRoomIndices?.[displayRoomIndex];
+
     // Valid selection - add to selected squares for visual feedback.
     // NOTE: We do not send this to the server until the user clicks Confirm.
-    setSelectedSquares(prev => [...prev, { roomIndex: displayRoomIndex, x, y }]);
+    setSelectedSquares((prev) => [
+      ...prev,
+      { roomIndex: displayRoomIndex, serverRoomIndex, x, y }
+    ]);
   };
 
   const handleMonsterSquareClick = (monsterId: string, x: number, y: number) => {
@@ -232,17 +280,6 @@ export default function Game() {
 
     const room = displayedRooms[displayRoomIndex].room;
 
-    // Disallow selecting room squares while an unclaimed monster is connected to this room.
-    const actualRoomIndex = gameState?.displayedRoomIndices?.[displayRoomIndex];
-    if (actualRoomIndex !== undefined && gameState?.activeMonsters) {
-      const isBlocked = gameState.activeMonsters.some(m =>
-        m.connectedToRoomIndex === actualRoomIndex && m.playerOwnerId === ""
-      );
-      if (isBlocked) {
-        return { valid: false, reason: 'Room is blocked by a monster. Claim it first!' };
-      }
-    }
-
     // Check if coordinates are valid
     if (x < 0 || x >= room.width || y < 0 || y >= room.height) {
       return { valid: false, reason: 'Invalid coordinates' };
@@ -280,10 +317,13 @@ export default function Game() {
         return { valid: false, reason: 'Square must be orthogonally connected to selected squares' };
       }
     } else {
-      // First square must be adjacent to entrance or existing crossed square
+      // First square must be the entrance, adjacent to the entrance, or adjacent to an existing crossed square.
       const isValidStart = isValidStartingSquare(room, x, y);
       if (!isValidStart) {
-        return { valid: false, reason: 'First square must be adjacent to entrance or existing crossed square' };
+        return {
+          valid: false,
+          reason: 'First square must be the entrance, adjacent to the entrance, or adjacent to an existing crossed square'
+        };
       }
     }
 
@@ -313,14 +353,17 @@ export default function Game() {
     return false;
   };
 
-  // Check if a square is a valid starting position (adjacent to entrance or existing crossed square)
+  // Check if a square is a valid starting position (entrance, adjacent to entrance, or adjacent to existing crossed square)
   const isValidStartingSquare = (room: DungeonRoom, x: number, y: number): boolean => {
-    // Check if adjacent to entrance
-    if (room.entranceX !== -1 && room.entranceY !== -1) {
-      const dx = Math.abs(x - room.entranceX);
-      const dy = Math.abs(y - room.entranceY);
+    const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
+      (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
 
-      if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+    // Check if entrance itself or adjacent to entrance
+    if (room.entranceX !== -1 && room.entranceY !== -1) {
+      if (x === room.entranceX && y === room.entranceY) {
+        return true;
+      }
+      if (isOrthAdjacent(x, y, room.entranceX, room.entranceY)) {
         return true;
       }
     }
@@ -330,10 +373,7 @@ export default function Game() {
       for (let checkY = 0; checkY < room.height; checkY++) {
         const square = room.squares[checkY * room.width + checkX];
         if (square && square.checked) {
-          const dx = Math.abs(x - checkX);
-          const dy = Math.abs(y - checkY);
-
-          if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+          if (isOrthAdjacent(x, y, checkX, checkY)) {
             return true;
           }
         }
@@ -672,10 +712,7 @@ export default function Game() {
                 player={currentPlayer}
                 room={roomRef.current}
                 isVisible={currentPlayer?.drawnCards.some(card => card.isActive)}
-                onCancel={() => {
-                  setSelectedSquares([]);
-                  setSelectedMonsterSquares([]);
-                }}
+                onCancel={handleCancelCleanup}
               />
             </div>
 

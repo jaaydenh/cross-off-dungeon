@@ -13,6 +13,7 @@ interface SquareProps {
   y: number;
   square: DungeonSquare;
   onClick: (x: number, y: number) => void;
+  sizePx?: number;
   exitInfo?: ExitHighlightInfo | null;
   isAdjacentToExit?: boolean;
   adjacentExitInfo?: ExitHighlightInfo;
@@ -27,6 +28,7 @@ const Square: React.FC<SquareProps> = ({
   y, 
   square, 
   onClick, 
+  sizePx = 42,
   exitInfo, 
   isAdjacentToExit, 
   adjacentExitInfo, 
@@ -42,6 +44,7 @@ const Square: React.FC<SquareProps> = ({
   let borderColor = 'border-gray-700';
   let additionalClasses = '';
   let hoverEffect = 'hover:bg-gray-700';
+  const fontPx = Math.max(12, Math.min(28, Math.round(sizePx * 0.55)));
 
   // Override colors for invalid square highlight (red highlight animation)
   if (showInvalidHighlight) {
@@ -155,13 +158,13 @@ const Square: React.FC<SquareProps> = ({
       onClick={() => clickable && onClick(x, y)}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className={`flex border border-solid border-black/40 items-center justify-center text-2xl ${bgColor} ${clickable ? `cursor-pointer ${hoverEffect}` : ''} ${additionalClasses}`}
+      className={`flex items-center justify-center font-bold text-white border border-solid ${bgColor} ${borderColor} ${clickable ? `cursor-pointer ${hoverEffect}` : ''} ${additionalClasses}`}
       style={{
-        width: '40px',
-        height: '40px',
-        border: `1px solid ${borderColor}`,
-        color: 'white',
-        fontWeight: 'bold',
+        width: `${sizePx}px`,
+        height: `${sizePx}px`,
+        fontSize: `${fontPx}px`,
+        lineHeight: 1,
+        boxSizing: 'border-box',
         transition: 'all 0.2s ease',
       }}
       title={
