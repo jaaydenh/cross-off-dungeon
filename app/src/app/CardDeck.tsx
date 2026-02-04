@@ -53,7 +53,7 @@ export default function CardDeck({ player, room }: CardDeckProps) {
       {/* Card Deck */}
       <div 
         className={`
-          card-deck relative w-20 h-28 bg-blue-900 border-2 border-blue-700 rounded-lg 
+          card-deck relative w-24 h-32 bg-blue-900 border-2 border-blue-700 rounded-lg 
           cursor-pointer card-hover
           ${showGlow ? 'deck-glow' : ''}
           ${deckCount === 0 ? 'opacity-50 cursor-not-allowed' : ''}

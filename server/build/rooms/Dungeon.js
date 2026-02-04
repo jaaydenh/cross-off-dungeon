@@ -88,6 +88,15 @@ class Dungeon extends core_1.Room {
             const result = this.state.confirmCardAction(client.sessionId);
             client.send("confirmCardActionResult", result);
         });
+        // Monster-related message handlers
+        this.onMessage("claimMonster", (client, message) => {
+            const result = this.state.claimMonster(client.sessionId, message.monsterId);
+            client.send("claimMonsterResult", result);
+        });
+        this.onMessage("crossMonsterSquare", (client, message) => {
+            const result = this.state.crossMonsterSquare(client.sessionId, message.monsterId, message.x, message.y);
+            client.send("crossMonsterSquareResult", result);
+        });
     }
     onJoin(client, options) {
         this.state.createPlayer(client.sessionId, options.name);

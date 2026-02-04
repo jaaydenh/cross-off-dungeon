@@ -12,6 +12,8 @@ const Player_1 = require("./Player");
 const DungeonSquare_1 = require("./DungeonSquare");
 const Room_1 = require("./Room");
 const NavigationValidator_1 = require("../NavigationValidator");
+const MonsterCard_1 = require("./MonsterCard");
+const MonsterFactory_1 = require("../MonsterFactory");
 const BOARD_WIDTH = 4;
 class DungeonState extends schema_1.Schema {
     constructor() {
@@ -23,6 +25,9 @@ class DungeonState extends schema_1.Schema {
         this.displayedRoomIndices = new schema_1.ArraySchema(); // Indices of rooms currently displayed
         this.roomPositionsX = new schema_1.ArraySchema(); // X positions of displayed rooms
         this.roomPositionsY = new schema_1.ArraySchema(); // Y positions of displayed rooms
+        // Monster deck and management
+        this.monsterDeck = new schema_1.ArraySchema();
+        this.activeMonsters = new schema_1.ArraySchema(); // Monsters currently on the board or with players
         // Grid management properties
         this.gridOriginX = 0; // Starting grid position X
         this.gridOriginY = 0; // Starting grid position Y
@@ -45,6 +50,8 @@ class DungeonState extends schema_1.Schema {
                 this.board.set(`${x},${y}`, new DungeonSquare_1.DungeonSquare());
             }
         }
+        // Initialize monster deck
+        this.initializeMonsterDeck();
         // Create the initial starting room
         this.createInitialRoom();
         // Initialize the displayed rooms array with the first room
@@ -53,6 +60,31 @@ class DungeonState extends schema_1.Schema {
         this.roomPositionsY.push(0);
         // Assign grid coordinates to the first room at the origin
         this.assignGridCoordinates(0, this.gridOriginX, this.gridOriginY);
+    }
+    /**
+     * Initialize the monster deck with shuffled monsters
+     */
+    initializeMonsterDeck() {
+        console.log('Initializing monster deck');
+        const monsters = MonsterFactory_1.MonsterFactory.createMonsterDeck();
+        monsters.forEach(monster => this.monsterDeck.push(monster));
+        console.log(`Monster deck initialized with ${this.monsterDeck.length} monsters`);
+    }
+    /**
+     * Draw a monster from the deck when a new room is opened
+     * @returns The drawn monster card or null if deck is empty
+     */
+    drawMonsterCard() {
+        if (this.monsterDeck.length === 0) {
+            console.log('No monsters left in deck');
+            return null;
+        }
+        const monster = this.monsterDeck.shift();
+        if (monster) {
+            this.activeMonsters.push(monster);
+            console.log(`Drew monster: ${monster.name} (${monster.id})`);
+        }
+        return monster || null;
     }
     /**
      * Create the initial starting room
@@ -64,6 +96,12 @@ class DungeonState extends schema_1.Schema {
         room.createEntrance("south"); // Create entrance from the south
         this.rooms.push(room);
         this.currentRoomIndex = 0;
+        // Draw a monster for the initial room too
+        const monster = this.drawMonsterCard();
+        if (monster) {
+            monster.connectedToRoomIndex = 0;
+            console.log(`Assigned monster ${monster.name} to initial room 0`);
+        }
     }
     /**
      * Create a new room with random dimensions and wall placement
@@ -162,6 +200,12 @@ class DungeonState extends schema_1.Schema {
             targetRoom = newRoom;
             // Assign proper grid coordinates to the new room
             this.assignGridCoordinates(targetRoomIndex, targetX, targetY);
+            // Draw a monster for the new room
+            const monster = this.drawMonsterCard();
+            if (monster) {
+                monster.connectedToRoomIndex = targetRoomIndex;
+                console.log(`Assigned monster ${monster.name} to new room ${targetRoomIndex}`);
+            }
             console.log(`Created new room ${targetRoomIndex} at grid (${targetX}, ${targetY}) with entrance from ${entranceDirection}`);
             // Establish connection from source room to new room
             this.establishConnection(fromRoomIndex, exitIndex, targetRoomIndex, exitDirection);
@@ -207,6 +251,10 @@ class DungeonState extends schema_1.Schema {
         const activeCardId = this.activeCardPlayers.get(client.sessionId);
         if (activeCardId) {
             return this.selectSquareForCard(client.sessionId, roomIndex, x, y);
+        }
+        // Check if the room is blocked by a monster
+        if (this.isRoomBlockedByMonster(roomIndex)) {
+            return { success: false, error: "Cannot cross squares in rooms with adjacent monsters. Claim the monster first!" };
         }
         // Check if the coordinates are valid for the specified room
         if (!room.isValidPosition(x, y)) {
@@ -957,6 +1005,122 @@ class DungeonState extends schema_1.Schema {
             selectedSquares
         };
     }
+    // Monster-related methods
+    /**
+     * Move a monster from its current position to a player's area
+     * @param sessionId Session ID of the player
+     * @param monsterId ID of the monster to claim
+     * @returns Result object with success status and message
+     */
+    claimMonster(sessionId, monsterId) {
+        const player = this.players.get(sessionId);
+        if (!player) {
+            return { success: false, error: "Player not found" };
+        }
+        // Find the monster in activeMonsters
+        const monsterIndex = this.activeMonsters.findIndex(monster => monster.id === monsterId);
+        if (monsterIndex === -1) {
+            return { success: false, error: "Monster not found" };
+        }
+        const monster = this.activeMonsters[monsterIndex];
+        // Check if monster is already owned
+        if (monster.playerOwnerId !== "") {
+            return { success: false, error: "Monster already claimed by another player" };
+        }
+        // Check if monster is connected to a room (can't claim monsters in player areas)
+        if (monster.connectedToRoomIndex === -1) {
+            return { success: false, error: "Monster is not available to claim" };
+        }
+        // Claim the monster
+        monster.playerOwnerId = sessionId;
+        monster.connectedToRoomIndex = -1; // Move to player area
+        console.log(`Player ${sessionId} claimed monster ${monster.name} (${monster.id})`);
+        return {
+            success: true,
+            message: `Successfully claimed ${monster.name}! You can now cross off squares on this monster.`
+        };
+    }
+    /**
+     * Cross off a square on a monster card owned by the player
+     * @param sessionId Session ID of the player
+     * @param monsterId ID of the monster
+     * @param x X coordinate of the square
+     * @param y Y coordinate of the square
+     * @returns Result object with success status and message
+     */
+    crossMonsterSquare(sessionId, monsterId, x, y) {
+        const player = this.players.get(sessionId);
+        if (!player) {
+            return { success: false, error: "Player not found" };
+        }
+        // Find the monster in activeMonsters
+        const monster = this.activeMonsters.find(m => m.id === monsterId);
+        if (!monster) {
+            return { success: false, error: "Monster not found" };
+        }
+        // Check if player owns the monster
+        if (monster.playerOwnerId !== sessionId) {
+            return { success: false, error: "You don't own this monster" };
+        }
+        // Check if player has an active card
+        const activeCardId = this.activeCardPlayers.get(sessionId);
+        if (!activeCardId) {
+            return { success: false, error: "You need an active card to cross monster squares" };
+        }
+        // Get the square
+        const square = monster.getSquare(x, y);
+        if (!square) {
+            return { success: false, error: "Invalid coordinates" };
+        }
+        // Check if square is part of the monster pattern
+        if (!square.filled) {
+            return { success: false, error: "Cannot cross empty squares" };
+        }
+        // Check if square is already crossed
+        if (square.checked) {
+            return { success: false, error: "Square already crossed" };
+        }
+        // Cross the square
+        square.checked = true;
+        console.log(`Player ${sessionId} crossed square ${x},${y} on monster ${monster.name}`);
+        // Check if monster is completed
+        const completed = monster.isCompleted();
+        if (completed) {
+            console.log(`Player ${sessionId} completed monster ${monster.name}!`);
+            // TODO: Add scoring/rewards for completing monsters
+        }
+        return {
+            success: true,
+            message: `Crossed square on ${monster.name}! (${monster.getCrossedSquares()}/${monster.getTotalSquares()})`,
+            completed
+        };
+    }
+    /**
+     * Check if a room is blocked by an adjacent monster
+     * @param roomIndex Index of the room to check
+     * @returns True if the room is blocked by a monster
+     */
+    isRoomBlockedByMonster(roomIndex) {
+        // Find any monster connected to this room
+        return this.activeMonsters.some(monster => monster.connectedToRoomIndex === roomIndex && monster.playerOwnerId === "");
+    }
+    /**
+     * Get all monsters owned by a player
+     * @param sessionId Session ID of the player
+     * @returns Array of monster cards owned by the player
+     */
+    getPlayerMonsters(sessionId) {
+        return this.activeMonsters.filter(monster => monster.playerOwnerId === sessionId);
+    }
+    /**
+     * Get all monsters connected to rooms (not owned by players)
+     * @returns Array of monster cards connected to rooms
+     */
+    getRoomMonsters() {
+        return this.activeMonsters
+            .filter(monster => monster.connectedToRoomIndex !== -1 && monster.playerOwnerId === "")
+            .map(monster => ({ monster, roomIndex: monster.connectedToRoomIndex }));
+    }
 }
 exports.DungeonState = DungeonState;
 __decorate([
@@ -980,6 +1144,12 @@ __decorate([
 __decorate([
     (0, schema_1.type)(["number"])
 ], DungeonState.prototype, "roomPositionsY", void 0);
+__decorate([
+    (0, schema_1.type)([MonsterCard_1.MonsterCard])
+], DungeonState.prototype, "monsterDeck", void 0);
+__decorate([
+    (0, schema_1.type)([MonsterCard_1.MonsterCard])
+], DungeonState.prototype, "activeMonsters", void 0);
 __decorate([
     (0, schema_1.type)("number")
 ], DungeonState.prototype, "gridOriginX", void 0);

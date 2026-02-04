@@ -70,7 +70,7 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
       {/* Discard Pile */}
       <div
         className={`
-          card-discard relative w-20 h-28 border-2 rounded-lg transition-all duration-200
+          card-discard relative w-24 h-32 border-2 rounded-lg transition-all duration-200
           ${discardCount === 0
             ? 'bg-gray-700 border-gray-600 opacity-50'
             : 'bg-white border-gray-300 card-hover'

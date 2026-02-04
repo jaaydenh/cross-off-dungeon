@@ -2,6 +2,9 @@ import React, { useRef, useEffect, useState } from 'react';
 import Grid from './grid';
 import { Room } from '@/types/Room';
 import { Player } from '@/types/Player';
+import { MonsterCard as MonsterCardType } from '@/types/MonsterCard';
+import { DungeonState } from '@/types/DungeonState';
+import MonsterCard from './MonsterCard';
 
 interface DungeonMapProps {
   rooms: {
@@ -14,6 +17,9 @@ interface DungeonMapProps {
   colyseusRoom: any; // Colyseus room instance
   invalidSquareHighlight?: {roomIndex: number, x: number, y: number} | null;
   selectedSquares?: Array<{roomIndex: number, x: number, y: number}>;
+  gameState: DungeonState | null;
+  onMonsterDragStart?: () => void;
+  onMonsterDragEnd?: () => void;
 }
 
 interface GridConnection {
@@ -32,7 +38,10 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
   player,
   colyseusRoom,
   invalidSquareHighlight,
-  selectedSquares
+  selectedSquares,
+  gameState,
+  onMonsterDragStart,
+  onMonsterDragEnd
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -67,9 +76,43 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
   const gridWidth = maxX - minX + 1;
   const gridHeight = maxY - minY + 1;
 
-  // Fixed room dimensions for consistent grid layout (Requirement 5.5)
-  const ROOM_WIDTH = 350;  // Fixed width for all rooms
+  // Dynamic room dimensions to fit content
   const ROOM_HEIGHT = 310; // Fixed height for all rooms
+  
+  // Function to calculate room width based on content
+  const calculateRoomWidth = (room: Room, monster?: MonsterCardType | null): number => {
+    // Base room grid width: room.width * 42px (40px squares + 2px margin)
+    const roomGridWidth = room.width * 42;
+    
+    // Monster card width if present
+    let monsterWidth = 0;
+    if (monster) {
+      // Calculate monster card components:
+      // - Monster grid: monster.width * 42px
+      // - Card padding: p-3 = 24px total (12px each side)
+      // - Card border: border-2 = 4px total (2px each side)  
+      // - Monster grid container: p-1 = 8px total, border = 2px total
+      // - Minimum width: 200px (set in component)
+      // - Header content (emoji + name + progress): ~150px typical
+      // - Scale factor: scale-90 = 0.9 multiplier
+      
+      const monsterGridWidth = monster.width * 42;
+      const cardPadding = 24; // p-3
+      const cardBorder = 4; // border-2
+      const gridContainerPadding = 10; // p-1 + border
+      const minContentWidth = Math.max(monsterGridWidth + gridContainerPadding, 200); // minWidth constraint
+      const headerWidth = 150; // typical header content width
+      
+      const fullCardWidth = Math.max(minContentWidth, headerWidth) + cardPadding + cardBorder;
+      monsterWidth = Math.ceil(fullCardWidth * 0.9) + 20; // Apply scale-90 + safety margin
+    }
+    
+    // Total width: room grid + gap + monster + container padding
+    const gap = monster ? 12 : 0; // gap-3 = 12px
+    const containerPadding = 16; // p-2 = 8px each side
+    
+    return roomGridWidth + gap + monsterWidth + containerPadding;
+  };
 
   // Add spacing between rooms for better visibility
   const roomSpacing = 60;
@@ -98,8 +141,12 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
     }
   }, []);
 
+  // Use a reasonable default maximum width for layout calculation
+  // Individual rooms will size themselves dynamically
+  const DEFAULT_MAX_ROOM_WIDTH = 600;
+  
   // Calculate total dimensions needed for all rooms plus padding
-  const totalWidth = gridWidth * (ROOM_WIDTH + roomSpacing) + contentPadding.left + contentPadding.right;
+  const totalWidth = gridWidth * (DEFAULT_MAX_ROOM_WIDTH + roomSpacing) + contentPadding.left + contentPadding.right;
   const totalHeight = gridHeight * (ROOM_HEIGHT + roomSpacing) + contentPadding.top + contentPadding.bottom;
 
   // Detect connections between rooms with aligned exits
@@ -169,6 +216,30 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
 
   const connections = detectConnections();
 
+  // Monster helper functions
+  const handleMonsterSquareClick = (monsterId: string, x: number, y: number) => {
+    if (!colyseusRoom) return;
+    colyseusRoom.send('crossMonsterSquare', { monsterId, x, y });
+  };
+
+  const getMonsterForRoom = (roomIndex: number): MonsterCardType | null => {
+    if (!gameState?.activeMonsters) return null;
+    
+    // Find the actual room index in the displayed rooms
+    const actualRoomIndex = gameState.displayedRoomIndices[roomIndex];
+    
+    const monster = gameState.activeMonsters.find(monster => 
+      monster.connectedToRoomIndex === actualRoomIndex && monster.playerOwnerId === ""
+    );
+    
+    return monster || null;
+  };
+
+  const canPlayerDragMonster = (monster: MonsterCardType): boolean => {
+    return monster.connectedToRoomIndex !== -1 && 
+           monster.playerOwnerId === "" && 
+           player !== null;
+  };
 
   return (
     <div
@@ -195,9 +266,9 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
           const toNormalizedX = toRoom.room.gridX - minX;
           const toNormalizedY = toRoom.room.gridY - minY;
 
-          const fromPosX = fromNormalizedX * (ROOM_WIDTH + roomSpacing) + contentPadding.left + ROOM_WIDTH / 2;
+          const fromPosX = fromNormalizedX * (DEFAULT_MAX_ROOM_WIDTH + roomSpacing) + contentPadding.left + DEFAULT_MAX_ROOM_WIDTH / 2;
           const fromPosY = fromNormalizedY * (ROOM_HEIGHT + roomSpacing) + contentPadding.top + ROOM_HEIGHT / 2;
-          const toPosX = toNormalizedX * (ROOM_WIDTH + roomSpacing) + contentPadding.left + ROOM_WIDTH / 2;
+          const toPosX = toNormalizedX * (DEFAULT_MAX_ROOM_WIDTH + roomSpacing) + contentPadding.left + DEFAULT_MAX_ROOM_WIDTH / 2;
           const toPosY = toNormalizedY * (ROOM_HEIGHT + roomSpacing) + contentPadding.top + ROOM_HEIGHT / 2;
 
           // Calculate line properties
@@ -231,10 +302,15 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
           const normalizedX = room.gridX - minX;
           const normalizedY = room.gridY - minY;
 
-          // Calculate pixel position with consistent spacing
-          const posX = normalizedX * (ROOM_WIDTH + roomSpacing) + contentPadding.left;
+          // Calculate pixel position with consistent spacing (using default width for positioning)
+          const posX = normalizedX * (DEFAULT_MAX_ROOM_WIDTH + roomSpacing) + contentPadding.left;
           const posY = normalizedY * (ROOM_HEIGHT + roomSpacing) + contentPadding.top;
 
+          // Get monster for this room
+          const monster = getMonsterForRoom(index);
+          
+          // Calculate dynamic width for this specific room
+          const roomWidth = calculateRoomWidth(room, monster);
 
           return (
             <div
@@ -243,7 +319,7 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
               style={{
                 left: `${posX}px`,
                 top: `${posY}px`,
-                width: `${ROOM_WIDTH}px`,
+                width: `${roomWidth}px`,
                 height: `${ROOM_HEIGHT}px`,
                 zIndex: 2,
               }}
@@ -251,18 +327,37 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
               <div className="text-xs text-slate-400 p-2 text-center">
                 Room ({room.gridX}, {room.gridY})
               </div>
-              <div className="flex-1 flex items-center justify-center">
-                <Grid
-                  room={room}
-                  handleSquareClick={(x, y) => handleSquareClick(x, y, index)}
-                  invalidSquareHighlight={
-                    invalidSquareHighlight && invalidSquareHighlight.roomIndex === index
-                      ? { x: invalidSquareHighlight.x, y: invalidSquareHighlight.y }
-                      : null
-                  }
-                  selectedSquares={selectedSquares}
-                  roomIndex={index}
-                />
+              
+              {/* Room content area with grid and monster side by side */}
+              <div className="flex-1 flex items-start justify-center p-2 gap-3">
+                {/* Room Grid */}
+                <div className="flex items-center justify-center">
+                  <Grid
+                    room={room}
+                    handleSquareClick={(x, y) => handleSquareClick(x, y, index)}
+                    invalidSquareHighlight={
+                      invalidSquareHighlight && invalidSquareHighlight.roomIndex === index
+                        ? { x: invalidSquareHighlight.x, y: invalidSquareHighlight.y }
+                        : null
+                    }
+                    selectedSquares={selectedSquares}
+                    roomIndex={index}
+                  />
+                </div>
+                
+                {/* Monster Card */}
+                {monster && (
+                  <div className="flex items-start">
+                    <MonsterCard
+                      monster={monster}
+                      isOwnedByPlayer={false}
+                      canDrag={canPlayerDragMonster(monster)}
+                      onDragStart={onMonsterDragStart}
+                      onDragEnd={onMonsterDragEnd}
+                      className="monster-in-room scale-90"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           );

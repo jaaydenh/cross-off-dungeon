@@ -52,7 +52,7 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
     return (
       <div className="flex flex-col items-center gap-2">
         <h3 className="text-md font-semibold text-white">Drawn Card</h3>
-        <div className="w-20 h-28 bg-gray-700 border-2 border-gray-600 rounded-lg flex items-center justify-center">
+        <div className="w-24 h-32 bg-gray-700 border-2 border-gray-600 rounded-lg flex items-center justify-center">
           <p className="text-gray-400 text-xs text-center">No card drawn</p>
         </div>
       </div>

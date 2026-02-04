@@ -4,21 +4,27 @@ import { DungeonState } from "./schema/DungeonState";
 export class Dungeon extends Room<DungeonState> {
   maxClients = 4;
 
+  // Room name used by clients when joining (helpful for debugging/logging)
+  static readonly ROOM_NAME = "dungeon";
+
   onCreate(options: any) {
     this.setState(new DungeonState());
 
     this.state.initializeBoard();
 
     this.onMessage("crossSquare", (client, message) => {
-      const result = this.state.crossSquare(client, message);
-      // Send response back to client with result
-      client.send("crossSquareResult", result);
+      // Mutates state; clients will see changes via state patches.
+      // NOTE: Sending crossSquareResult has intermittently triggered msgpackr encoding
+      // RangeErrors in this project, so we intentionally do not respond here.
+      this.state.crossSquare(client, message);
     });
 
     // Card drawing message handler
     this.onMessage("drawCard", (client, message) => {
-      const result = this.state.drawCard(client.sessionId);
-      client.send("drawCardResult", result);
+      // Mutates state; clients will see the new drawn card via state patches.
+      // NOTE: Sending drawCardResult has intermittently triggered msgpackr encoding
+      // RangeErrors in this project, so we intentionally do not respond here.
+      this.state.drawCard(client.sessionId);
     });
 
     // Turn management message handlers
@@ -85,8 +91,10 @@ export class Dungeon extends Room<DungeonState> {
 
     // Card-based square selection message handlers
     this.onMessage("playCard", (client, message) => {
-      const result = this.state.playCard(client.sessionId, message.cardId);
-      client.send("playCardResult", result);
+      // Mutates state; clients will see the activated card via state patches.
+      // NOTE: Sending playCardResult has intermittently triggered msgpackr encoding
+      // RangeErrors in this project, so we intentionally do not respond here.
+      this.state.playCard(client.sessionId, message.cardId);
     });
 
     this.onMessage("cancelCardAction", (client, message) => {
@@ -97,6 +105,26 @@ export class Dungeon extends Room<DungeonState> {
     this.onMessage("confirmCardAction", (client, message) => {
       const result = this.state.confirmCardAction(client.sessionId);
       client.send("confirmCardActionResult", result);
+    });
+
+    // Monster-related message handlers
+    this.onMessage("claimMonster", (client, message) => {
+      // Mutates state; clients will see monster ownership updates via state patches.
+      // NOTE: Sending claimMonsterResult has intermittently triggered msgpackr encoding
+      // RangeErrors in this project, so we intentionally do not respond here.
+      this.state.claimMonster(client.sessionId, message.monsterId);
+    });
+
+    this.onMessage("crossMonsterSquare", (client, message) => {
+      // Mutates state; clients will see monster square updates via state patches.
+      // NOTE: Sending crossMonsterSquareResult has intermittently triggered msgpackr encoding
+      // RangeErrors in this project, so we intentionally do not respond here.
+      this.state.crossMonsterSquare(
+        client.sessionId,
+        message.monsterId,
+        message.x,
+        message.y
+      );
     });
   }
 

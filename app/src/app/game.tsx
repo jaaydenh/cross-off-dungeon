@@ -15,6 +15,7 @@ import DiscardPile from './DiscardPile';
 import TurnControls from './TurnControls';
 import CancelButton from './CancelButton';
 import ConfirmMoveButton from './ConfirmMoveButton';
+import PlayerMonsters from './PlayerMonsters';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,20 @@ export default function Game() {
   // Card-based square selection state
   const [selectedSquares, setSelectedSquares] = useState<Array<{ roomIndex: number, x: number, y: number }>>([]);
   const [invalidSquareHighlight, setInvalidSquareHighlight] = useState<{ roomIndex: number, x: number, y: number } | null>(null);
+  
+  // Monster drag and drop state
+  const [isMonsterBeingDragged, setIsMonsterBeingDragged] = useState(false);
+
+  // Monster drag handlers
+  const handleMonsterDragStart = () => {
+    console.log('Game: Monster drag started, setting isMonsterBeingDragged to true');
+    setIsMonsterBeingDragged(true);
+  };
+
+  const handleMonsterDragEnd = () => {
+    console.log('Game: Monster drag ended, setting isMonsterBeingDragged to false');
+    setIsMonsterBeingDragged(false);
+  };
 
   let roomRef = useRef<Room>();
 
@@ -383,6 +398,10 @@ export default function Game() {
         // This handler just acknowledges the message to prevent warnings
       });
 
+      // Monster actions are authoritative on the server and reflected via state patches.
+      // NOTE: We intentionally do not rely on "*Result" messages here because sending them
+      // has intermittently triggered msgpackr RangeErrors in this project.
+
       roomRef.current.onStateChange.once((state) => {
         setInitialState(state);
       });
@@ -518,12 +537,17 @@ export default function Game() {
                 colyseusRoom={roomRef.current}
                 invalidSquareHighlight={invalidSquareHighlight}
                 selectedSquares={selectedSquares}
+                gameState={gameState}
+                onMonsterDragStart={handleMonsterDragStart}
+                onMonsterDragEnd={handleMonsterDragEnd}
               />
             )}
+
+            {/* Monsters are now displayed inside room containers */}
           </div>
 
           {/* Bottom drawer for player's area */}
-          <div className="player-area fixed bottom-0 left-0 right-0 h-60 bg-slate-800 border-t border-slate-700 p-2 z-50">
+          <div className="player-area fixed bottom-0 left-0 right-0 h-80 bg-slate-800 border-t border-slate-700 p-2 z-50">
             <div className="flex gap-4 h-full">
               <div className="bg-slate-700 p-4 rounded flex-1">
                 <div className="flex justify-start gap-6">
@@ -532,9 +556,13 @@ export default function Game() {
                   <DiscardPile player={currentPlayer} room={roomRef.current} />
                 </div>
               </div>
-              <div className="bg-slate-700 p-2 rounded flex-1">
-                <p>Skills (Coming Soon)</p>
-              </div>
+              {/* Always render PlayerMonsters so it can respond to drag state */}
+              <PlayerMonsters
+                gameState={gameState}
+                currentPlayer={currentPlayer}
+                colyseusRoom={roomRef.current}
+                isMonsterBeingDragged={isMonsterBeingDragged}
+              />
             </div>
           </div>
         </div>

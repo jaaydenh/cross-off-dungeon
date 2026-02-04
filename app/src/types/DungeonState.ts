@@ -9,6 +9,7 @@ import { Schema, type, ArraySchema, MapSchema, SetSchema, DataChange } from '@co
 import { Player } from './Player'
 import { DungeonSquare } from './DungeonSquare'
 import { Room } from './Room'
+import { MonsterCard } from './MonsterCard'
 
 export class DungeonState extends Schema {
     @type({ map: Player }) public players: MapSchema<Player> = new MapSchema<Player>();
@@ -27,4 +28,6 @@ export class DungeonState extends Schema {
     @type({ map: "string" }) public activeCardPlayers: MapSchema<string> = new MapSchema<string>();
     @type({ map: "string" }) public selectedSquares: MapSchema<string> = new MapSchema<string>();
     @type({ map: "number" }) public selectedSquareCount: MapSchema<number> = new MapSchema<number>();
+    @type([ MonsterCard ]) public monsterDeck: ArraySchema<MonsterCard> = new ArraySchema<MonsterCard>();
+    @type([ MonsterCard ]) public activeMonsters: ArraySchema<MonsterCard> = new ArraySchema<MonsterCard>();
 }

@@ -440,11 +440,11 @@ describe("Card-Based Square Selection System", () => {
       }
 
       // Click a square without active card - should use regular crossing
-      room.send(client, "crossSquare", { x: testX, y: testY, roomIndex: 0 });
-      await room.waitForNextPatch();
+      room.state.crossSquare(client as any, { x: testX, y: testY, roomIndex: 0 });
 
       // Check that regular crossing occurred
-      const square = currentRoom.getSquare(testX, testY);
+      const updatedRoom = room.state.rooms[0];
+      const square = updatedRoom.getSquare(testX, testY);
       assert.strictEqual(square?.checked, true, "Square should be crossed immediately with regular crossing");
 
       // Check no card selection state

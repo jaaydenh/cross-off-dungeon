@@ -55,19 +55,16 @@ describe("Card Drawing System", () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
-      let drawResult: any = null;
-      client.onMessage("drawCardResult", (message) => {
-        drawResult = message;
-      });
+      const player = room.state.players.get(client.sessionId)!;
 
       // Send drawCard message
       client.send("drawCard", {});
       await room.waitForNextPatch();
 
-      // Verify response
-      assert(drawResult !== null);
-      assert.strictEqual(drawResult.success, true);
-      assert(drawResult.message?.includes("Drew card:"));
+      // Verify state changed
+      assert.strictEqual(player.drawnCards.length, 1);
+      assert.strictEqual(player.hasDrawnCard, true);
+      assert.strictEqual(player.turnStatus, "playing_turn");
     });
   });
 

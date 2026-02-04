@@ -4,6 +4,8 @@ import { Client } from "colyseus";
 import { DungeonSquare } from "./DungeonSquare";
 import { Room } from "./Room";
 import { NavigationValidator } from "../NavigationValidator";
+import { MonsterCard } from "./MonsterCard";
+import { MonsterFactory } from "../MonsterFactory";
 
 const BOARD_WIDTH = 4;
 
@@ -17,6 +19,10 @@ export class DungeonState extends Schema {
   @type(["number"]) roomPositionsX = new ArraySchema<number>(); // X positions of displayed rooms
   @type(["number"]) roomPositionsY = new ArraySchema<number>(); // Y positions of displayed rooms
 
+  // Monster deck and management
+  @type([MonsterCard]) monsterDeck = new ArraySchema<MonsterCard>();
+  @type([MonsterCard]) activeMonsters = new ArraySchema<MonsterCard>(); // Monsters currently on the board or with players
+
   // Grid management properties
   @type("number") gridOriginX = 0; // Starting grid position X
   @type("number") gridOriginY = 0; // Starting grid position Y
@@ -29,8 +35,14 @@ export class DungeonState extends Schema {
 
   // Card-based square selection tracking
   @type({ map: "string" }) activeCardPlayers = new MapSchema<string>(); // sessionId -> cardId
-  @type({ map: "string" }) selectedSquares = new MapSchema<string>(); // sessionId -> "roomIndex:x,y;roomIndex:x,y"
-  @type({ map: "number" }) selectedSquareCount = new MapSchema<number>(); // sessionId -> count
+
+  // NOTE: These can grow quickly and are frequently mutated; keeping them inside Schema maps
+  // has caused serialization issues (msgpackr RangeError: ERR_BUFFER_OUT_OF_BOUNDS) when sending
+  // state patches under load / rapid interactions.
+  //
+  // They are server-side bookkeeping only, so we keep them as plain JS Maps (non-schema).
+  selectedSquares = new Map<string, string>(); // sessionId -> "roomIndex:x,y;roomIndex:x,y"
+  selectedSquareCount = new Map<string, number>(); // sessionId -> count
 
   // Navigation validator for exit adjacency checking
   private navigationValidator = new NavigationValidator();
@@ -42,6 +54,9 @@ export class DungeonState extends Schema {
         this.board.set(`${x},${y}`, new DungeonSquare());
       }
     }
+
+    // Initialize monster deck
+    this.initializeMonsterDeck();
 
     // Create the initial starting room
     this.createInitialRoom();
@@ -56,6 +71,34 @@ export class DungeonState extends Schema {
   }
 
   /**
+   * Initialize the monster deck with shuffled monsters
+   */
+  initializeMonsterDeck(): void {
+    console.log('Initializing monster deck');
+    const monsters = MonsterFactory.createMonsterDeck();
+    monsters.forEach(monster => this.monsterDeck.push(monster));
+    console.log(`Monster deck initialized with ${this.monsterDeck.length} monsters`);
+  }
+
+  /**
+   * Draw a monster from the deck when a new room is opened
+   * @returns The drawn monster card or null if deck is empty
+   */
+  drawMonsterCard(): MonsterCard | null {
+    if (this.monsterDeck.length === 0) {
+      console.log('No monsters left in deck');
+      return null;
+    }
+
+    const monster = this.monsterDeck.shift();
+    if (monster) {
+      this.activeMonsters.push(monster);
+      console.log(`Drew monster: ${monster.name} (${monster.id})`);
+    }
+    return monster || null;
+  }
+
+  /**
    * Create the initial starting room
    */
   createInitialRoom() {
@@ -67,6 +110,13 @@ export class DungeonState extends Schema {
 
     this.rooms.push(room);
     this.currentRoomIndex = 0;
+
+    // Draw a monster for the initial room too
+    const monster = this.drawMonsterCard();
+    if (monster) {
+      monster.connectedToRoomIndex = 0;
+      console.log(`Assigned monster ${monster.name} to initial room 0`);
+    }
   }
 
   /**
@@ -186,6 +236,13 @@ export class DungeonState extends Schema {
       // Assign proper grid coordinates to the new room
       this.assignGridCoordinates(targetRoomIndex, targetX, targetY);
 
+      // Draw a monster for the new room
+      const monster = this.drawMonsterCard();
+      if (monster) {
+        monster.connectedToRoomIndex = targetRoomIndex;
+        console.log(`Assigned monster ${monster.name} to new room ${targetRoomIndex}`);
+      }
+
       console.log(`Created new room ${targetRoomIndex} at grid (${targetX}, ${targetY}) with entrance from ${entranceDirection}`);
 
       // Establish connection from source room to new room
@@ -249,6 +306,11 @@ export class DungeonState extends Schema {
     const activeCardId = this.activeCardPlayers.get(client.sessionId);
     if (activeCardId) {
       return this.selectSquareForCard(client.sessionId, roomIndex, x, y);
+    }
+
+    // Check if the room is blocked by a monster
+    if (this.isRoomBlockedByMonster(roomIndex)) {
+      return { success: false, error: "Cannot cross squares in rooms with adjacent monsters. Claim the monster first!" };
     }
 
     // Check if the coordinates are valid for the specified room
@@ -906,9 +968,15 @@ export class DungeonState extends Schema {
 
     console.log(`Player ${sessionId} selected square ${x},${y} in room ${roomIndex} (${newCount})`);
 
+    // Auto-complete once 3 squares are selected.
+    if (newCount >= 3) {
+      return this.completeCardAction(sessionId, [...selectedPositions, { roomIndex, x, y }]);
+    }
+
     return {
       success: true,
-      message: `Square selected (${newCount}/3). Use confirm button to commit move.`
+      message: `Square selected (${newCount}/3). Use confirm button to commit move.`,
+      completed: false
     };
   }
 
@@ -942,27 +1010,24 @@ export class DungeonState extends Schema {
    * Check if a square is a valid starting position (adjacent to entrance or existing crossed square)
    */
   private isValidStartingSquare(room: Room, x: number, y: number): boolean {
-    // Check if adjacent to entrance
-    if (room.entranceX !== -1 && room.entranceY !== -1) {
-      const dx = Math.abs(x - room.entranceX);
-      const dy = Math.abs(y - room.entranceY);
+    // For the first square of a card action, allow placement adjacent (orthogonally)
+    // to the entrance OR to any already-crossed square.
+    const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
+      (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
 
-      if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+    // Adjacent to entrance
+    if (room.entranceX !== -1 && room.entranceY !== -1) {
+      if (isOrthAdjacent(x, y, room.entranceX, room.entranceY)) {
         return true;
       }
     }
 
-    // Check if adjacent to any existing crossed square
-    for (let checkX = 0; checkX < room.width; checkX++) {
-      for (let checkY = 0; checkY < room.height; checkY++) {
+    // Adjacent to any existing crossed square
+    for (let checkY = 0; checkY < room.height; checkY++) {
+      for (let checkX = 0; checkX < room.width; checkX++) {
         const square = room.getSquare(checkX, checkY);
-        if (square && square.checked) {
-          const dx = Math.abs(x - checkX);
-          const dy = Math.abs(y - checkY);
-
-          if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
-            return true;
-          }
+        if (square?.checked && isOrthAdjacent(x, y, checkX, checkY)) {
+          return true;
         }
       }
     }
@@ -1159,5 +1224,151 @@ export class DungeonState extends Schema {
       selectedCount,
       selectedSquares
     };
+  }
+
+  // Monster-related methods
+
+  /**
+   * Move a monster from its current position to a player's area
+   * @param sessionId Session ID of the player
+   * @param monsterId ID of the monster to claim
+   * @returns Result object with success status and message
+   */
+  claimMonster(sessionId: string, monsterId: string): { success: boolean; message?: string; error?: string } {
+    const player = this.players.get(sessionId);
+    if (!player) {
+      return { success: false, error: "Player not found" };
+    }
+
+    // Find the monster in activeMonsters
+    const monsterIndex = this.activeMonsters.findIndex(monster => monster.id === monsterId);
+    if (monsterIndex === -1) {
+      return { success: false, error: "Monster not found" };
+    }
+
+    const monster = this.activeMonsters[monsterIndex];
+
+    // Check if monster is already owned
+    if (monster.playerOwnerId !== "") {
+      return { success: false, error: "Monster already claimed by another player" };
+    }
+
+    // Check if monster is connected to a room (can't claim monsters in player areas)
+    if (monster.connectedToRoomIndex === -1) {
+      return { success: false, error: "Monster is not available to claim" };
+    }
+
+    // Claim the monster
+    monster.playerOwnerId = sessionId;
+    monster.connectedToRoomIndex = -1; // Move to player area
+
+    console.log(`Player ${sessionId} claimed monster ${monster.name} (${monster.id})`);
+
+    return {
+      success: true,
+      message: `Successfully claimed ${monster.name}! You can now cross off squares on this monster.`
+    };
+  }
+
+  /**
+   * Cross off a square on a monster card owned by the player
+   * @param sessionId Session ID of the player
+   * @param monsterId ID of the monster
+   * @param x X coordinate of the square
+   * @param y Y coordinate of the square
+   * @returns Result object with success status and message
+   */
+  crossMonsterSquare(sessionId: string, monsterId: string, x: number, y: number): { 
+    success: boolean; 
+    message?: string; 
+    error?: string; 
+    completed?: boolean;
+  } {
+    const player = this.players.get(sessionId);
+    if (!player) {
+      return { success: false, error: "Player not found" };
+    }
+
+    // Find the monster in activeMonsters
+    const monster = this.activeMonsters.find(m => m.id === monsterId);
+    if (!monster) {
+      return { success: false, error: "Monster not found" };
+    }
+
+    // Check if player owns the monster
+    if (monster.playerOwnerId !== sessionId) {
+      return { success: false, error: "You don't own this monster" };
+    }
+
+    // Check if player has an active card
+    const activeCardId = this.activeCardPlayers.get(sessionId);
+    if (!activeCardId) {
+      return { success: false, error: "You need an active card to cross monster squares" };
+    }
+
+    // Get the square
+    const square = monster.getSquare(x, y);
+    if (!square) {
+      return { success: false, error: "Invalid coordinates" };
+    }
+
+    // Check if square is part of the monster pattern
+    if (!square.filled) {
+      return { success: false, error: "Cannot cross empty squares" };
+    }
+
+    // Check if square is already crossed
+    if (square.checked) {
+      return { success: false, error: "Square already crossed" };
+    }
+
+    // Cross the square
+    square.checked = true;
+
+    console.log(`Player ${sessionId} crossed square ${x},${y} on monster ${monster.name}`);
+
+    // Check if monster is completed
+    const completed = monster.isCompleted();
+    if (completed) {
+      console.log(`Player ${sessionId} completed monster ${monster.name}!`);
+      // TODO: Add scoring/rewards for completing monsters
+    }
+
+    return {
+      success: true,
+      message: `Crossed square on ${monster.name}! (${monster.getCrossedSquares()}/${monster.getTotalSquares()})`,
+      completed
+    };
+  }
+
+  /**
+   * Check if a room is blocked by an adjacent monster
+   * @param roomIndex Index of the room to check
+   * @returns True if the room is blocked by a monster
+   */
+  isRoomBlockedByMonster(roomIndex: number): boolean {
+    // Find any monster connected to this room
+    return this.activeMonsters.some(monster => 
+      monster.connectedToRoomIndex === roomIndex && monster.playerOwnerId === ""
+    );
+  }
+
+  /**
+   * Get all monsters owned by a player
+   * @param sessionId Session ID of the player
+   * @returns Array of monster cards owned by the player
+   */
+  getPlayerMonsters(sessionId: string): MonsterCard[] {
+    return this.activeMonsters.filter(monster => monster.playerOwnerId === sessionId);
+  }
+
+  /**
+   * Get all monsters connected to rooms (not owned by players)
+   * @returns Array of monster cards connected to rooms
+   */
+  getRoomMonsters(): Array<{ monster: MonsterCard, roomIndex: number }> {
+    return this.activeMonsters
+      .filter(monster => monster.connectedToRoomIndex !== -1 && monster.playerOwnerId === "")
+      .map(monster => ({ monster, roomIndex: monster.connectedToRoomIndex }));
   }
 }

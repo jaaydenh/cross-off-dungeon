@@ -47,19 +47,13 @@ describe("Card Playing System", () => {
       const player = room.state.players.get(client.sessionId)!;
       const cardId = player.drawnCards[0].id;
 
-      let playResult: any = null;
-      client.onMessage("playCardResult", (message) => {
-        playResult = message;
-      });
-
       // Send playCard message
       client.send("playCard", { cardId });
       await room.waitForNextPatch();
 
-      // Verify response
-      assert(playResult !== null);
-      assert.strictEqual(playResult.success, true);
-      assert(playResult.message?.includes("Activated card"));
+      // Re-fetch player reference and verify state changed (card activated)
+      const updatedPlayer = room.state.players.get(client.sessionId)!;
+      assert.strictEqual(updatedPlayer.drawnCards[0].isActive, true);
     });
   });
 
