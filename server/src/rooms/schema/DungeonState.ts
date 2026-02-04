@@ -299,86 +299,31 @@ export class DungeonState extends Schema {
 
   crossSquare(client: Client, data: any) {
     const player = this.players.get(client.sessionId);
+    if (!player) {
+      return { success: false, error: "Player not found" };
+    }
 
     // If a specific room index was provided, use that room instead of the current room
     const roomIndex = data.roomIndex !== undefined ? data.roomIndex : this.currentRoomIndex;
-    const room = this.rooms[roomIndex];
-
-    if (!client.sessionId || !room) {
-      return { success: false, error: "Invalid client or room" };
+    if (!client.sessionId) {
+      return { success: false, error: "Invalid client" };
     }
 
     const { x, y } = data;
 
-    // Check if player has an active card - if so, route to card-based selection
+    // Always require an active card; actual crossing happens on confirm.
     const activeCardId = this.activeCardPlayers.get(client.sessionId);
-    if (activeCardId) {
-      // Do not allow mixing monster + room selections in a single card action.
-      const existing = this.parseSelections(this.selectedSquares.get(client.sessionId) || "");
-      if (existing.some((s) => s.kind === "monster")) {
-        return { success: false, error: "Cannot mix monster and room selections in the same card action", invalidSquare: true };
-      }
-      return this.selectSquareForCard(client.sessionId, roomIndex, x, y);
+    if (!activeCardId) {
+      return { success: false, error: "You need an active card to cross squares" };
     }
 
-    // Check if the room is blocked by a monster
-    if (this.isRoomBlockedByMonster(roomIndex)) {
-      return { success: false, error: "Cannot cross squares in rooms with adjacent monsters. Claim the monster first!" };
+    // Do not allow mixing monster + room selections in a single card action.
+    const existing = this.parseSelections(this.selectedSquares.get(client.sessionId) || "");
+    if (existing.some((s) => s.kind === "monster")) {
+      return { success: false, error: "Cannot mix monster and room selections in the same card action", invalidSquare: true };
     }
 
-    // Check if the coordinates are valid for the specified room
-    if (!room.isValidPosition(x, y)) {
-      return { success: false, error: "Invalid coordinates" };
-    }
-
-    const square = room.getSquare(x, y);
-
-    // Only allow crossing squares that are not walls
-    if (!square || square.wall) {
-      return { success: false, error: "Cannot cross wall squares" };
-    }
-
-    // Check if this is an exit square
-    if (square.exit) {
-      // Find which exit was clicked
-      let exitIndex = -1;
-      for (let i = 0; i < room.exitX.length; i++) {
-        if (room.exitX[i] === x && room.exitY[i] === y) {
-          exitIndex = i;
-          break;
-        }
-      }
-
-      if (exitIndex !== -1) {
-        // Validate exit navigation using NavigationValidator
-        const canNavigate = this.navigationValidator.canNavigateToExit(room, exitIndex);
-
-        if (!canNavigate) {
-          return {
-            success: false,
-            error: "Cannot navigate through exit: no crossed squares orthogonally adjacent to exit"
-          };
-        }
-
-        // Navigation is valid - cross the square and process exit
-        square.checked = true;
-        console.log(player?.name, "crosses exit square", x, y, "in room", roomIndex);
-
-        // Get the direction of the exit
-        const exitDirection = room.exitDirections[exitIndex];
-
-        // Add a new room in that direction (works for any room index now)
-        this.addNewRoomFromExit(roomIndex, exitDirection, exitIndex);
-
-        return { success: true, message: "Exit navigation successful" };
-      }
-    }
-
-    // Regular square crossing (not an exit)
-    square.checked = true;
-    console.log(player?.name, "crosses square", x, y, "in room", roomIndex);
-
-    return { success: true, message: "Square crossed successfully" };
+    return this.selectSquareForCard(client.sessionId, roomIndex, x, y);
   }
 
   // Helper method to check if coordinates are adjacent to entrance or exit
