@@ -20,6 +20,8 @@ export default function TurnControls({ player, gameState, room }: TurnControlsPr
     playerName: player?.name
   });
 
+  const hasActiveCard = player?.drawnCards?.some(card => card.isActive) || false;
+
   const handleEndTurn = () => {
     if (room && player) {
       console.log('Ending turn for player:', player.name);
@@ -38,12 +40,20 @@ export default function TurnControls({ player, gameState, room }: TurnControlsPr
         <div className="text-center">
           
           {player.turnStatus === 'playing_turn' && gameState.turnInProgress ? (
-            <button
-              onClick={handleEndTurn}
-              className="turn-button text-white font-bold py-3 px-8 rounded-lg text-xl"
-            >
-            END TURN
-            </button>
+            <div className="space-y-2">
+              <button
+                onClick={handleEndTurn}
+                disabled={hasActiveCard}
+                className={`turn-button text-white font-bold py-3 px-8 rounded-lg text-xl ${hasActiveCard ? 'opacity-60 cursor-not-allowed' : ''}`}
+              >
+                END TURN
+              </button>
+              {hasActiveCard && (
+                <div className="text-yellow-200 font-bold text-sm">
+                  Confirm or cancel your card action first
+                </div>
+              )}
+            </div>
           ) : (
             <div className="text-yellow-200 font-bold text-lg">
               {player.turnStatus !== 'playing_turn' ? 'DRAW A CARD TO START YOUR TURN' : 'WAITING FOR TURN TO BEGIN'}

@@ -6,19 +6,39 @@ interface ConfirmMoveButtonProps {
   room: any; // Colyseus room instance
   selectedCount: number;
   isVisible: boolean;
+  isReady: boolean;
+  selectedSquares?: Array<{ roomIndex: number; x: number; y: number }>;
+  selectedMonsterSquares?: Array<{ monsterId: string; x: number; y: number }>;
 }
 
 const ConfirmMoveButton: React.FC<ConfirmMoveButtonProps> = ({
   player,
   room,
   selectedCount,
-  isVisible
+  isVisible,
+  isReady,
+  selectedSquares = [],
+  selectedMonsterSquares = []
 }) => {
   const handleConfirmMove = () => {
     if (!room || !player) return;
-    
-    // Send message to server to confirm/commit the card action
-    room.send('confirmCardAction', {});
+
+    const displayedRoomIndices = room?.state?.displayedRoomIndices;
+    const currentRoomIndex = room?.state?.currentRoomIndex;
+
+    // Map UI display room indices -> server room indices at submit time.
+    const roomSquares = (selectedSquares || []).map((pos) => ({
+      roomIndex: displayedRoomIndices?.[pos.roomIndex] ?? currentRoomIndex ?? pos.roomIndex,
+      x: pos.x,
+      y: pos.y
+    }));
+
+    const payload: any = {};
+    if (roomSquares.length > 0) payload.roomSquares = roomSquares;
+    if ((selectedMonsterSquares || []).length > 0) payload.monsterSquares = selectedMonsterSquares;
+
+    // Send message to server to confirm/commit the card action (includes pending selections)
+    room.send('confirmCardAction', payload);
   };
 
   if (!isVisible || selectedCount === 0) {
@@ -28,9 +48,14 @@ const ConfirmMoveButton: React.FC<ConfirmMoveButtonProps> = ({
   return (
     <button
       onClick={handleConfirmMove}
-      className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all duration-200 transform border-2 border-green-400"
+      disabled={!isReady}
+      className={`text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all duration-200 transform border-2 ${
+        isReady
+          ? 'bg-green-600 hover:bg-green-700 border-green-400'
+          : 'bg-green-900/50 border-green-900 cursor-not-allowed opacity-60'
+      }`}
     >
-      Confirm Move ({selectedCount} square{selectedCount !== 1 ? 's' : ''})
+      Confirm Move ({selectedCount}/3)
     </button>
   );
 };

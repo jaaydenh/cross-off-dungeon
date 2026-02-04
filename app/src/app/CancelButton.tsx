@@ -7,12 +7,16 @@ interface CancelButtonProps {
   player: Player | null;
   room: Room | undefined;
   isVisible: boolean;
+  onCancel?: () => void;
 }
 
-export default function CancelButton({ player, room, isVisible }: CancelButtonProps) {
+export default function CancelButton({ player, room, isVisible, onCancel }: CancelButtonProps) {
   const handleCancelClick = () => {
     if (room) {
       room.send('cancelCardAction', {});
+    }
+    if (onCancel) {
+      onCancel();
     }
   };
 

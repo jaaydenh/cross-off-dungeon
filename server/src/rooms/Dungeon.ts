@@ -39,6 +39,15 @@ export class Dungeon extends Room<DungeonState> {
         return;
       }
 
+      // Prevent ending the turn while a card is still active.
+      if (this.state.activeCardPlayers.has(client.sessionId)) {
+        client.send("endTurnResult", {
+          success: false,
+          error: "Cannot end turn while a card is active. Confirm or cancel it first."
+        });
+        return;
+      }
+
       // Validate that the player can end their turn
       if (!this.state.canPlayerPerformAction(client.sessionId, "endTurn")) {
         client.send("endTurnResult", { 
@@ -103,8 +112,10 @@ export class Dungeon extends Room<DungeonState> {
     });
 
     this.onMessage("confirmCardAction", (client, message) => {
-      const result = this.state.confirmCardAction(client.sessionId);
-      client.send("confirmCardActionResult", result);
+      // Mutates state; clients will see updates via state patches.
+      // NOTE: Sending confirmCardActionResult has intermittently triggered msgpackr encoding
+      // RangeErrors in this project, so we intentionally do not respond here.
+      this.state.confirmCardAction(client.sessionId, message);
     });
 
     // Monster-related message handlers

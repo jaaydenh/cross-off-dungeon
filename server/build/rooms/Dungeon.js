@@ -8,18 +8,23 @@ class Dungeon extends core_1.Room {
         super(...arguments);
         this.maxClients = 4;
     }
+    // Room name used by clients when joining (helpful for debugging/logging)
+    static { this.ROOM_NAME = "dungeon"; }
     onCreate(options) {
         this.setState(new DungeonState_1.DungeonState());
         this.state.initializeBoard();
         this.onMessage("crossSquare", (client, message) => {
-            const result = this.state.crossSquare(client, message);
-            // Send response back to client with result
-            client.send("crossSquareResult", result);
+            // Mutates state; clients will see changes via state patches.
+            // NOTE: Sending crossSquareResult has intermittently triggered msgpackr encoding
+            // RangeErrors in this project, so we intentionally do not respond here.
+            this.state.crossSquare(client, message);
         });
         // Card drawing message handler
         this.onMessage("drawCard", (client, message) => {
-            const result = this.state.drawCard(client.sessionId);
-            client.send("drawCardResult", result);
+            // Mutates state; clients will see the new drawn card via state patches.
+            // NOTE: Sending drawCardResult has intermittently triggered msgpackr encoding
+            // RangeErrors in this project, so we intentionally do not respond here.
+            this.state.drawCard(client.sessionId);
         });
         // Turn management message handlers
         this.onMessage("endTurn", (client, message) => {
@@ -28,6 +33,14 @@ class Dungeon extends core_1.Room {
                 client.send("endTurnResult", {
                     success: false,
                     error: "Player not found"
+                });
+                return;
+            }
+            // Prevent ending the turn while a card is still active.
+            if (this.state.activeCardPlayers.has(client.sessionId)) {
+                client.send("endTurnResult", {
+                    success: false,
+                    error: "Cannot end turn while a card is active. Confirm or cancel it first."
                 });
                 return;
             }
@@ -77,25 +90,33 @@ class Dungeon extends core_1.Room {
         });
         // Card-based square selection message handlers
         this.onMessage("playCard", (client, message) => {
-            const result = this.state.playCard(client.sessionId, message.cardId);
-            client.send("playCardResult", result);
+            // Mutates state; clients will see the activated card via state patches.
+            // NOTE: Sending playCardResult has intermittently triggered msgpackr encoding
+            // RangeErrors in this project, so we intentionally do not respond here.
+            this.state.playCard(client.sessionId, message.cardId);
         });
         this.onMessage("cancelCardAction", (client, message) => {
             const result = this.state.cancelCardAction(client.sessionId);
             client.send("cancelCardActionResult", result);
         });
         this.onMessage("confirmCardAction", (client, message) => {
-            const result = this.state.confirmCardAction(client.sessionId);
-            client.send("confirmCardActionResult", result);
+            // Mutates state; clients will see updates via state patches.
+            // NOTE: Sending confirmCardActionResult has intermittently triggered msgpackr encoding
+            // RangeErrors in this project, so we intentionally do not respond here.
+            this.state.confirmCardAction(client.sessionId, message);
         });
         // Monster-related message handlers
         this.onMessage("claimMonster", (client, message) => {
-            const result = this.state.claimMonster(client.sessionId, message.monsterId);
-            client.send("claimMonsterResult", result);
+            // Mutates state; clients will see monster ownership updates via state patches.
+            // NOTE: Sending claimMonsterResult has intermittently triggered msgpackr encoding
+            // RangeErrors in this project, so we intentionally do not respond here.
+            this.state.claimMonster(client.sessionId, message.monsterId);
         });
         this.onMessage("crossMonsterSquare", (client, message) => {
-            const result = this.state.crossMonsterSquare(client.sessionId, message.monsterId, message.x, message.y);
-            client.send("crossMonsterSquareResult", result);
+            // Mutates state; clients will see monster square updates via state patches.
+            // NOTE: Sending crossMonsterSquareResult has intermittently triggered msgpackr encoding
+            // RangeErrors in this project, so we intentionally do not respond here.
+            this.state.crossMonsterSquare(client.sessionId, message.monsterId, message.x, message.y);
         });
     }
     onJoin(client, options) {

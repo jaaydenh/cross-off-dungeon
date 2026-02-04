@@ -8,25 +8,27 @@ import MonsterCard from './MonsterCard';
 import { useState } from 'react';
 
 interface PlayerMonstersProps {
-  gameState: DungeonState;
+  gameState: DungeonState | null;
   currentPlayer: Player | null;
   colyseusRoom: Room | null;
   isMonsterBeingDragged?: boolean;
+  selectedMonsterSquares?: Array<{ monsterId: string; x: number; y: number }>;
+  onMonsterSquareClick?: (monsterId: string, x: number, y: number) => void;
+  onMonsterDrop?: () => void;
 }
 
 export default function PlayerMonsters({
   gameState,
   currentPlayer,
   colyseusRoom,
-  isMonsterBeingDragged = false
+  isMonsterBeingDragged = false,
+  selectedMonsterSquares = [],
+  onMonsterSquareClick,
+  onMonsterDrop
 }: PlayerMonstersProps) {
   const [isDragOver, setIsDragOver] = useState(false);
 
-  const handleMonsterSquareClick = (monsterId: string, x: number, y: number) => {
-    if (!colyseusRoom) return;
-    
-    colyseusRoom.send('crossMonsterSquare', { monsterId, x, y });
-  };
+  const hasActiveCard = currentPlayer?.drawnCards?.some(card => card.isActive) || false;
 
   const getPlayerMonsters = (): MonsterCardType[] => {
     if (!gameState?.activeMonsters || !currentPlayer) return [];
@@ -62,6 +64,7 @@ export default function PlayerMonsters({
         if (colyseusRoom) {
           colyseusRoom.send('claimMonster', { monsterId: data.monsterId });
         }
+        onMonsterDrop?.();
       }
     } catch (error) {
       console.error('Error handling drop:', error);
@@ -72,6 +75,7 @@ export default function PlayerMonsters({
 
   const hasMonsters = playerMonsters.length > 0;
   const showDropZone = hasMonsters || isDragOver || isMonsterBeingDragged;
+  const showDragPrompt = isMonsterBeingDragged || isDragOver;
 
   console.log('PlayerMonsters: hasMonsters:', hasMonsters, 'isDragOver:', isDragOver, 'isMonsterBeingDragged:', isMonsterBeingDragged, 'showDropZone:', showDropZone);
 
@@ -82,20 +86,19 @@ export default function PlayerMonsters({
   return (
     <div 
       className={`bg-slate-700 p-4 rounded flex-1 transition-all duration-300 ${
-        isDragOver ? 'ring-4 ring-blue-500 ring-opacity-50 bg-slate-600 shadow-lg' : ''
+        showDragPrompt ? 'ring-4 ring-blue-500 ring-opacity-50 bg-slate-600 shadow-lg' : ''
       }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="text-white text-sm font-bold mb-2 flex items-center gap-2">
-        <span>Your Monsters</span>
-        {isDragOver && (
-          <span className="text-blue-400 animate-pulse">Drop monster here!</span>
-        )}
-      </div>
+      {showDragPrompt && (
+        <div className="text-blue-400 text-sm font-bold mb-2 animate-pulse">
+          Drop monster here!
+        </div>
+      )}
       
-      {hasMonsters ? (
+  {hasMonsters ? (
         <div className="flex gap-4 flex-wrap">
           {playerMonsters.map(monster => (
             <MonsterCard
@@ -103,7 +106,11 @@ export default function PlayerMonsters({
               monster={monster}
               isOwnedByPlayer={true}
               canDrag={false}
-              onSquareClick={(x, y) => handleMonsterSquareClick(monster.id, x, y)}
+              canSelect={hasActiveCard}
+              selectedSquares={selectedMonsterSquares
+                .filter(pos => pos.monsterId === monster.id)
+                .map(pos => ({ x: pos.x, y: pos.y }))}
+              onSquareClick={onMonsterSquareClick ? (x, y) => onMonsterSquareClick(monster.id, x, y) : undefined}
               className="monster-owned"
             />
           ))}

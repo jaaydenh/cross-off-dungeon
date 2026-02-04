@@ -34,10 +34,50 @@ export default function Game() {
 
   // Card-based square selection state
   const [selectedSquares, setSelectedSquares] = useState<Array<{ roomIndex: number, x: number, y: number }>>([]);
+  const [selectedMonsterSquares, setSelectedMonsterSquares] = useState<Array<{ monsterId: string, x: number, y: number }>>([]);
   const [invalidSquareHighlight, setInvalidSquareHighlight] = useState<{ roomIndex: number, x: number, y: number } | null>(null);
   
   // Monster drag and drop state
   const [isMonsterBeingDragged, setIsMonsterBeingDragged] = useState(false);
+
+  const hasActiveCard = currentPlayer?.drawnCards?.some(card => card.isActive) || false;
+  const mapScrollRef = useRef<HTMLDivElement>(null);
+  const playerAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasActiveCard) {
+      setSelectedSquares([]);
+      setSelectedMonsterSquares([]);
+    }
+  }, [hasActiveCard]);
+
+  const canContinueMonsterSelection = (): boolean => {
+    if (!gameState || selectedMonsterSquares.length === 0) return false;
+    if (selectedMonsterSquares.length >= 3) return false;
+
+    const monsterId = selectedMonsterSquares[0]?.monsterId;
+    if (!monsterId) return false;
+    const monster = gameState.activeMonsters.find(m => m.id === monsterId);
+    if (!monster) return false;
+
+    const selectedSet = new Set(selectedMonsterSquares.map(pos => `${pos.x},${pos.y}`));
+    const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
+      (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
+
+    for (let y = 0; y < monster.height; y++) {
+      for (let x = 0; x < monster.width; x++) {
+        if (selectedSet.has(`${x},${y}`)) continue;
+        const square = monster.squares[y * monster.width + x];
+        if (!square || !square.filled || square.checked) continue;
+        const isConnected = selectedMonsterSquares.some(pos => isOrthAdjacent(x, y, pos.x, pos.y));
+        if (isConnected) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
 
   // Monster drag handlers
   const handleMonsterDragStart = () => {
@@ -64,46 +104,144 @@ export default function Game() {
       return;
     }
 
-    // Card-based multi-square selection mode
-    const actualRoomIndex = roomIndex !== undefined ? roomRef.current?.state.displayedRoomIndices[roomIndex] : roomRef.current?.state.currentRoomIndex;
+    // Prevent mixing monster + room selections in the same card action
+    if (selectedMonsterSquares.length > 0) {
+      console.log('Cannot select room squares while monster squares are selected');
+      return;
+    }
 
-    if (actualRoomIndex !== undefined) {
-      // Perform client-side validation before sending to server
-      const validationResult = validateSquareSelection(x, y, roomIndex || 0, actualRoomIndex);
+    // Card-based multi-square selection mode (client-side selection only; server commit happens on Confirm)
+    const displayRoomIndex = roomIndex !== undefined ? roomIndex : 0;
 
-      if (!validationResult.valid) {
-        // Show red highlight for invalid selection
-        setInvalidSquareHighlight({ roomIndex: roomIndex || 0, x, y });
+    // Perform client-side validation before allowing selection
+    const validationResult = validateSquareSelection(x, y, displayRoomIndex);
 
-        // Remove highlight after 500ms
-        setTimeout(() => {
-          setInvalidSquareHighlight(null);
-        }, 500);
+    if (!validationResult.valid) {
+      // Show red highlight for invalid selection
+      setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
 
-        console.log('Invalid square selection:', validationResult.reason);
+      // Remove highlight after 500ms
+      setTimeout(() => {
+        setInvalidSquareHighlight(null);
+      }, 500);
+
+      console.log('Invalid square selection:', validationResult.reason);
+      return;
+    }
+
+    // Valid selection - add to selected squares for visual feedback.
+    // NOTE: We do not send this to the server until the user clicks Confirm.
+    setSelectedSquares(prev => [...prev, { roomIndex: displayRoomIndex, x, y }]);
+  };
+
+  const handleMonsterSquareClick = (monsterId: string, x: number, y: number) => {
+    // Check if player has an active card
+    const hasActiveCard = currentPlayer?.drawnCards.some(card => card.isActive) || false;
+    if (!hasActiveCard) {
+      console.log('Cannot select monster squares without an active card');
+      return;
+    }
+
+    // Prevent mixing monster + room selections in the same card action
+    if (selectedSquares.length > 0) {
+      console.log('Cannot select monster squares while room squares are selected');
+      return;
+    }
+
+    // Max of 3 selections
+    if (selectedMonsterSquares.length >= 3) {
+      console.log('Maximum of 3 squares can be selected per card');
+      return;
+    }
+
+    // Enforce single-monster selection per card action
+    if (selectedMonsterSquares.length > 0 && selectedMonsterSquares.some(pos => pos.monsterId !== monsterId)) {
+      console.log('Cannot select squares from multiple monsters in the same card action');
+      return;
+    }
+
+    // Find the monster in state for validation
+    const monster = gameState?.activeMonsters?.find(m => m.id === monsterId);
+    if (!monster) {
+      console.log('Monster not found in state');
+      return;
+    }
+
+    // Cannot select already checked or empty squares
+    const idx = y * monster.width + x;
+    const square = monster.squares[idx];
+    if (!square || !square.filled || square.checked) {
+      console.log('Invalid monster square selection');
+      return;
+    }
+
+    // Check already selected
+    const alreadySelected = selectedMonsterSquares.some(pos => pos.monsterId === monsterId && pos.x === x && pos.y === y);
+    if (alreadySelected) {
+      console.log('Monster square already selected');
+      return;
+    }
+
+    const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
+      (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
+
+    // Starting square rule: if the monster already has crossed squares, the first selection
+    // must be orthogonally adjacent to an already-crossed square.
+    if (selectedMonsterSquares.length === 0) {
+      const hasAnyCrossed = monster.squares.some(s => s.filled && s.checked);
+      if (hasAnyCrossed) {
+        let adjacentToCrossed = false;
+        for (let checkY = 0; checkY < monster.height; checkY++) {
+          for (let checkX = 0; checkX < monster.width; checkX++) {
+            const checkSquare = monster.squares[checkY * monster.width + checkX];
+            if (checkSquare?.filled && checkSquare.checked && isOrthAdjacent(x, y, checkX, checkY)) {
+              adjacentToCrossed = true;
+              break;
+            }
+          }
+          if (adjacentToCrossed) break;
+        }
+
+        if (!adjacentToCrossed) {
+          console.log('First monster square must be adjacent to an already crossed square');
+          return;
+        }
+      }
+    }
+
+    // Connectivity: subsequent squares must be adjacent to previous selections on this monster
+    if (selectedMonsterSquares.length > 0) {
+      const isConnected = selectedMonsterSquares.some(pos =>
+        pos.monsterId === monsterId && isOrthAdjacent(x, y, pos.x, pos.y)
+      );
+      if (!isConnected) {
+        console.log('Monster square must be orthogonally connected to selected squares');
         return;
       }
-
-      // Valid selection - add to selected squares for visual feedback
-      // Store with display room index for visual feedback, but send actualRoomIndex to server
-      setSelectedSquares(prev => [...prev, { roomIndex: roomIndex || 0, x, y }]);
-
-      // Send to server
-      roomRef.current?.send('crossSquare', {
-        x,
-        y,
-        roomIndex: actualRoomIndex
-      });
     }
+
+    // Add to local selection for highlight
+    setSelectedMonsterSquares(prev => [...prev, { monsterId, x, y }]);
   };
 
   // Client-side validation for card-based square selection
-  const validateSquareSelection = (x: number, y: number, displayRoomIndex: number, actualRoomIndex: number): { valid: boolean; reason?: string } => {
+  const validateSquareSelection = (x: number, y: number, displayRoomIndex: number): { valid: boolean; reason?: string } => {
     if (!displayedRooms[displayRoomIndex]) {
       return { valid: false, reason: 'Invalid room' };
     }
 
     const room = displayedRooms[displayRoomIndex].room;
+
+    // Disallow selecting room squares while an unclaimed monster is connected to this room.
+    const actualRoomIndex = gameState?.displayedRoomIndices?.[displayRoomIndex];
+    if (actualRoomIndex !== undefined && gameState?.activeMonsters) {
+      const isBlocked = gameState.activeMonsters.some(m =>
+        m.connectedToRoomIndex === actualRoomIndex && m.playerOwnerId === ""
+      );
+      if (isBlocked) {
+        return { valid: false, reason: 'Room is blocked by a monster. Claim it first!' };
+      }
+    }
 
     // Check if coordinates are valid
     if (x < 0 || x >= room.width || y < 0 || y >= room.height) {
@@ -122,9 +260,9 @@ export default function Game() {
       return { valid: false, reason: 'Square already crossed' };
     }
 
-    // Check if square is already selected (using actual room index for client-side tracking)
+    // Check if square is already selected
     const alreadySelected = selectedSquares.some(pos =>
-      pos.roomIndex === actualRoomIndex && pos.x === x && pos.y === y
+      pos.roomIndex === displayRoomIndex && pos.x === x && pos.y === y
     );
     if (alreadySelected) {
       return { valid: false, reason: 'Square already selected' };
@@ -137,7 +275,7 @@ export default function Game() {
 
     // Validate connectivity for non-first squares
     if (selectedSquares.length > 0) {
-      const isConnected = isSquareConnectedToSelection(actualRoomIndex, x, y, selectedSquares);
+      const isConnected = isSquareConnectedToSelection(displayRoomIndex, x, y, selectedSquares);
       if (!isConnected) {
         return { valid: false, reason: 'Square must be orthogonally connected to selected squares' };
       }
@@ -371,6 +509,7 @@ export default function Game() {
         if (message.success) {
           // Card action was successfully cancelled - clear selected squares
           setSelectedSquares([]);
+          setSelectedMonsterSquares([]);
         }
       });
 
@@ -381,6 +520,7 @@ export default function Game() {
         if (message.success && message.completed) {
           // Card action was successfully completed - clear selected squares
           setSelectedSquares([]);
+          setSelectedMonsterSquares([]);
         }
       });
 
@@ -445,7 +585,7 @@ export default function Game() {
       {inRoom && (
         <div className="flex h-screen w-full">
           {/* Left side panel for game information */}
-          <div className="w-64 flex flex-col bg-slate-800 p-4 overflow-y-auto border-r border-slate-700" >
+          <div className="w-64 flex flex-col bg-slate-800 p-4 overflow-y-auto border-r border-slate-700 h-[calc(100vh-20rem)]" >
             <span>
               <h2 className="text-xl font-bold mb-4">Players</h2>
               <ul className="space-y-2">
@@ -503,7 +643,7 @@ export default function Game() {
                 })}
               </ul>
             </span>
-            <div className='space-y-10'>
+            <div className="mt-auto pt-4 border-t border-slate-700">
               <TurnControls
                 player={currentPlayer}
                 gameState={gameState}
@@ -513,19 +653,29 @@ export default function Game() {
           </div>
 
           {/* Main content area for dungeon map */}
-          <div className="flex-1 bg-slate-900 overflow-auto relative" >
+          <div ref={mapScrollRef} className="flex-1 bg-slate-900 overflow-auto relative" >
             {/* Card Action Buttons - Fixed position at top center */}
             <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 flex gap-4">
               <ConfirmMoveButton
                 player={currentPlayer}
                 room={roomRef.current}
-                selectedCount={selectedSquares?.length || 0}
-                isVisible={currentPlayer?.drawnCards.some(card => card.isActive) && (selectedSquares?.length || 0) > 0}
+                selectedCount={(selectedSquares?.length || 0) + (selectedMonsterSquares?.length || 0)}
+                isVisible={currentPlayer?.drawnCards.some(card => card.isActive) && (((selectedSquares?.length || 0) + (selectedMonsterSquares?.length || 0)) > 0)}
+                isReady={
+                  (selectedSquares.length > 0 && selectedMonsterSquares.length === 0) ||
+                  (selectedMonsterSquares.length > 0 && selectedSquares.length === 0)
+                }
+                selectedSquares={selectedSquares}
+                selectedMonsterSquares={selectedMonsterSquares}
               />
               <CancelButton
                 player={currentPlayer}
                 room={roomRef.current}
                 isVisible={currentPlayer?.drawnCards.some(card => card.isActive)}
+                onCancel={() => {
+                  setSelectedSquares([]);
+                  setSelectedMonsterSquares([]);
+                }}
               />
             </div>
 
@@ -540,6 +690,8 @@ export default function Game() {
                 gameState={gameState}
                 onMonsterDragStart={handleMonsterDragStart}
                 onMonsterDragEnd={handleMonsterDragEnd}
+                scrollContainerRef={mapScrollRef}
+                bottomOverlayRef={playerAreaRef}
               />
             )}
 
@@ -547,22 +699,27 @@ export default function Game() {
           </div>
 
           {/* Bottom drawer for player's area */}
-          <div className="player-area fixed bottom-0 left-0 right-0 h-80 bg-slate-800 border-t border-slate-700 p-2 z-50">
-            <div className="flex gap-4 h-full">
-              <div className="bg-slate-700 p-4 rounded flex-1">
-                <div className="flex justify-start gap-6">
-                  <CardDeck player={currentPlayer} room={roomRef.current} />
-                  <DrawnCard player={currentPlayer} room={roomRef.current} key={updateCounter} />
-                  <DiscardPile player={currentPlayer} room={roomRef.current} />
+          <div ref={playerAreaRef} className="player-area fixed bottom-0 left-0 right-0 h-80 bg-slate-800 border-t border-slate-700 p-2 z-50">
+            <div className="flex flex-col h-full gap-2">
+              <div className="flex-1 flex gap-4 min-h-0">
+                <div className="bg-slate-700 p-4 rounded flex-1">
+                  <div className="flex justify-start gap-6">
+                    <CardDeck player={currentPlayer} room={roomRef.current} />
+                    <DrawnCard player={currentPlayer} room={roomRef.current} key={updateCounter} />
+                    <DiscardPile player={currentPlayer} room={roomRef.current} />
+                  </div>
                 </div>
+                {/* Always render PlayerMonsters so it can respond to drag state */}
+                <PlayerMonsters
+                  gameState={gameState}
+                  currentPlayer={currentPlayer}
+                  colyseusRoom={roomRef.current}
+                  isMonsterBeingDragged={isMonsterBeingDragged}
+                  onMonsterDrop={() => setIsMonsterBeingDragged(false)}
+                  selectedMonsterSquares={selectedMonsterSquares}
+                  onMonsterSquareClick={handleMonsterSquareClick}
+                />
               </div>
-              {/* Always render PlayerMonsters so it can respond to drag state */}
-              <PlayerMonsters
-                gameState={gameState}
-                currentPlayer={currentPlayer}
-                colyseusRoom={roomRef.current}
-                isMonsterBeingDragged={isMonsterBeingDragged}
-              />
             </div>
           </div>
         </div>

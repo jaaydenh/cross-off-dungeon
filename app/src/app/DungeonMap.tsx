@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import Grid from './grid';
 import { Room } from '@/types/Room';
 import { Player } from '@/types/Player';
@@ -20,6 +20,8 @@ interface DungeonMapProps {
   gameState: DungeonState | null;
   onMonsterDragStart?: () => void;
   onMonsterDragEnd?: () => void;
+  scrollContainerRef?: React.RefObject<HTMLDivElement>;
+  bottomOverlayRef?: React.RefObject<HTMLElement>;
 }
 
 interface GridConnection {
@@ -41,11 +43,14 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
   selectedSquares,
   gameState,
   onMonsterDragStart,
-  onMonsterDragEnd
+  onMonsterDragEnd,
+  scrollContainerRef,
+  bottomOverlayRef
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [showDebug, setShowDebug] = useState(false);
+  const hasCenteredInitialRoom = useRef(false);
 
   // Calculate the bounds of the dungeon using actual grid coordinates from Room schema
   const calculateBounds = () => {
@@ -87,24 +92,21 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
     // Monster card width if present
     let monsterWidth = 0;
     if (monster) {
-      // Calculate monster card components:
-      // - Monster grid: monster.width * 42px
-      // - Card padding: p-3 = 24px total (12px each side)
-      // - Card border: border-2 = 4px total (2px each side)  
-      // - Monster grid container: p-1 = 8px total, border = 2px total
-      // - Minimum width: 200px (set in component)
-      // - Header content (emoji + name + progress): ~150px typical
-      // - Scale factor: scale-90 = 0.9 multiplier
-      
-      const monsterGridWidth = monster.width * 42;
-      const cardPadding = 24; // p-3
+      // In-room monster cards are scaled down without shrinking text.
+      const monsterScale = 0.7;
+      const squareSize = Math.round(40 * monsterScale);
+      const gridCellSize = squareSize + 2;
+      const monsterGridWidth = monster.width * gridCellSize;
+      const gridPadding = Math.round(4 * monsterScale);
+      const gridBorder = 2; // 1px each side
+      const cardPadding = Math.round(12 * monsterScale);
       const cardBorder = 4; // border-2
-      const gridContainerPadding = 10; // p-1 + border
-      const minContentWidth = Math.max(monsterGridWidth + gridContainerPadding, 200); // minWidth constraint
       const headerWidth = 150; // typical header content width
+      const minCardWidth = Math.max(120, Math.round(200 * monsterScale));
       
-      const fullCardWidth = Math.max(minContentWidth, headerWidth) + cardPadding + cardBorder;
-      monsterWidth = Math.ceil(fullCardWidth * 0.9) + 20; // Apply scale-90 + safety margin
+      const contentWidth = Math.max(monsterGridWidth + gridPadding * 2 + gridBorder, headerWidth);
+      const fullCardWidth = Math.max(minCardWidth, contentWidth + cardPadding * 2 + cardBorder);
+      monsterWidth = Math.ceil(fullCardWidth) + 8; // Safety margin
     }
     
     // Total width: room grid + gap + monster + container padding
@@ -148,6 +150,67 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
   // Calculate total dimensions needed for all rooms plus padding
   const totalWidth = gridWidth * (DEFAULT_MAX_ROOM_WIDTH + roomSpacing) + contentPadding.left + contentPadding.right;
   const totalHeight = gridHeight * (ROOM_HEIGHT + roomSpacing) + contentPadding.top + contentPadding.bottom;
+
+  const getMonsterForRoom = useCallback((roomIndex: number): MonsterCardType | null => {
+    if (!gameState?.activeMonsters) return null;
+
+    // Find the actual room index in the displayed rooms
+    const actualRoomIndex = gameState.displayedRoomIndices[roomIndex];
+
+    const monster = gameState.activeMonsters.find(monster =>
+      monster.connectedToRoomIndex === actualRoomIndex && monster.playerOwnerId === ""
+    );
+
+    return monster || null;
+  }, [gameState]);
+
+  // Center the first room in the viewport on initial display
+  useEffect(() => {
+    if (hasCenteredInitialRoom.current) return;
+    if (rooms.length === 0) return;
+    if (!containerRef.current) return;
+
+    const scrollContainer = scrollContainerRef?.current ?? containerRef.current.parentElement;
+    if (!scrollContainer) return;
+    if (bottomOverlayRef && !bottomOverlayRef.current) return;
+
+    const viewportWidth = scrollContainer.clientWidth;
+    const bottomOverlayHeight = bottomOverlayRef?.current?.offsetHeight ?? 0;
+    const viewportHeight = Math.max(0, scrollContainer.clientHeight - bottomOverlayHeight);
+    if (viewportWidth === 0 || viewportHeight === 0) return;
+
+    const firstRoom = rooms[0].room;
+    const normalizedX = firstRoom.gridX - minX;
+    const normalizedY = firstRoom.gridY - minY;
+    const firstMonster = getMonsterForRoom(0);
+    const roomWidth = calculateRoomWidth(firstRoom, firstMonster);
+
+    const posX = normalizedX * (DEFAULT_MAX_ROOM_WIDTH + roomSpacing) + contentPadding.left;
+    const posY = normalizedY * (ROOM_HEIGHT + roomSpacing) + contentPadding.top;
+
+    const targetLeft = posX + roomWidth / 2 - viewportWidth / 2;
+    const targetTop = posY + ROOM_HEIGHT / 2 - viewportHeight / 2;
+
+    const maxScrollLeft = Math.max(0, scrollContainer.scrollWidth - scrollContainer.clientWidth);
+    const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+
+    scrollContainer.scrollLeft = Math.min(Math.max(0, targetLeft), maxScrollLeft);
+    scrollContainer.scrollTop = Math.min(Math.max(0, targetTop), maxScrollTop);
+
+    hasCenteredInitialRoom.current = true;
+  }, [
+    rooms,
+    minX,
+    minY,
+    contentPadding.left,
+    contentPadding.top,
+    containerSize.width,
+    containerSize.height,
+    scrollContainerRef,
+    bottomOverlayRef,
+    getMonsterForRoom,
+    gameState
+  ]);
 
   // Detect connections between rooms with aligned exits
   const detectConnections = (): GridConnection[] => {
@@ -220,19 +283,6 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
   const handleMonsterSquareClick = (monsterId: string, x: number, y: number) => {
     if (!colyseusRoom) return;
     colyseusRoom.send('crossMonsterSquare', { monsterId, x, y });
-  };
-
-  const getMonsterForRoom = (roomIndex: number): MonsterCardType | null => {
-    if (!gameState?.activeMonsters) return null;
-    
-    // Find the actual room index in the displayed rooms
-    const actualRoomIndex = gameState.displayedRoomIndices[roomIndex];
-    
-    const monster = gameState.activeMonsters.find(monster => 
-      monster.connectedToRoomIndex === actualRoomIndex && monster.playerOwnerId === ""
-    );
-    
-    return monster || null;
   };
 
   const canPlayerDragMonster = (monster: MonsterCardType): boolean => {
@@ -354,7 +404,7 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
                       canDrag={canPlayerDragMonster(monster)}
                       onDragStart={onMonsterDragStart}
                       onDragEnd={onMonsterDragEnd}
-                      className="monster-in-room scale-90"
+                      className="monster-in-room"
                     />
                   </div>
                 )}
