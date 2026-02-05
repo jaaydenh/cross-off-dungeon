@@ -12,5 +12,12 @@ export class Card extends Schema {
     @type("string") public id!: string;
     @type("string") public type!: string;
     @type("string") public description!: string;
+    @type("string") public selectionTarget!: string;
+    @type("string") public selectionMode!: string;
+    @type("number") public minSelections!: number;
+    @type("number") public maxSelections!: number;
+    @type("boolean") public requiresConnected!: boolean;
+    @type("boolean") public requiresRoomStartAdjacency!: boolean;
+    @type("boolean") public requiresMonsterStartAdjacency!: boolean;
     @type("boolean") public isActive!: boolean;
 }

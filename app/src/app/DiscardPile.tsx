@@ -4,6 +4,7 @@ import { Player } from '@/types/Player';
 import { Card } from '@/types/Card';
 import { Room } from 'colyseus.js';
 import { useState, useEffect } from 'react';
+import CardFaceText from './CardFaceText';
 
 interface DiscardPileProps {
   player: Player | null;
@@ -73,18 +74,15 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
           card-discard relative w-24 h-32 border-2 rounded-lg transition-all duration-200
           ${discardCount === 0
             ? 'bg-gray-700 border-gray-600 opacity-50'
-            : 'bg-white border-gray-300 card-hover'
+            : 'bg-white border-gray-300 card-zoom'
           }
         `}
+        title={topCard?.description}
       >
         {topCard ? (
           <>
             {/* Face-up card content */}
-            <div className="mt-4 flex flex-col items-center justify-center text-black">
-              <div className="text-xs text-center leading-tight">
-                {topCard.description}
-              </div>
-            </div>
+            <CardFaceText text={topCard.description} className="text-black" />
 
             {/* Card count badge */}
             {discardCount > 1 && (

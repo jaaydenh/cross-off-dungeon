@@ -3,6 +3,21 @@ import { Dungeon } from "../src/rooms/Dungeon";
 import assert from "assert";
 import { describe, it, before, after, beforeEach } from "mocha";
 import appConfig from "../src/app.config";
+import { Card } from "../src/rooms/schema/Card";
+
+const makeConnectedRoomCard = (id: string) =>
+  new Card(
+    id,
+    "cross_connected_squares",
+    "Cross off up to 3 connected squares",
+    "room",
+    "squares",
+    1,
+    3,
+    true,
+    true,
+    false
+  );
 
 describe("Card-Based Square Selection System", () => {
   let colyseus: ColyseusTestServer;
@@ -15,6 +30,10 @@ describe("Card-Based Square Selection System", () => {
     it("should activate a drawn card for square selection", async () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
+
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeConnectedRoomCard("card_test_1"));
 
       // Draw a card first
       room.send(client, "drawCard", {});
@@ -57,6 +76,9 @@ describe("Card-Based Square Selection System", () => {
 
       // Manually add multiple cards to drawn cards to simulate having multiple cards
       const player = room.state.players.get(client.sessionId);
+      player!.deck.clear();
+      player!.deck.push(makeConnectedRoomCard("card_test_1"));
+      player!.deck.push(makeConnectedRoomCard("card_test_2"));
       
       // Draw a card first
       room.send(client, "drawCard", {});
@@ -87,6 +109,10 @@ describe("Card-Based Square Selection System", () => {
     it("should allow selecting valid starting square adjacent to entrance", async () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
+
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeConnectedRoomCard("card_test_1"));
 
       // Draw and activate card
       room.send(client, "drawCard", {});
@@ -125,6 +151,10 @@ describe("Card-Based Square Selection System", () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeConnectedRoomCard("card_test_1"));
+
       // Draw and activate card
       room.send(client, "drawCard", {});
       await room.waitForNextPatch();
@@ -150,6 +180,10 @@ describe("Card-Based Square Selection System", () => {
     it("should reject invalid starting square not adjacent to entrance or crossed square", async () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
+
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeConnectedRoomCard("card_test_1"));
 
       // Draw and activate card
       room.send(client, "drawCard", {});
@@ -194,6 +228,10 @@ describe("Card-Based Square Selection System", () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeConnectedRoomCard("card_test_1"));
+
       // Draw and activate card
       room.send(client, "drawCard", {});
       await room.waitForNextPatch();
@@ -226,6 +264,10 @@ describe("Card-Based Square Selection System", () => {
     it("should prevent selecting wall squares", async () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
+
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeConnectedRoomCard("card_test_1"));
 
       // Draw and activate card
       room.send(client, "drawCard", {});
@@ -263,6 +305,10 @@ describe("Card-Based Square Selection System", () => {
     it("should prevent selecting already crossed squares", async () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
+
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeConnectedRoomCard("card_test_1"));
 
       // Find a non-wall square and cross it first
       const currentRoom = room.state.getCurrentRoom()!;
@@ -303,6 +349,10 @@ describe("Card-Based Square Selection System", () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeConnectedRoomCard("card_test_1"));
+
       // Draw and activate card
       room.send(client, "drawCard", {});
       await room.waitForNextPatch();
@@ -340,8 +390,12 @@ describe("Card-Based Square Selection System", () => {
       // Select third square - this should complete the action
       const result = room.state.selectSquareForCard(client.sessionId, 0, squares[2].x, squares[2].y);
       
-      assert.strictEqual(result.success, true, "Should successfully complete card action");
-      assert.strictEqual(result.completed, true, "Should indicate action is completed");
+      assert.strictEqual(result.success, true, "Should successfully select the third square");
+      assert.strictEqual(result.completed, false, "Selection alone should not complete the action");
+
+      const confirm = room.state.confirmCardAction(client.sessionId);
+      assert.strictEqual(confirm.success, true, "Should successfully confirm card action");
+      assert.strictEqual(confirm.completed, true, "Should indicate action is completed");
 
       // Check card moved to discard pile
       assert.strictEqual(player!.drawnCards.length, initialDrawnCount - 1, "Card should be removed from drawn cards");
@@ -364,6 +418,10 @@ describe("Card-Based Square Selection System", () => {
     it("should cancel active card and clear selections", async () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
+
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeConnectedRoomCard("card_test_1"));
 
       // Draw and activate card
       room.send(client, "drawCard", {});
@@ -415,6 +473,10 @@ describe("Card-Based Square Selection System", () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeConnectedRoomCard("card_test_1"));
+
       // Draw and activate card
       room.send(client, "drawCard", {});
       await room.waitForNextPatch();
@@ -445,7 +507,7 @@ describe("Card-Based Square Selection System", () => {
       assert.strictEqual(square?.checked, false, "Square should not be crossed until card action completes");
     });
 
-    it("should use regular crossing when no card is active", async () => {
+    it("should reject crossing when no card is active", async () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
@@ -465,13 +527,14 @@ describe("Card-Based Square Selection System", () => {
         if (testX !== -1) break;
       }
 
-      // Click a square without active card - should use regular crossing
-      room.state.crossSquare(client as any, { x: testX, y: testY, roomIndex: 0 });
+      // Attempt to cross a square without an active card - should fail
+      const result = room.state.crossSquare(client as any, { x: testX, y: testY, roomIndex: 0 });
+      assert.strictEqual(result.success, false, "Should fail without an active card");
 
-      // Check that regular crossing occurred
+      // Check that the square was not crossed
       const updatedRoom = room.state.rooms[0];
       const square = updatedRoom.getSquare(testX, testY);
-      assert.strictEqual(square?.checked, true, "Square should be crossed immediately with regular crossing");
+      assert.strictEqual(square?.checked, false, "Square should not be crossed without an active card");
 
       // Check no card selection state
       const cardState = room.state.getCardSelectionState(client.sessionId);

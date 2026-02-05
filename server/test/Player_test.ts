@@ -3,31 +3,61 @@ import { describe, it } from "mocha";
 import { Player } from "../src/rooms/schema/Player";
 import { Card } from "../src/rooms/schema/Card";
 
+const makeCard = (id: string, type: string, description: string) =>
+  new Card(
+    id,
+    type,
+    description,
+    "room",
+    "squares",
+    1,
+    3,
+    false,
+    false,
+    false
+  );
+
 describe("Player Schema Extensions", () => {
   describe("Player Construction", () => {
     it("should create a player with correct initial properties", () => {
       const player = new Player("TestPlayer");
       
       assert.strictEqual(player.name, "TestPlayer");
-      assert.strictEqual(player.deck.length, 10);
+      assert.strictEqual(player.deck.length, 8);
       assert.strictEqual(player.drawnCards.length, 0);
       assert.strictEqual(player.discardPile.length, 0);
       assert.strictEqual(player.turnStatus, "not_started");
       assert.strictEqual(player.hasDrawnCard, false);
     });
 
-    it("should initialize deck with 10 cards", () => {
+    it("should initialize deck with 8 cards", () => {
       const player = new Player("TestPlayer");
       
-      assert.strictEqual(player.deck.length, 10);
-      
-      // Verify all cards are of correct type
+      assert.strictEqual(player.deck.length, 8);
+
+      const expectedTypes = new Set([
+        "cross_connected_squares",
+        "cross_any_two_room_or_monster",
+        "cross_two_connected_each_monster",
+        "cross_row_room"
+      ]);
+
+      const counts = new Map<string, number>();
       for (let i = 0; i < player.deck.length; i++) {
         const card = player.deck[i];
-        assert.strictEqual(card.type, "cross_connected_squares");
-        assert.strictEqual(card.description, "Cross any 3 connected squares");
+        assert(expectedTypes.has(card.type), `Unexpected card type: ${card.type}`);
+        counts.set(card.type, (counts.get(card.type) || 0) + 1);
+        assert.strictEqual(typeof card.description, "string");
+        assert(card.description.length > 0);
         assert.strictEqual(card.isActive, false);
         assert(card.id.startsWith("card_"));
+        assert.strictEqual(typeof card.selectionTarget, "string");
+        assert.strictEqual(typeof card.selectionMode, "string");
+      }
+
+      // Deck is 2 copies of each of the 4 starter card types
+      for (const type of expectedTypes) {
+        assert.strictEqual(counts.get(type), 2, `Expected 2 copies of ${type}`);
       }
     });
 
@@ -41,7 +71,7 @@ describe("Player Schema Extensions", () => {
         cardIds.add(cardId);
       }
       
-      assert.strictEqual(cardIds.size, 10);
+      assert.strictEqual(cardIds.size, 8);
     });
 
     it("should shuffle deck randomly", () => {
@@ -125,7 +155,7 @@ describe("Player Schema Extensions", () => {
   describe("Card Collections", () => {
     it("should allow adding cards to drawnCards", () => {
       const player = new Player("TestPlayer");
-      const card = new Card("test_card", "cross_connected_squares", "Test card");
+      const card = makeCard("test_card", "cross_connected_squares", "Test card");
       
       player.drawnCards.push(card);
       assert.strictEqual(player.drawnCards.length, 1);
@@ -134,7 +164,7 @@ describe("Player Schema Extensions", () => {
 
     it("should allow adding cards to discardPile", () => {
       const player = new Player("TestPlayer");
-      const card = new Card("test_card", "cross_connected_squares", "Test card");
+      const card = makeCard("test_card", "cross_connected_squares", "Test card");
       
       player.discardPile.push(card);
       assert.strictEqual(player.discardPile.length, 1);
@@ -156,11 +186,13 @@ describe("Player Schema Extensions", () => {
       // Move a card from deck to drawnCards
       const card = player.deck.shift();
       assert(card !== undefined);
+      const snapshot = { id: card!.id, type: card!.type, description: card!.description };
       player.drawnCards.push(card!);
       
       // Verify the card maintains its properties
-      assert.strictEqual(player.drawnCards[0].type, "cross_connected_squares");
-      assert.strictEqual(player.drawnCards[0].description, "Cross any 3 connected squares");
+      assert.strictEqual(player.drawnCards[0].id, snapshot.id);
+      assert.strictEqual(player.drawnCards[0].type, snapshot.type);
+      assert.strictEqual(player.drawnCards[0].description, snapshot.description);
       
       // Move card from drawnCards to discardPile
       const drawnCard = player.drawnCards.shift();
@@ -173,14 +205,14 @@ describe("Player Schema Extensions", () => {
   });
 
   describe("Deck Integrity", () => {
-    it("should contain exactly 10 cards with sequential IDs", () => {
+    it("should contain exactly 8 cards with sequential IDs", () => {
       const player = new Player("TestPlayer");
       
       // Collect all card IDs and sort them
       const cardIds = player.deck.map(card => card.id).sort();
       
-      // Verify we have cards 1-10
-      for (let i = 1; i <= 10; i++) {
+      // Verify we have cards 1-8
+      for (let i = 1; i <= 8; i++) {
         assert(cardIds.includes(`card_${i}`), `Missing card_${i}`);
       }
     });
@@ -205,9 +237,9 @@ describe("Player Schema Extensions", () => {
       if (card1) player.drawnCards.push(card1);
       if (card2) player.discardPile.push(card2);
       
-      // Verify total cards remain 10
+      // Verify total cards remain 8
       const totalCards = player.deck.length + player.drawnCards.length + player.discardPile.length;
-      assert.strictEqual(totalCards, 10);
+      assert.strictEqual(totalCards, 8);
       
       // Verify no duplicates across all collections
       const allCardIds = new Set();
@@ -217,7 +249,7 @@ describe("Player Schema Extensions", () => {
         allCardIds.add(card.id);
       });
       
-      assert.strictEqual(allCardIds.size, 10);
+      assert.strictEqual(allCardIds.size, 8);
     });
   });
 
@@ -225,7 +257,7 @@ describe("Player Schema Extensions", () => {
     it("should handle empty name", () => {
       const player = new Player("");
       assert.strictEqual(player.name, "");
-      assert.strictEqual(player.deck.length, 10); // Deck should still be initialized
+      assert.strictEqual(player.deck.length, 8); // Deck should still be initialized
     });
 
     it("should handle special characters in name", () => {

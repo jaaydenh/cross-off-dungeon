@@ -28,7 +28,13 @@ export default function PlayerMonsters({
 }: PlayerMonstersProps) {
   const [isDragOver, setIsDragOver] = useState(false);
 
-  const hasActiveCard = currentPlayer?.drawnCards?.some(card => card.isActive) || false;
+  const activeCard = currentPlayer?.drawnCards?.find((card) => card.isActive);
+  const canSelectMonsterSquares =
+    !!activeCard &&
+    activeCard.selectionMode === 'squares' &&
+    (activeCard.selectionTarget === 'monster' ||
+      activeCard.selectionTarget === 'room_or_monster' ||
+      activeCard.selectionTarget === 'monster_each');
 
   const getPlayerMonsters = (): MonsterCardType[] => {
     if (!gameState?.activeMonsters || !currentPlayer) return [];
@@ -106,7 +112,7 @@ export default function PlayerMonsters({
               monster={monster}
               isOwnedByPlayer={true}
               canDrag={false}
-              canSelect={hasActiveCard}
+              canSelect={canSelectMonsterSquares}
               selectedSquares={selectedMonsterSquares
                 .filter(pos => pos.monsterId === monster.id)
                 .map(pos => ({ x: pos.x, y: pos.y }))}

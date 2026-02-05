@@ -167,6 +167,18 @@ body {
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
   }
 
+  /* Zoom-on-hover for readable text cards (drawn/discard). */
+  .card-zoom {
+    transition: all 0.2s ease;
+    transform-origin: bottom center;
+  }
+
+  .card-zoom:hover {
+    transform: translateY(-8px) scale(1.5);
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.35);
+    z-index: 50;
+  }
+
   /* Cancel button animation */
   .cancel-button {
     animation: cancel-button-appear 0.3s ease-out;

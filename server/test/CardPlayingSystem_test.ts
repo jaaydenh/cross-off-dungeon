@@ -2,6 +2,21 @@ import assert from "assert";
 import { ColyseusTestServer, boot } from "@colyseus/testing";
 import { describe, it, before, after, beforeEach } from "mocha";
 import appConfig from "../src/app.config";
+import { Card } from "../src/rooms/schema/Card";
+
+const makeConnectedRoomCard = (id: string) =>
+  new Card(
+    id,
+    "cross_connected_squares",
+    "Cross off up to 3 connected squares",
+    "room",
+    "squares",
+    1,
+    3,
+    true,
+    true,
+    false
+  );
 
 describe("Card Playing System", () => {
   let colyseus: ColyseusTestServer;
@@ -15,10 +30,12 @@ describe("Card Playing System", () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
+      const player = room.state.players.get(client.sessionId)!;
+      player.deck.clear();
+      player.deck.push(makeConnectedRoomCard("card_test_1"));
+
       // Draw a card first
       room.state.drawCard(client.sessionId);
-
-      const player = room.state.players.get(client.sessionId)!;
       const cardId = player.drawnCards[0].id;
 
       // Activate the card
@@ -41,10 +58,12 @@ describe("Card Playing System", () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
+      const player = room.state.players.get(client.sessionId)!;
+      player.deck.clear();
+      player.deck.push(makeConnectedRoomCard("card_test_1"));
+
       // Draw a card first
       room.state.drawCard(client.sessionId);
-
-      const player = room.state.players.get(client.sessionId)!;
       const cardId = player.drawnCards[0].id;
 
       // Send playCard message
@@ -88,6 +107,9 @@ describe("Card Playing System", () => {
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       const player = room.state.players.get(client.sessionId)!;
+      player.deck.clear();
+      player.deck.push(makeConnectedRoomCard("card_test_1"));
+      player.deck.push(makeConnectedRoomCard("card_test_2"));
 
       // Draw a card and manually add another for testing
       room.state.drawCard(client.sessionId);
@@ -133,9 +155,12 @@ describe("Card Playing System", () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
+      const player = room.state.players.get(client.sessionId)!;
+      player.deck.clear();
+      player.deck.push(makeConnectedRoomCard("card_test_1"));
+
       // Draw and activate card
       room.state.drawCard(client.sessionId);
-      const player = room.state.players.get(client.sessionId)!;
       const cardId = player.drawnCards[0].id;
       room.state.playCard(client.sessionId, cardId);
 
@@ -158,9 +183,12 @@ describe("Card Playing System", () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
+      const player = room.state.players.get(client.sessionId)!;
+      player.deck.clear();
+      player.deck.push(makeConnectedRoomCard("card_test_1"));
+
       // Draw and activate card
       room.state.drawCard(client.sessionId);
-      const player = room.state.players.get(client.sessionId)!;
       const cardId = player.drawnCards[0].id;
       room.state.playCard(client.sessionId, cardId);
 
@@ -194,9 +222,12 @@ describe("Card Playing System", () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
+      const player = room.state.players.get(client.sessionId)!;
+      player.deck.clear();
+      player.deck.push(makeConnectedRoomCard("card_test_1"));
+
       // Draw and activate card
       room.state.drawCard(client.sessionId);
-      const player = room.state.players.get(client.sessionId)!;
       const cardId = player.drawnCards[0].id;
       room.state.playCard(client.sessionId, cardId);
 
@@ -230,9 +261,12 @@ describe("Card Playing System", () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
+      const player = room.state.players.get(client.sessionId)!;
+      player.deck.clear();
+      player.deck.push(makeConnectedRoomCard("card_test_1"));
+
       // Draw and activate card
       room.state.drawCard(client.sessionId);
-      const player = room.state.players.get(client.sessionId)!;
       const initialDrawnCount = player.drawnCards.length;
       const initialDiscardCount = player.discardPile.length;
       const cardId = player.drawnCards[0].id;
@@ -287,11 +321,15 @@ describe("Card Playing System", () => {
         room.state.selectSquareForCard(client.sessionId, 0, squares[0].x, squares[0].y);
         room.state.selectSquareForCard(client.sessionId, 0, squares[1].x, squares[1].y);
 
-        // Third selection should complete the action
+        // Select the third square then confirm to complete the action
         const result = room.state.selectSquareForCard(client.sessionId, 0, squares[2].x, squares[2].y);
 
         assert.strictEqual(result.success, true);
-        assert.strictEqual(result.completed, true);
+        assert.strictEqual(result.completed, false);
+
+        const confirm = room.state.confirmCardAction(client.sessionId);
+        assert.strictEqual(confirm.success, true);
+        assert.strictEqual(confirm.completed, true);
 
         // Check card moved to discard pile
         assert.strictEqual(player.drawnCards.length, initialDrawnCount - 1);
@@ -317,9 +355,12 @@ describe("Card Playing System", () => {
       const room = await colyseus.createRoom("dungeon", {});
       const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
+      const player = room.state.players.get(client.sessionId)!;
+      player.deck.clear();
+      player.deck.push(makeConnectedRoomCard("card_test_1"));
+
       // Draw and activate card
       room.state.drawCard(client.sessionId);
-      const player = room.state.players.get(client.sessionId)!;
       const originalCard = player.drawnCards[0];
       const cardId = originalCard.id;
 
@@ -347,8 +388,8 @@ describe("Card Playing System", () => {
       assert.strictEqual(player.discardPile.length, 1);
       const discardedCard = player.discardPile[0];
       assert.strictEqual(discardedCard.id, cardId);
-      assert.strictEqual(discardedCard.type, "cross_connected_squares");
-      assert.strictEqual(discardedCard.description, "Cross any 3 connected squares");
+      assert.strictEqual(discardedCard.type, originalCard.type);
+      assert.strictEqual(discardedCard.description, originalCard.description);
       assert.strictEqual(discardedCard.isActive, false);
     });
   });
@@ -359,12 +400,16 @@ describe("Card Playing System", () => {
       const client1 = await colyseus.connectTo(room, { name: "Player1" });
       const client2 = await colyseus.connectTo(room, { name: "Player2" });
 
+      const player1 = room.state.players.get(client1.sessionId)!;
+      const player2 = room.state.players.get(client2.sessionId)!;
+      player1.deck.clear();
+      player2.deck.clear();
+      player1.deck.push(makeConnectedRoomCard("card_p1"));
+      player2.deck.push(makeConnectedRoomCard("card_p2"));
+
       // Both players draw and activate cards
       room.state.drawCard(client1.sessionId);
       room.state.drawCard(client2.sessionId);
-
-      const player1 = room.state.players.get(client1.sessionId)!;
-      const player2 = room.state.players.get(client2.sessionId)!;
 
       const card1Id = player1.drawnCards[0].id;
       const card2Id = player2.drawnCards[0].id;
@@ -394,12 +439,16 @@ describe("Card Playing System", () => {
       const client1 = await colyseus.connectTo(room, { name: "Player1" });
       const client2 = await colyseus.connectTo(room, { name: "Player2" });
 
+      const player1 = room.state.players.get(client1.sessionId)!;
+      const player2 = room.state.players.get(client2.sessionId)!;
+      player1.deck.clear();
+      player2.deck.clear();
+      player1.deck.push(makeConnectedRoomCard("card_p1"));
+      player2.deck.push(makeConnectedRoomCard("card_p2"));
+
       // Both players draw and activate cards
       room.state.drawCard(client1.sessionId);
       room.state.drawCard(client2.sessionId);
-
-      const player1 = room.state.players.get(client1.sessionId)!;
-      const player2 = room.state.players.get(client2.sessionId)!;
 
       room.state.playCard(client1.sessionId, player1.drawnCards[0].id);
       room.state.playCard(client2.sessionId, player2.drawnCards[0].id);

@@ -18,7 +18,7 @@ describe("Card Drawing System", () => {
       const player = room.state.players.get(client.sessionId)!;
       
       // Verify initial state
-      assert.strictEqual(player.deck.length, 10);
+      assert.strictEqual(player.deck.length, 8);
       assert.strictEqual(player.drawnCards.length, 0);
       assert.strictEqual(player.hasDrawnCard, false);
       assert.strictEqual(player.turnStatus, "not_started");
@@ -31,7 +31,7 @@ describe("Card Drawing System", () => {
       assert(result.message?.includes("Drew card:"));
       
       // Verify state changes
-      assert.strictEqual(player.deck.length, 9);
+      assert.strictEqual(player.deck.length, 7);
       assert.strictEqual(player.drawnCards.length, 1);
       assert.strictEqual(player.hasDrawnCard, true);
       assert.strictEqual(player.turnStatus, "playing_turn");
@@ -85,7 +85,7 @@ describe("Card Drawing System", () => {
       assert(result2.error?.includes("Cannot draw card"));
       
       // Verify state hasn't changed
-      assert.strictEqual(player.deck.length, 9);
+      assert.strictEqual(player.deck.length, 7);
       assert.strictEqual(player.drawnCards.length, 1);
       assert.strictEqual(player.hasDrawnCard, true);
       assert.strictEqual(player.turnStatus, "playing_turn");
@@ -108,7 +108,7 @@ describe("Card Drawing System", () => {
       assert(result.error?.includes("Cannot draw card"));
       
       // Verify state hasn't changed
-      assert.strictEqual(player1.deck.length, 10);
+      assert.strictEqual(player1.deck.length, 8);
       assert.strictEqual(player1.drawnCards.length, 0);
       assert.strictEqual(player1.hasDrawnCard, false);
     });
@@ -190,8 +190,8 @@ describe("Card Drawing System", () => {
       assert.strictEqual(player2.drawnCards[0].id, player2TopCard);
       
       // Verify deck counts are independent
-      assert.strictEqual(player1.deck.length, 9);
-      assert.strictEqual(player2.deck.length, 9);
+      assert.strictEqual(player1.deck.length, 7);
+      assert.strictEqual(player2.deck.length, 7);
     });
   });
 
@@ -244,8 +244,17 @@ describe("Card Drawing System", () => {
       
       // Verify drawn card properties
       const drawnCard = player.drawnCards[0];
-      assert.strictEqual(drawnCard.type, "cross_connected_squares");
-      assert.strictEqual(drawnCard.description, "Cross any 3 connected squares");
+      const expectedTypes = new Set([
+        "cross_connected_squares",
+        "cross_any_two_room_or_monster",
+        "cross_two_connected_each_monster",
+        "cross_row_room"
+      ]);
+      assert(expectedTypes.has(drawnCard.type), `Unexpected type: ${drawnCard.type}`);
+      assert.strictEqual(typeof drawnCard.description, "string");
+      assert(drawnCard.description.length > 0);
+      assert.strictEqual(typeof drawnCard.selectionTarget, "string");
+      assert.strictEqual(typeof drawnCard.selectionMode, "string");
       assert.strictEqual(drawnCard.isActive, false);
       assert(drawnCard.id.startsWith("card_"));
     });
@@ -281,7 +290,7 @@ describe("Card Drawing System", () => {
       assert.strictEqual(result2.success, false);
       
       // Verify final state is consistent
-      assert.strictEqual(player.deck.length, 9);
+      assert.strictEqual(player.deck.length, 7);
       assert.strictEqual(player.drawnCards.length, 1);
       assert.strictEqual(player.hasDrawnCard, true);
     });

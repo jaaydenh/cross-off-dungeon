@@ -327,7 +327,7 @@ describe("Turn Management", () => {
       const player = room.state.players.get(client1.sessionId)!;
       
       // Verify initial state
-      assert.strictEqual(player.deck.length, 10);
+      assert.strictEqual(player.deck.length, 8);
       assert.strictEqual(player.drawnCards.length, 0);
       assert.strictEqual(player.hasDrawnCard, false);
       assert.strictEqual(player.turnStatus, "not_started");
@@ -340,7 +340,7 @@ describe("Turn Management", () => {
       assert(result.message?.includes("Drew card:"));
       
       // Verify state changes
-      assert.strictEqual(player.deck.length, 9);
+      assert.strictEqual(player.deck.length, 7);
       assert.strictEqual(player.drawnCards.length, 1);
       assert.strictEqual(player.hasDrawnCard, true);
       assert.strictEqual(player.turnStatus, "playing_turn");
@@ -348,8 +348,15 @@ describe("Turn Management", () => {
       // Verify the drawn card
       const drawnCard = player.drawnCards[0];
       assert(drawnCard !== undefined);
-      assert.strictEqual(drawnCard.type, "cross_connected_squares");
-      assert.strictEqual(drawnCard.description, "Cross any 3 connected squares");
+      const expectedTypes = new Set([
+        "cross_connected_squares",
+        "cross_any_two_room_or_monster",
+        "cross_two_connected_each_monster",
+        "cross_row_room"
+      ]);
+      assert(expectedTypes.has(drawnCard.type), `Unexpected type: ${drawnCard.type}`);
+      assert.strictEqual(typeof drawnCard.description, "string");
+      assert(drawnCard.description.length > 0);
       assert.strictEqual(drawnCard.isActive, false);
     });
 
@@ -369,7 +376,7 @@ describe("Turn Management", () => {
       assert(result2.error?.includes("Cannot draw card"));
       
       // Verify state hasn't changed
-      assert.strictEqual(player.deck.length, 9);
+      assert.strictEqual(player.deck.length, 7);
       assert.strictEqual(player.drawnCards.length, 1);
       assert.strictEqual(player.hasDrawnCard, true);
       assert.strictEqual(player.turnStatus, "playing_turn");
@@ -395,7 +402,7 @@ describe("Turn Management", () => {
       assert(result.error?.includes("Cannot draw card"));
       
       // Verify state hasn't changed
-      assert.strictEqual(player1.deck.length, 10);
+      assert.strictEqual(player1.deck.length, 8);
       assert.strictEqual(player1.drawnCards.length, 0);
       assert.strictEqual(player1.hasDrawnCard, false);
     });
@@ -443,7 +450,7 @@ describe("Turn Management", () => {
       await room.waitForNextPatch();
 
       // Verify state changes
-      assert.strictEqual(player.deck.length, 9);
+      assert.strictEqual(player.deck.length, 7);
       assert.strictEqual(player.drawnCards.length, 1);
       assert.strictEqual(player.hasDrawnCard, true);
       assert.strictEqual(player.turnStatus, "playing_turn");

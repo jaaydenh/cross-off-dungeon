@@ -2,6 +2,21 @@ import assert from "assert";
 import { ColyseusTestServer, boot } from "@colyseus/testing";
 import { describe, it, before, after, beforeEach } from "mocha";
 import appConfig from "../src/app.config";
+import { Card } from "../src/rooms/schema/Card";
+
+const makeConnectedRoomCard = (id: string) =>
+  new Card(
+    id,
+    "cross_connected_squares",
+    "Cross off up to 3 connected squares",
+    "room",
+    "squares",
+    1,
+    3,
+    true,
+    true,
+    false
+  );
 
 describe("Maximum Square Selection Limit", () => {
   let colyseus: ColyseusTestServer;
@@ -17,6 +32,10 @@ describe("Maximum Square Selection Limit", () => {
 
       // Wait for initial state
       await room.waitForNextPatch();
+
+      const playerSeed = room.state.players.get(client.sessionId)!;
+      playerSeed.deck.clear();
+      playerSeed.deck.push(makeConnectedRoomCard("card_test_1"));
 
       // Draw a card
       room.send(client, "drawCard", {});
@@ -108,15 +127,41 @@ describe("Maximum Square Selection Limit", () => {
           }
 
           if (thirdSquare) {
-            // Select third square - this should auto-complete due to 3-square limit
+            // Select third square (max allowed)
             const result3 = room.state.selectSquareForCard(client.sessionId, 0, thirdSquare.x, thirdSquare.y);
-            assert.strictEqual(result3.success, true, "Should successfully select third square and auto-complete");
-            assert.strictEqual(result3.completed, true, "Should auto-complete when 3rd square is selected");
+            assert.strictEqual(result3.success, true, "Should successfully select third square");
+            assert.strictEqual(result3.completed, false, "Selection should not complete until confirm");
 
-            // Verify card action is completed and no more selections are possible
+            // Verify no more selections are possible due to the limit
             const cardState = room.state.getCardSelectionState(client.sessionId);
-            assert.strictEqual(cardState.hasActiveCard, false, "Should no longer have active card after completion");
-            assert.strictEqual(cardState.selectedCount, 0, "Should have cleared selection count after completion");
+            assert.strictEqual(cardState.hasActiveCard, true, "Should still have an active card before confirm");
+            assert.strictEqual(cardState.selectedCount, 3, "Should have 3 selected squares");
+
+            // Find a valid fourth square (not a wall, not crossed, and not already selected)
+            let fourthSquare = null;
+            for (let x = 0; x < currentRoom.width; x++) {
+              for (let y = 0; y < currentRoom.height; y++) {
+                const square = currentRoom.getSquare(x, y);
+                if (!square || square.wall || square.checked) continue;
+                const isAlreadySelected =
+                  (x === firstSquare.x && y === firstSquare.y) ||
+                  (x === secondSquare.x && y === secondSquare.y) ||
+                  (x === thirdSquare.x && y === thirdSquare.y);
+                if (isAlreadySelected) continue;
+                fourthSquare = { x, y };
+                break;
+              }
+              if (fourthSquare) break;
+            }
+
+            if (fourthSquare) {
+              const result4 = room.state.selectSquareForCard(client.sessionId, 0, fourthSquare.x, fourthSquare.y);
+              assert.strictEqual(result4.success, false, "Should fail to select a 4th square");
+              assert.strictEqual(result4.invalidSquare, true);
+              assert.strictEqual(result4.error, "Maximum of 3 squares can be selected per card");
+            } else {
+              console.log("Skipping 4th square assertion - couldn't find an additional valid square");
+            }
           } else {
             console.log("Skipping max limit test - couldn't find third connected square");
           }
@@ -134,6 +179,10 @@ describe("Maximum Square Selection Limit", () => {
 
       // Wait for initial state
       await room.waitForNextPatch();
+
+      const playerSeed = room.state.players.get(client.sessionId)!;
+      playerSeed.deck.clear();
+      playerSeed.deck.push(makeConnectedRoomCard("card_test_1"));
 
       // Draw and play a card
       room.send(client, "drawCard", {});
@@ -171,11 +220,6 @@ describe("Maximum Square Selection Limit", () => {
         for (let i = 0; i < 3; i++) {
           const result = room.state.selectSquareForCard(client.sessionId, 0, squares[i].x, squares[i].y);
           assert.strictEqual(result.success, true);
-          
-          // Check the message for the 3rd square
-          if (i === 2) {
-            assert(result.message?.includes("Maximum reached"), "Should indicate maximum reached for 3rd square");
-          }
         }
 
         // Confirm the action
@@ -199,6 +243,10 @@ describe("Maximum Square Selection Limit", () => {
 
       // Wait for initial state
       await room.waitForNextPatch();
+
+      const playerSeed = room.state.players.get(client.sessionId)!;
+      playerSeed.deck.clear();
+      playerSeed.deck.push(makeConnectedRoomCard("card_test_1"));
 
       // Draw and play a card
       room.send(client, "drawCard", {});
@@ -259,6 +307,10 @@ describe("Maximum Square Selection Limit", () => {
 
       // Wait for initial state
       await room.waitForNextPatch();
+
+      const playerSeed = room.state.players.get(client.sessionId)!;
+      playerSeed.deck.clear();
+      playerSeed.deck.push(makeConnectedRoomCard("card_test_1"));
 
       // Draw and play a card
       room.send(client, "drawCard", {});

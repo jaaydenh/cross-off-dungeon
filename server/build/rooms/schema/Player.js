@@ -9,6 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Player = void 0;
 const schema_1 = require("@colyseus/schema");
 const Card_1 = require("./Card");
+const CardRegistry_1 = require("../cards/CardRegistry");
 class Player extends schema_1.Schema {
     constructor(name) {
         super();
@@ -23,21 +24,11 @@ class Player extends schema_1.Schema {
         this.discardPile = new schema_1.ArraySchema();
         this.turnStatus = "not_started";
         this.hasDrawnCard = false;
-        // Initialize shuffled deck of 10 cards
+        // Initialize shuffled deck of 8 cards (2x each starter card type)
         this.initializeDeck();
     }
     initializeDeck() {
-        // Create 10 cards of type "cross_connected_squares"
-        const cards = [];
-        for (let i = 1; i <= 10; i++) {
-            const card = new Card_1.Card(`card_${i}`, "cross_connected_squares", "Cross up to 3 connected squares");
-            cards.push(card);
-        }
-        // Shuffle the cards using Fisher-Yates algorithm
-        for (let i = cards.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [cards[i], cards[j]] = [cards[j], cards[i]];
-        }
+        const cards = (0, CardRegistry_1.createStarterDeck)();
         // Add shuffled cards to deck
         cards.forEach(card => this.deck.push(card));
     }

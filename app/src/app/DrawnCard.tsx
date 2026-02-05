@@ -4,6 +4,7 @@ import { Player } from '@/types/Player';
 import { Card } from '@/types/Card';
 import { Room } from 'colyseus.js';
 import { useState, useEffect } from 'react';
+import CardFaceText from './CardFaceText';
 
 interface DrawnCardProps {
   player: Player | null;
@@ -66,20 +67,17 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
       {/* Drawn Card */}
       <div
         className={`
-          relative w-20 h-28 bg-white border-2 rounded-lg card-hover
+          relative w-20 h-28 bg-white border-2 rounded-lg card-zoom
           ${drawnCard.isActive
             ? 'border-yellow-400 bg-yellow-100 shadow-lg shadow-yellow-400/50 cursor-not-allowed'
             : 'border-gray-300 cursor-pointer hover:border-blue-400'
           }
         `}
         onClick={handleCardClick}
+        title={drawnCard.description}
       >
         {/* Card content */}
-        <div className="mt-4 flex flex-col justify-between text-black">
-          <div className="text-xs text-center leading-tight px-1">
-            {drawnCard.description}
-          </div>
-        </div>
+        <CardFaceText text={drawnCard.description} className="text-black" />
 
         {/* Active state indicator */}
         {drawnCard.isActive && (

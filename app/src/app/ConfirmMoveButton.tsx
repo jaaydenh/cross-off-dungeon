@@ -20,6 +20,8 @@ const ConfirmMoveButton: React.FC<ConfirmMoveButtonProps> = ({
   selectedSquares = [],
   selectedMonsterSquares = []
 }) => {
+  const activeCard = player?.drawnCards?.find((c) => c.isActive);
+
   const handleConfirmMove = () => {
     if (!room || !player) return;
 
@@ -49,6 +51,14 @@ const ConfirmMoveButton: React.FC<ConfirmMoveButtonProps> = ({
     return null;
   }
 
+  const counterLabel = (() => {
+    if (!activeCard) return `${selectedCount}`;
+    if (activeCard.selectionTarget === 'monster_each') return `${selectedCount}`;
+    if (activeCard.selectionMode === 'row') return `${selectedCount}`;
+    if (activeCard.maxSelections && activeCard.maxSelections > 0) return `${selectedCount}/${activeCard.maxSelections}`;
+    return `${selectedCount}`;
+  })();
+
   return (
     <button
       onClick={handleConfirmMove}
@@ -59,7 +69,7 @@ const ConfirmMoveButton: React.FC<ConfirmMoveButtonProps> = ({
           : 'bg-green-900/50 border-green-900 cursor-not-allowed opacity-60'
       }`}
     >
-      Confirm Move ({selectedCount}/3)
+      Confirm Move ({counterLabel})
     </button>
   );
 };
