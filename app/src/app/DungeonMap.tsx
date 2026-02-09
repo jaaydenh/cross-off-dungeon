@@ -22,6 +22,7 @@ interface DungeonMapProps {
   onMonsterDragEnd?: () => void;
   scrollContainerRef?: React.RefObject<HTMLDivElement>;
   bottomOverlayRef?: React.RefObject<HTMLElement>;
+  horizontalPairPreviewEnabled?: boolean;
 }
 
 const ROOM_TILE_SIZE = 320;
@@ -66,7 +67,8 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
   onMonsterDragStart,
   onMonsterDragEnd,
   scrollContainerRef,
-  bottomOverlayRef
+  bottomOverlayRef,
+  horizontalPairPreviewEnabled = false
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -331,6 +333,7 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
                     selectedSquares={selectedSquares}
                     roomIndex={index}
                     cellSizePx={cellSizePx}
+                    horizontalPairPreviewEnabled={horizontalPairPreviewEnabled}
                   />
                 </div>
               </div>

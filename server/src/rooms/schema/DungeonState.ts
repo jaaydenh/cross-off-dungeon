@@ -878,6 +878,60 @@ export class DungeonState extends Schema {
     this.selectedSquareCount.delete(sessionId);
   }
 
+  private getExitIndexAtCoordinates(room: Room, x: number, y: number): number {
+    for (let i = 0; i < room.exitX.length; i++) {
+      if (room.exitX[i] === x && room.exitY[i] === y) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private crossRoomSquare(
+    sessionId: string,
+    roomIndex: number,
+    x: number,
+    y: number,
+    crossedExits: Array<{ roomIndex: number; exitIndex: number }>
+  ): void {
+    const room = this.rooms[roomIndex];
+    if (!room) return;
+
+    const square = room.getSquare(x, y);
+    if (!square) return;
+
+    square.checked = true;
+
+    if (!square.exit) {
+      console.log(`Crossed square ${x},${y} in room ${roomIndex} for player ${sessionId}`);
+      return;
+    }
+
+    const exitIndex = this.getExitIndexAtCoordinates(room, x, y);
+    if (exitIndex !== -1) {
+      crossedExits.push({ roomIndex, exitIndex });
+      console.log(`Crossed exit square ${x},${y} in room ${roomIndex} for player ${sessionId}`);
+      return;
+    }
+
+    console.log(`Crossed square ${x},${y} in room ${roomIndex} for player ${sessionId}`);
+  }
+
+  private resolveCrossedExits(crossedExits: Array<{ roomIndex: number; exitIndex: number }>): void {
+    const seenExits = new Set<string>();
+    for (const { roomIndex, exitIndex } of crossedExits) {
+      const key = `${roomIndex}:${exitIndex}`;
+      if (seenExits.has(key)) continue;
+      seenExits.add(key);
+
+      const room = this.rooms[roomIndex];
+      if (!room) continue;
+
+      const exitDirection = room.exitDirections[exitIndex];
+      this.addNewRoomFromExit(roomIndex, exitDirection, exitIndex);
+    }
+  }
+
   /**
    * Handle square selection during card-based play
    * @param sessionId Session ID of the player
@@ -940,6 +994,87 @@ export class DungeonState extends Schema {
     }
 
     const selectionMode = card.selectionMode || "squares";
+
+    if (selectionMode === "horizontal_pair_twice") {
+      const rightX = x + 1;
+      const rightY = y;
+
+      if (!room.isValidPosition(rightX, rightY)) {
+        return {
+          success: false,
+          error: "Horizontal pair must fully fit inside the room",
+          invalidSquare: true
+        };
+      }
+
+      const leftSquare = room.getSquare(x, y);
+      const rightSquare = room.getSquare(rightX, rightY);
+      if (!leftSquare || !rightSquare || leftSquare.wall || rightSquare.wall) {
+        return {
+          success: false,
+          error: "Cannot place horizontal pair on wall squares",
+          invalidSquare: true
+        };
+      }
+
+      if (leftSquare.checked || rightSquare.checked) {
+        return {
+          success: false,
+          error: "Cannot place horizontal pair on already crossed squares",
+          invalidSquare: true
+        };
+      }
+
+      const hasRequiredAdjacency =
+        this.isAdjacentToEntranceOrCrossedSquare(room, x, y) ||
+        this.isAdjacentToEntranceOrCrossedSquare(room, rightX, rightY);
+      if (!hasRequiredAdjacency) {
+        return {
+          success: false,
+          error: "At least one square in the pair must be adjacent to the entrance or an existing crossed square",
+          invalidSquare: true
+        };
+      }
+
+      const alreadySelected =
+        roomSelections.some((pos) => pos.roomIndex === roomIndex && pos.x === x && pos.y === y) ||
+        roomSelections.some((pos) => pos.roomIndex === roomIndex && pos.x === rightX && pos.y === rightY);
+      if (alreadySelected) {
+        return { success: false, error: "Square already selected", invalidSquare: true };
+      }
+
+      const pairSelections: Array<{ kind: "room"; roomIndex: number; x: number; y: number }> = [
+        { kind: "room", roomIndex, x, y },
+        { kind: "room", roomIndex, x: rightX, y: rightY }
+      ];
+
+      const crossedExits: Array<{ roomIndex: number; exitIndex: number }> = [];
+      for (const selection of pairSelections) {
+        this.crossRoomSquare(sessionId, selection.roomIndex, selection.x, selection.y, crossedExits);
+      }
+      this.resolveCrossedExits(crossedExits);
+
+      const updatedSelections = [...currentSelections, ...pairSelections];
+      this.setSelections(sessionId, updatedSelections);
+
+      const placementsCompleted = Math.floor(updatedSelections.length / 2);
+      if (placementsCompleted >= 2) {
+        const completed = this.completeCardAction(sessionId, []);
+        if (!completed.success) {
+          return completed;
+        }
+        return {
+          ...completed,
+          message: "Second horizontal pair crossed. Card action completed."
+        };
+      }
+
+      return {
+        success: true,
+        message: "First horizontal pair crossed. Place one more horizontal pair.",
+        completed: false
+      };
+    }
 
     if (selectionMode === "row") {
       if (square.checked) {
@@ -1056,6 +1191,28 @@ export class DungeonState extends Schema {
     return false;
   }
 
+  private isAdjacentToEntranceOrCrossedSquare(room: Room, x: number, y: number): boolean {
+    const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
+      (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
+
+    if (room.entranceX !== -1 && room.entranceY !== -1) {
+      if (isOrthAdjacent(x, y, room.entranceX, room.entranceY)) {
+        return true;
+      }
+    }
+
+    for (let checkY = 0; checkY < room.height; checkY++) {
+      for (let checkX = 0; checkX < room.width; checkX++) {
+        const square = room.getSquare(checkX, checkY);
+        if (square?.checked && isOrthAdjacent(x, y, checkX, checkY)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   /**
    * Check if a square is a valid starting position (entrance, adjacent to entrance, or adjacent to existing crossed square)
    */
@@ -1120,36 +1277,7 @@ export class DungeonState extends Schema {
     const crossedExits: Array<{ roomIndex: number; exitIndex: number }> = [];
     for (const sel of selectedSelections) {
       if (sel.kind === "room") {
-        const room = this.rooms[sel.roomIndex];
-        if (!room) continue;
-
-        const square = room.getSquare(sel.x, sel.y);
-        if (!square) continue;
-
-        // Cross square first.
-        // NOTE: Exit navigation validation depends on adjacent crossed squares. For multi-square
-        // card actions (e.g. row sweeps), adjacency may only become true after other squares in
-        // this same action are crossed. So we record crossed exits and process navigation after.
-        square.checked = true;
-
-        if (square.exit) {
-          let exitIndex = -1;
-          for (let i = 0; i < room.exitX.length; i++) {
-            if (room.exitX[i] === sel.x && room.exitY[i] === sel.y) {
-              exitIndex = i;
-              break;
-            }
-          }
-
-          if (exitIndex !== -1) {
-            crossedExits.push({ roomIndex: sel.roomIndex, exitIndex });
-            console.log(`Crossed exit square ${sel.x},${sel.y} in room ${sel.roomIndex} for player ${sessionId}`);
-          } else {
-            console.log(`Crossed square ${sel.x},${sel.y} in room ${sel.roomIndex} for player ${sessionId}`);
-          }
-        } else {
-          console.log(`Crossed square ${sel.x},${sel.y} in room ${sel.roomIndex} for player ${sessionId}`);
-        }
+        this.crossRoomSquare(sessionId, sel.roomIndex, sel.x, sel.y, crossedExits);
       } else {
         const monster = this.activeMonsters.find((m) => m.id === sel.monsterId);
         if (!monster) continue;
@@ -1175,18 +1303,7 @@ export class DungeonState extends Schema {
     // Process exit navigation after all squares have been crossed.
     // This ensures that exits included in multi-square moves (like row sweeps) open reliably,
     // even when the exit's adjacent squares are crossed within the same action.
-    const seenExits = new Set<string>();
-    for (const { roomIndex, exitIndex } of crossedExits) {
-      const key = `${roomIndex}:${exitIndex}`;
-      if (seenExits.has(key)) continue;
-      seenExits.add(key);
-
-      const room = this.rooms[roomIndex];
-      if (!room) continue;
-
-      const exitDirection = room.exitDirections[exitIndex];
-      this.addNewRoomFromExit(roomIndex, exitDirection, exitIndex);
-    }
+    this.resolveCrossedExits(crossedExits);
 
     // Move card to discard pile
     card.isActive = false;
@@ -1255,6 +1372,13 @@ export class DungeonState extends Schema {
     const card = this.getActiveCard(sessionId);
     if (!card) {
       return { success: false, error: "No active card to confirm" };
+    }
+
+    if ((card.selectionMode || "squares") === "horizontal_pair_twice") {
+      return {
+        success: false,
+        error: "This card resolves directly on board clicks and does not use confirm"
+      };
     }
 
     // If selections are provided at confirm-time, validate and stage them now.
@@ -1574,7 +1698,8 @@ export class DungeonState extends Schema {
       return { success: false, error: "Active card does not allow monster selection", invalidSquare: true };
     }
 
-    if ((card.selectionMode || "squares") !== "squares") {
+    const selectionMode = card.selectionMode || "squares";
+    if (selectionMode !== "squares" && selectionMode !== "horizontal_pair_twice") {
       return { success: false, error: "Active card does not allow selecting monster squares", invalidSquare: true };
     }
 
@@ -1591,6 +1716,61 @@ export class DungeonState extends Schema {
     const allowsMultiMonster = this.cardIsMonsterEach(card);
     if (!allowsMultiMonster && monsterSelections.length > 0 && monsterSelections.some((p) => p.monsterId !== monster.id)) {
       return { success: false, error: "Cannot select squares from multiple monsters in the same card action", invalidSquare: true };
+    }
+
+    if (selectionMode === "horizontal_pair_twice") {
+      const rightX = x + 1;
+      const rightY = y;
+
+      const leftSquare = monster.getSquare(x, y);
+      const rightSquare = monster.getSquare(rightX, rightY);
+      if (!leftSquare || !rightSquare) {
+        return { success: false, error: "Horizontal pair must fully fit inside the monster card", invalidSquare: true };
+      }
+
+      if (!leftSquare.filled || !rightSquare.filled) {
+        return { success: false, error: "Cannot place horizontal pair on empty monster squares", invalidSquare: true };
+      }
+
+      if (leftSquare.checked || rightSquare.checked) {
+        return { success: false, error: "Cannot place horizontal pair on already crossed monster squares", invalidSquare: true };
+      }
+
+      const alreadySelected =
+        monsterSelections.some((pos) => pos.monsterId === monster.id && pos.x === x && pos.y === y) ||
+        monsterSelections.some((pos) => pos.monsterId === monster.id && pos.x === rightX && pos.y === rightY);
+      if (alreadySelected) {
+        return { success: false, error: "Square already selected", invalidSquare: true };
+      }
+
+      leftSquare.checked = true;
+      rightSquare.checked = true;
+
+      const pairSelections: Array<{ kind: "monster"; monsterId: string; x: number; y: number }> = [
+        { kind: "monster", monsterId: monster.id, x, y },
+        { kind: "monster", monsterId: monster.id, x: rightX, y: rightY }
+      ];
+
+      const updatedSelections: Selection[] = [...currentSelections, ...pairSelections];
+      this.setSelections(sessionId, updatedSelections);
+
+      const placementsCompleted = Math.floor(updatedSelections.length / 2);
+      if (placementsCompleted >= 2) {
+        const completed = this.completeCardAction(sessionId, []);
+        if (!completed.success) {
+          return completed;
+        }
+        return {
+          ...completed,
+          message: "Second horizontal pair crossed. Card action completed."
+        };
+      }
+
+      return {
+        success: true,
+        message: "First horizontal pair crossed. Place one more horizontal pair.",
+        completed: false
+      };
     }
 
     const square = monster.getSquare(x, y);

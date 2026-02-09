@@ -1,7 +1,7 @@
 import { Card } from "../schema/Card";
 
 export type CardSelectionTarget = "room" | "monster" | "room_or_monster" | "monster_each";
-export type CardSelectionMode = "squares" | "row";
+export type CardSelectionMode = "squares" | "row" | "horizontal_pair_twice";
 
 export type CardDefinition = {
   id: string;
@@ -70,6 +70,19 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
       minSelections: 1,
       connected: false,
       requireRoomStartAdjacency: true
+    }
+  },
+  {
+    id: "cross_two_horizontal_then_two_horizontal",
+    name: "Heroic Double Sweep",
+    description: "Cross off 2 horizontal squares, then 2 more horizontal squares",
+    selection: {
+      target: "room_or_monster",
+      mode: "horizontal_pair_twice",
+      minSelections: 4,
+      maxSelections: 4,
+      connected: false,
+      requireRoomStartAdjacency: false
     }
   }
 ];

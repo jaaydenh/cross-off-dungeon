@@ -168,6 +168,54 @@ export default function Game() {
       return;
     }
 
+    if (activeCard.selectionMode === 'horizontal_pair_twice') {
+      const rightX = x + 1;
+      if (
+        x < 0 ||
+        x >= room.width ||
+        y < 0 ||
+        y >= room.height ||
+        rightX >= room.width
+      ) {
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        return;
+      }
+
+      const leftSquare = room.squares[y * room.width + x];
+      const rightSquare = room.squares[y * room.width + rightX];
+      if (
+        !leftSquare ||
+        !rightSquare ||
+        leftSquare.wall ||
+        rightSquare.wall ||
+        leftSquare.checked ||
+        rightSquare.checked
+      ) {
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        return;
+      }
+
+      const hasRequiredAdjacency =
+        isAdjacentToEntranceOrCrossedSquare(room, x, y) ||
+        isAdjacentToEntranceOrCrossedSquare(room, rightX, y);
+      if (!hasRequiredAdjacency) {
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        return;
+      }
+
+      if (roomRef.current) {
+        roomRef.current.send('crossSquare', {
+          roomIndex: serverRoomIndex ?? displayRoomIndex,
+          x,
+          y
+        });
+      }
+      return;
+    }
+
     // Row-selection mode (cross off all horizontal squares in a row)
     if (activeCard.selectionMode === 'row') {
       if (x < 0 || x >= room.width || y < 0 || y >= room.height) {
@@ -271,6 +319,29 @@ export default function Game() {
     const monster = gameState?.activeMonsters?.find(m => m.id === monsterId);
     if (!monster) {
       console.log('Monster not found in state');
+      return;
+    }
+
+    if (activeCard.selectionMode === 'horizontal_pair_twice') {
+      const rightX = x + 1;
+      const leftSquare = monster.squares[y * monster.width + x];
+      const rightSquare = monster.squares[y * monster.width + rightX];
+
+      if (
+        !leftSquare ||
+        !rightSquare ||
+        !leftSquare.filled ||
+        !rightSquare.filled ||
+        leftSquare.checked ||
+        rightSquare.checked
+      ) {
+        console.log('Invalid monster horizontal pair placement');
+        return;
+      }
+
+      if (roomRef.current) {
+        roomRef.current.send('crossMonsterSquare', { monsterId, x, y });
+      }
       return;
     }
 
@@ -427,6 +498,28 @@ export default function Game() {
 
         // Orthogonally adjacent means exactly one coordinate differs by 1
         if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
+  const isAdjacentToEntranceOrCrossedSquare = (room: DungeonRoom, x: number, y: number): boolean => {
+    const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
+      (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
+
+    if (room.entranceX !== -1 && room.entranceY !== -1) {
+      if (isOrthAdjacent(x, y, room.entranceX, room.entranceY)) {
+        return true;
+      }
+    }
+
+    for (let checkX = 0; checkX < room.width; checkX++) {
+      for (let checkY = 0; checkY < room.height; checkY++) {
+        const square = room.squares[checkY * room.width + checkX];
+        if (square?.checked && isOrthAdjacent(x, y, checkX, checkY)) {
           return true;
         }
       }
@@ -879,6 +972,7 @@ export default function Game() {
                 onMonsterDragEnd={handleMonsterDragEnd}
                 scrollContainerRef={mapScrollRef}
                 bottomOverlayRef={playerAreaRef}
+                horizontalPairPreviewEnabled={activeCard?.selectionMode === 'horizontal_pair_twice'}
               />
             )}
 

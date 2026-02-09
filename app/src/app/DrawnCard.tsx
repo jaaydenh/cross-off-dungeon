@@ -4,7 +4,7 @@ import { Player } from '@/types/Player';
 import { Card } from '@/types/Card';
 import { Room } from 'colyseus.js';
 import { useState, useEffect } from 'react';
-import CardFaceText from './CardFaceText';
+import CardFaceContent from './CardFaceContent';
 
 interface DrawnCardProps {
   player: Player | null;
@@ -77,7 +77,7 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
         title={drawnCard.description}
       >
         {/* Card content */}
-        <CardFaceText text={drawnCard.description} className="text-black" />
+        <CardFaceContent type={drawnCard.type} description={drawnCard.description} />
 
         {/* Active state indicator */}
         {drawnCard.isActive && (

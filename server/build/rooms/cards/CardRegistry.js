@@ -55,6 +55,19 @@ exports.CARD_DEFINITIONS = [
             connected: false,
             requireRoomStartAdjacency: true
         }
+    },
+    {
+        id: "cross_two_horizontal_then_two_horizontal",
+        name: "Heroic Double Sweep",
+        description: "Cross off 2 horizontal squares, then 2 more horizontal squares",
+        selection: {
+            target: "room_or_monster",
+            mode: "horizontal_pair_twice",
+            minSelections: 4,
+            maxSelections: 4,
+            connected: false,
+            requireRoomStartAdjacency: false
+        }
     }
 ];
 const CARD_DEFINITIONS_BY_ID = new Map(exports.CARD_DEFINITIONS.map((card) => [card.id, card]));

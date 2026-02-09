@@ -61,15 +61,14 @@ export default function CardFaceText({
   return (
     <div
       ref={containerRef}
-      className={`absolute inset-0 rounded-lg overflow-hidden flex items-center justify-center p-2 ${className}`}
+      className={`h-full w-full overflow-hidden flex items-center justify-center p-2 ${className}`}
     >
       <div
         ref={textRef}
-        className="text-center text-balance break-normal [overflow-wrap:normal] [word-break:keep-all]"
+        className="text-center break-normal whitespace-normal [overflow-wrap:normal] [word-break:keep-all]"
       >
         {text}
       </div>
     </div>
   );
 }
-

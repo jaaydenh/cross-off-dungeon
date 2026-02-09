@@ -2,7 +2,7 @@
 
 import { MonsterCard as MonsterCardType } from '@/types/MonsterCard';
 import { MonsterSquare } from '@/types/MonsterSquare';
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 interface MonsterCardProps {
   monster: MonsterCardType;
@@ -16,6 +16,7 @@ interface MonsterCardProps {
   position?: { x: number; y: number };
   className?: string;
   selectedSquares?: Array<{ x: number; y: number }>;
+  horizontalPairPreviewEnabled?: boolean;
 }
 
 export default function MonsterCard({
@@ -29,26 +30,55 @@ export default function MonsterCard({
   onDrop,
   position,
   className = '',
-  selectedSquares = []
+  selectedSquares = [],
+  horizontalPairPreviewEnabled = false
 }: MonsterCardProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [hoveredSquare, setHoveredSquare] = useState<{ x: number; y: number } | null>(null);
   const isInRoom = className.includes('monster-in-room');
   const isOwned = className.includes('monster-owned');
   const sizeScale = isInRoom ? 0.7 : isOwned ? 0.55 : 1;
   const squareSize = Math.round(40 * sizeScale);
-  const gridCellSize = squareSize + 2;
   const gridPadding = Math.round(4 * sizeScale);
   const cardPadding = Math.round(12 * sizeScale);
   const minWidth = Math.max(120, Math.round(200 * sizeScale));
   const hoverZoomClasses = isOwned ? 'hover:scale-125 hover:z-50 hover:shadow-2xl' : '';
+  const gridWidth = monster.width * squareSize;
+  const gridHeight = monster.height * squareSize;
 
   const isSelectedSquare = (x: number, y: number): boolean =>
     selectedSquares.some((p) => p.x === x && p.y === y);
-  
-  const getSquareAt = (x: number, y: number): MonsterSquare | null => {
+
+  const getSquareAt = useCallback((x: number, y: number): MonsterSquare | null => {
     const index = y * monster.width + x;
     return monster.squares[index] || null;
-  };
+  }, [monster]);
+
+  const previewCells = useMemo(() => {
+    if (!horizontalPairPreviewEnabled || !hoveredSquare) {
+      return { cells: [], invalid: false };
+    }
+
+    const rightX = hoveredSquare.x + 1;
+    const leftSquare = getSquareAt(hoveredSquare.x, hoveredSquare.y);
+    const rightSquare = getSquareAt(rightX, hoveredSquare.y);
+
+    const invalid =
+      !leftSquare ||
+      !rightSquare ||
+      !leftSquare.filled ||
+      !rightSquare.filled ||
+      leftSquare.checked ||
+      rightSquare.checked;
+
+    return {
+      cells: [
+        { x: hoveredSquare.x, y: hoveredSquare.y },
+        { x: rightX, y: hoveredSquare.y }
+      ],
+      invalid
+    };
+  }, [horizontalPairPreviewEnabled, hoveredSquare, getSquareAt]);
 
   const getTotalSquares = (): number => {
     return monster.squares.filter(square => square.filled).length;
@@ -149,40 +179,79 @@ export default function MonsterCard({
 
       {/* Monster Grid */}
       <div 
-        className="monster-grid bg-gray-700 border border-gray-500 rounded flex flex-wrap"
+        className="monster-grid relative inline-block bg-gray-700 border border-gray-500 rounded"
         style={{
-          width: `${monster.width * gridCellSize}px`,
           padding: `${gridPadding}px`
         }}
+        onMouseLeave={() => setHoveredSquare(null)}
       >
-        {Array.from({ length: monster.height }, (_, y) =>
-          Array.from({ length: monster.width }, (_, x) => {
-            const square = getSquareAt(x, y);
-            const isFilled = square?.filled || false;
-            const isChecked = square?.checked || false;
-            const isSelected = !isChecked && isSelectedSquare(x, y);
-            
-            return (
-              <div
-                key={`${x}-${y}`}
-                className={`
-                  monster-square aspect-square border border-gray-600 text-xs flex items-center justify-center
-                  ${isFilled ? 'bg-red-700' : 'bg-gray-800'}
-                  ${isChecked ? 'bg-green-600' : ''}
-                  ${isFilled && !isChecked && isOwnedByPlayer && canSelect ? 'hover:bg-red-600 cursor-pointer' : ''}
-                  ${!isFilled ? 'opacity-30' : ''}
-                `}
-                style={{
-                  width: `${squareSize}px`,
-                  height: `${squareSize}px`
-                }}
-                onClick={() => handleSquareClick(x, y)}
-              >
-                {(isChecked || isSelected) && 'X'}
-              </div>
-            );
-          })
-        )}
+        <div
+          className="relative grid"
+          style={{
+            gridTemplateColumns: `repeat(${monster.width}, ${squareSize}px)`,
+            gridTemplateRows: `repeat(${monster.height}, ${squareSize}px)`,
+            width: `${gridWidth}px`,
+            height: `${gridHeight}px`
+          }}
+        >
+          {Array.from({ length: monster.height }, (_, y) =>
+            Array.from({ length: monster.width }, (_, x) => {
+              const square = getSquareAt(x, y);
+              const isFilled = square?.filled || false;
+              const isChecked = square?.checked || false;
+              const isSelected = !isChecked && isSelectedSquare(x, y);
+
+              return (
+                <div
+                  key={`${x}-${y}`}
+                  className={`
+                    monster-square border border-gray-600 text-xs flex items-center justify-center
+                    ${isFilled ? 'bg-red-700' : 'bg-gray-800'}
+                    ${isChecked ? 'bg-green-600' : ''}
+                    ${isFilled && !isChecked && isOwnedByPlayer && canSelect ? 'hover:bg-red-600 cursor-pointer' : ''}
+                    ${!isFilled ? 'opacity-30' : ''}
+                  `}
+                  style={{
+                    width: `${squareSize}px`,
+                    height: `${squareSize}px`
+                  }}
+                  onMouseEnter={() => {
+                    if (horizontalPairPreviewEnabled) {
+                      setHoveredSquare({ x, y });
+                    }
+                  }}
+                  onClick={() => handleSquareClick(x, y)}
+                >
+                  {(isChecked || isSelected) && 'X'}
+                </div>
+              );
+            })
+          )}
+
+          {horizontalPairPreviewEnabled && previewCells.cells.length > 0 && (
+            <div className="pointer-events-none absolute inset-0 z-30">
+              {previewCells.cells
+                .filter((cell) => cell.x >= 0 && cell.x < monster.width && cell.y >= 0 && cell.y < monster.height)
+                .map((cell) => (
+                  <div
+                    key={`monster-preview-${monster.id}-${cell.x}-${cell.y}`}
+                    className={`absolute border-2 ${
+                      previewCells.invalid
+                        ? 'bg-red-500/45 border-red-300'
+                        : 'bg-sky-500/45 border-sky-300'
+                    }`}
+                    style={{
+                      left: `${cell.x * squareSize}px`,
+                      top: `${cell.y * squareSize}px`,
+                      width: `${squareSize}px`,
+                      height: `${squareSize}px`,
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Status Indicators */}

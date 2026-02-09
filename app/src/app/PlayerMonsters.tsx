@@ -31,10 +31,11 @@ export default function PlayerMonsters({
   const activeCard = currentPlayer?.drawnCards?.find((card) => card.isActive);
   const canSelectMonsterSquares =
     !!activeCard &&
-    activeCard.selectionMode === 'squares' &&
+    (activeCard.selectionMode === 'squares' || activeCard.selectionMode === 'horizontal_pair_twice') &&
     (activeCard.selectionTarget === 'monster' ||
       activeCard.selectionTarget === 'room_or_monster' ||
       activeCard.selectionTarget === 'monster_each');
+  const showHorizontalPairPreview = !!activeCard && activeCard.selectionMode === 'horizontal_pair_twice';
 
   const getPlayerMonsters = (): MonsterCardType[] => {
     if (!gameState?.activeMonsters || !currentPlayer) return [];
@@ -117,6 +118,7 @@ export default function PlayerMonsters({
                 .filter(pos => pos.monsterId === monster.id)
                 .map(pos => ({ x: pos.x, y: pos.y }))}
               onSquareClick={onMonsterSquareClick ? (x, y) => onMonsterSquareClick(monster.id, x, y) : undefined}
+              horizontalPairPreviewEnabled={showHorizontalPairPreview}
               className="monster-owned"
             />
           ))}

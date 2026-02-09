@@ -12,7 +12,7 @@ export class Player extends Schema {
     this.turnStatus = "not_started";
     this.hasDrawnCard = false;
 
-    // Initialize shuffled deck of 8 cards (2x each starter card type)
+    // Initialize shuffled deck (2x each starter card type)
     this.initializeDeck();
   }
 

@@ -13,6 +13,8 @@ interface SquareProps {
   y: number;
   square: DungeonSquare;
   onClick: (x: number, y: number) => void;
+  onHover?: (x: number, y: number) => void;
+  onHoverEnd?: () => void;
   sizePx?: number;
   exitInfo?: ExitHighlightInfo | null;
   isAdjacentToExit?: boolean;
@@ -28,6 +30,8 @@ const Square: React.FC<SquareProps> = ({
   y, 
   square, 
   onClick, 
+  onHover,
+  onHoverEnd,
   sizePx = 42,
   exitInfo, 
   isAdjacentToExit, 
@@ -142,12 +146,14 @@ const Square: React.FC<SquareProps> = ({
   }
 
   const handleMouseEnter = () => {
+    onHover?.(x, y);
     if (square.exit && exitInfo && onExitHover) {
       onExitHover(exitInfo.exitIndex);
     }
   };
 
   const handleMouseLeave = () => {
+    onHoverEnd?.();
     if (square.exit && onExitHover) {
       onExitHover(null);
     }
