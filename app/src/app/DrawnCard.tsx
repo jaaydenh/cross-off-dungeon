@@ -77,7 +77,11 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
         title={drawnCard.description}
       >
         {/* Card content */}
-        <CardFaceContent type={drawnCard.type} description={drawnCard.description} />
+        <CardFaceContent
+          type={drawnCard.type}
+          description={drawnCard.description}
+          defenseSymbol={drawnCard.defenseSymbol}
+        />
 
         {/* Active state indicator */}
         {drawnCard.isActive && (

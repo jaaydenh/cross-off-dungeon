@@ -58,6 +58,7 @@ export default function CardDeck({ player, room }: CardDeckProps) {
           ${showGlow ? 'deck-glow' : ''}
           ${deckCount === 0 ? 'opacity-50 cursor-not-allowed' : ''}
         `}
+        data-player-deck-card="true"
         onClick={handleDeckClick}
       >
         {/* Card back design */}

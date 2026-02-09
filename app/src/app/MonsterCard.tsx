@@ -3,6 +3,8 @@
 import { MonsterCard as MonsterCardType } from '@/types/MonsterCard';
 import { MonsterSquare } from '@/types/MonsterSquare';
 import { useCallback, useMemo, useState } from 'react';
+import CardFaceContent from './CardFaceContent';
+import { MonsterAttackAnimation } from '@/types/MonsterAttack';
 
 interface MonsterCardProps {
   monster: MonsterCardType;
@@ -17,6 +19,7 @@ interface MonsterCardProps {
   className?: string;
   selectedSquares?: Array<{ x: number; y: number }>;
   horizontalPairPreviewEnabled?: boolean;
+  attackAnimations?: MonsterAttackAnimation[];
 }
 
 export default function MonsterCard({
@@ -31,7 +34,8 @@ export default function MonsterCard({
   position,
   className = '',
   selectedSquares = [],
-  horizontalPairPreviewEnabled = false
+  horizontalPairPreviewEnabled = false,
+  attackAnimations = []
 }: MonsterCardProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [hoveredSquare, setHoveredSquare] = useState<{ x: number; y: number } | null>(null);
@@ -39,12 +43,15 @@ export default function MonsterCard({
   const isOwned = className.includes('monster-owned');
   const sizeScale = isInRoom ? 0.7 : isOwned ? 0.55 : 1;
   const squareSize = Math.round(40 * sizeScale);
-  const gridPadding = Math.round(4 * sizeScale);
   const cardPadding = Math.round(12 * sizeScale);
-  const minWidth = Math.max(120, Math.round(200 * sizeScale));
+  const minWidth = Math.max(120, Math.round(220 * sizeScale));
+  const minHeight = Math.max(170, Math.round(320 * sizeScale));
   const hoverZoomClasses = isOwned ? 'hover:scale-125 hover:z-50 hover:shadow-2xl' : '';
   const gridWidth = monster.width * squareSize;
   const gridHeight = monster.height * squareSize;
+  const totalSquares = monster.squares.filter((square) => square.filled).length;
+  const crossedSquares = monster.squares.filter((square) => square.filled && square.checked).length;
+  const experienceValue = Math.max(1, Math.ceil(totalSquares / 5));
 
   const isSelectedSquare = (x: number, y: number): boolean =>
     selectedSquares.some((p) => p.x === x && p.y === y);
@@ -80,17 +87,36 @@ export default function MonsterCard({
     };
   }, [horizontalPairPreviewEnabled, hoveredSquare, getSquareAt]);
 
-  const getTotalSquares = (): number => {
-    return monster.squares.filter(square => square.filled).length;
-  };
-
-  const getCrossedSquares = (): number => {
-    return monster.squares.filter(square => square.filled && square.checked).length;
-  };
-
   const isCompleted = (): boolean => {
-    return getTotalSquares() > 0 && getCrossedSquares() === getTotalSquares();
+    return totalSquares > 0 && crossedSquares === totalSquares;
   };
+
+  const borderSegments = (() => {
+    const segments: Array<{ key: string; x1: number; y1: number; x2: number; y2: number }> = [];
+    const seen = new Set<string>();
+
+    const addSegment = (x1: number, y1: number, x2: number, y2: number) => {
+      const key = `${x1},${y1},${x2},${y2}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      segments.push({ key, x1, y1, x2, y2 });
+    };
+
+    for (let y = 0; y < monster.height; y++) {
+      for (let x = 0; x < monster.width; x++) {
+        const square = monster.squares[y * monster.width + x];
+        if (!square?.filled) continue;
+
+        // Add all 4 edges and deduplicate shared edges.
+        addSegment(x, y, x + 1, y);
+        addSegment(x, y + 1, x + 1, y + 1);
+        addSegment(x, y, x, y + 1);
+        addSegment(x + 1, y, x + 1, y + 1);
+      }
+    }
+
+    return segments;
+  })();
 
   const getMonsterEmoji = (name: string): string => {
     switch (name) {
@@ -100,6 +126,36 @@ export default function MonsterCard({
       case 'troll': return '🧌';
       case 'slime': return '🟢';
       default: return '👾';
+    }
+  };
+
+  const getAttackOutcomeLabel = (attack: MonsterAttackAnimation): string => {
+    switch (attack.outcome) {
+      case 'discarded':
+        return 'Lost';
+      case 'returned_to_deck':
+        return 'Blocked';
+      case 'counter_attack':
+        return 'Counter!';
+      case 'no_card_available':
+        return 'No card';
+      default:
+        return 'Resolved';
+    }
+  };
+
+  const getAttackOutcomeClass = (attack: MonsterAttackAnimation): string => {
+    switch (attack.outcome) {
+      case 'discarded':
+        return 'bg-red-700 text-white';
+      case 'returned_to_deck':
+        return 'bg-blue-700 text-white';
+      case 'counter_attack':
+        return 'bg-emerald-700 text-white';
+      case 'no_card_available':
+        return 'bg-gray-700 text-white';
+      default:
+        return 'bg-slate-700 text-white';
     }
   };
 
@@ -114,29 +170,28 @@ export default function MonsterCard({
 
   const handleDragStart = (e: React.DragEvent) => {
     console.log('MonsterCard: Drag start for monster:', monster.id, 'canDrag:', canDrag);
-    
+
     if (!canDrag) {
       e.preventDefault();
       console.log('MonsterCard: Drag prevented - canDrag is false');
       return;
     }
-    
+
     setIsDragging(true);
     e.dataTransfer.setData('application/json', JSON.stringify({
       type: 'monster',
       monsterId: monster.id
     }));
-    
-    // Set drag effect
+
     e.dataTransfer.effectAllowed = 'move';
-    
+
     if (onDragStart) {
       console.log('MonsterCard: Calling onDragStart');
       onDragStart();
     }
   };
 
-  const handleDragEnd = (e: React.DragEvent) => {
+  const handleDragEnd = () => {
     setIsDragging(false);
     if (onDragEnd) {
       onDragEnd();
@@ -144,15 +199,17 @@ export default function MonsterCard({
   };
 
   return (
-    <div 
-      className={`monster-card relative bg-gray-800 border-2 border-gray-600 rounded-lg transition-all duration-200 transform-gpu ${hoverZoomClasses} ${
+    <div
+      className={`monster-card relative flex flex-col rounded-lg border-2 border-stone-500 bg-stone-200 text-black transition-all duration-200 transform-gpu ${hoverZoomClasses} ${
         canDrag ? 'cursor-grab hover:shadow-lg' : ''
       } ${
         isDragging ? 'rotate-3 shadow-2xl shadow-blue-500/50 scale-105 z-50' : ''
       } ${className}`}
+      data-monster-card-id={monster.id}
       style={{
         padding: `${cardPadding}px`,
         minWidth: `${minWidth}px`,
+        minHeight: `${minHeight}px`,
         ...(position
           ? {
               position: 'absolute',
@@ -166,109 +223,185 @@ export default function MonsterCard({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      {/* Monster Header */}
-      <div className={`flex items-center justify-between ${isInRoom ? 'mb-1' : 'mb-2'}`}>
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">{getMonsterEmoji(monster.name)}</span>
-          <span className="text-white font-bold capitalize">{monster.name}</span>
+      <div className={`border-b border-stone-500 pb-1 ${isInRoom ? 'mb-1' : 'mb-2'}`}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="h-6 w-2 rounded-sm bg-red-600" />
+          <span className="flex-1 text-center text-lg font-black capitalize leading-none">
+            {monster.name}
+          </span>
+          <span className="text-xl leading-none">{getMonsterEmoji(monster.name)}</span>
         </div>
-        <div className="text-sm text-gray-400">
-          {getCrossedSquares()}/{getTotalSquares()}
+        <div className="mt-1 flex items-end justify-between">
+          <div className="inline-flex items-center gap-1 rounded border border-red-500 bg-red-200 px-1.5 py-0.5 leading-none">
+            <span className="text-[9px] font-semibold uppercase tracking-wide">Atk</span>
+            <span className="text-xs font-black">{monster.attackRating || 1}</span>
+          </div>
+          <div className="flex h-8 w-8 items-center justify-center rounded-sm border border-red-500 bg-red-200 text-[9px] font-black text-red-900">
+            {crossedSquares}/{totalSquares}
+          </div>
         </div>
       </div>
 
-      {/* Monster Grid */}
-      <div 
-        className="monster-grid relative inline-block bg-gray-700 border border-gray-500 rounded"
-        style={{
-          padding: `${gridPadding}px`
-        }}
-        onMouseLeave={() => setHoveredSquare(null)}
-      >
-        <div
-          className="relative grid"
-          style={{
-            gridTemplateColumns: `repeat(${monster.width}, ${squareSize}px)`,
-            gridTemplateRows: `repeat(${monster.height}, ${squareSize}px)`,
-            width: `${gridWidth}px`,
-            height: `${gridHeight}px`
-          }}
-        >
-          {Array.from({ length: monster.height }, (_, y) =>
-            Array.from({ length: monster.width }, (_, x) => {
-              const square = getSquareAt(x, y);
-              const isFilled = square?.filled || false;
-              const isChecked = square?.checked || false;
-              const isSelected = !isChecked && isSelectedSquare(x, y);
+      <div className="mt-1 flex flex-1 items-center justify-center" onMouseLeave={() => setHoveredSquare(null)}>
+        <div className="monster-grid relative mx-auto">
+          <div
+            className="relative mx-auto grid"
+            style={{
+              gridTemplateColumns: `repeat(${monster.width}, ${squareSize}px)`,
+              gridTemplateRows: `repeat(${monster.height}, ${squareSize}px)`,
+              width: `${gridWidth}px`,
+              height: `${gridHeight}px`
+            }}
+          >
+            {Array.from({ length: monster.height }, (_, y) =>
+              Array.from({ length: monster.width }, (_, x) => {
+                const square = getSquareAt(x, y);
+                const isFilled = square?.filled || false;
+                const isChecked = square?.checked || false;
+                const isSelected = !isChecked && isSelectedSquare(x, y);
 
-              return (
-                <div
-                  key={`${x}-${y}`}
-                  className={`
-                    monster-square border border-gray-600 text-xs flex items-center justify-center
-                    ${isFilled ? 'bg-red-700' : 'bg-gray-800'}
-                    ${isChecked ? 'bg-green-600' : ''}
-                    ${isFilled && !isChecked && isOwnedByPlayer && canSelect ? 'hover:bg-red-600 cursor-pointer' : ''}
-                    ${!isFilled ? 'opacity-30' : ''}
-                  `}
-                  style={{
-                    width: `${squareSize}px`,
-                    height: `${squareSize}px`
-                  }}
-                  onMouseEnter={() => {
-                    if (horizontalPairPreviewEnabled) {
-                      setHoveredSquare({ x, y });
-                    }
-                  }}
-                  onClick={() => handleSquareClick(x, y)}
-                >
-                  {(isChecked || isSelected) && 'X'}
-                </div>
-              );
-            })
-          )}
-
-          {horizontalPairPreviewEnabled && previewCells.cells.length > 0 && (
-            <div className="pointer-events-none absolute inset-0 z-30">
-              {previewCells.cells
-                .filter((cell) => cell.x >= 0 && cell.x < monster.width && cell.y >= 0 && cell.y < monster.height)
-                .map((cell) => (
+                return (
                   <div
-                    key={`monster-preview-${monster.id}-${cell.x}-${cell.y}`}
-                    className={`absolute border-2 ${
-                      previewCells.invalid
-                        ? 'bg-red-500/45 border-red-300'
-                        : 'bg-sky-500/45 border-sky-300'
-                    }`}
+                    key={`${x}-${y}`}
+                    className={`
+                      monster-square text-xs flex items-center justify-center font-bold
+                      ${isFilled ? 'bg-stone-100 text-stone-800' : 'bg-transparent'}
+                      ${isChecked ? 'bg-emerald-300 text-stone-900' : ''}
+                      ${isSelected ? 'bg-rose-200 text-stone-900' : ''}
+                      ${isFilled && !isChecked && isOwnedByPlayer && canSelect ? 'hover:bg-stone-300 cursor-pointer' : ''}
+                    `}
                     style={{
-                      left: `${cell.x * squareSize}px`,
-                      top: `${cell.y * squareSize}px`,
                       width: `${squareSize}px`,
                       height: `${squareSize}px`,
-                      boxSizing: 'border-box'
+                      boxSizing: 'border-box',
+                      lineHeight: 1,
+                      transition: 'all 0.2s ease'
                     }}
-                  />
-                ))}
-            </div>
-          )}
+                    onMouseEnter={() => {
+                      if (horizontalPairPreviewEnabled) {
+                        setHoveredSquare({ x, y });
+                      }
+                    }}
+                    onClick={() => handleSquareClick(x, y)}
+                  >
+                    {(isChecked || isSelected) && 'X'}
+                  </div>
+                );
+              })
+            )}
+
+            <svg
+              className="pointer-events-none absolute left-0 top-0 z-20"
+              width={gridWidth + 1}
+              height={gridHeight + 1}
+              viewBox={`0 0 ${gridWidth + 1} ${gridHeight + 1}`}
+              shapeRendering="crispEdges"
+              aria-hidden
+            >
+              {borderSegments.map((segment) => (
+                <line
+                  key={segment.key}
+                  x1={segment.x1 * squareSize + 0.5}
+                  y1={segment.y1 * squareSize + 0.5}
+                  x2={segment.x2 * squareSize + 0.5}
+                  y2={segment.y2 * squareSize + 0.5}
+                  stroke="#78716c"
+                  strokeWidth={1}
+                />
+              ))}
+            </svg>
+
+            {horizontalPairPreviewEnabled && previewCells.cells.length > 0 && (
+              <div className="pointer-events-none absolute inset-0 z-30">
+                {previewCells.cells
+                  .filter((cell) => cell.x >= 0 && cell.x < monster.width && cell.y >= 0 && cell.y < monster.height)
+                  .map((cell) => (
+                    <div
+                      key={`monster-preview-${monster.id}-${cell.x}-${cell.y}`}
+                      className={`absolute border-2 ${
+                        previewCells.invalid
+                          ? 'bg-red-500/45 border-red-300'
+                          : 'bg-sky-500/45 border-sky-300'
+                      }`}
+                      style={{
+                        left: `${cell.x * squareSize}px`,
+                        top: `${cell.y * squareSize}px`,
+                        width: `${squareSize}px`,
+                        height: `${squareSize}px`,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Status Indicators */}
-      <div className={`flex gap-2 justify-center ${isInRoom ? 'mt-1' : 'mt-2'}`}>
+      {attackAnimations.length > 0 && (
+        <div className="pointer-events-none absolute left-1/2 top-0 z-50 -translate-x-1/2">
+          {attackAnimations.map((attack, index) => (
+            <div
+              key={attack.id}
+              className="absolute left-1/2 -translate-x-1/2"
+              style={{
+                top: `${-114 - index * 10}px`
+              }}
+            >
+              {attack.card ? (
+                <div
+                  className="monster-attack-card-fly relative h-24 w-16 rounded border-2 border-gray-300 bg-white shadow-lg"
+                  style={{ animationDelay: `${Math.max(0, attack.attackNumber - 1) * 280}ms` }}
+                >
+                  <CardFaceContent
+                    type={attack.card.type}
+                    description={attack.card.description}
+                    defenseSymbol={attack.card.defenseSymbol}
+                  />
+                </div>
+              ) : (
+                <div
+                  className="monster-attack-card-fly flex h-24 w-16 items-center justify-center rounded border-2 border-gray-500 bg-slate-800 text-[10px] font-semibold text-gray-200 shadow-lg"
+                  style={{ animationDelay: `${Math.max(0, attack.attackNumber - 1) * 280}ms` }}
+                >
+                  No card
+                </div>
+              )}
+              <div
+                className={`monster-attack-outcome-pop mt-1 rounded px-2 py-1 text-center text-[10px] font-semibold shadow ${getAttackOutcomeClass(
+                  attack
+                )}`}
+                style={{ animationDelay: `${Math.max(0, attack.attackNumber - 1) * 280 + 420}ms` }}
+              >
+                {getAttackOutcomeLabel(attack)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-1 flex min-h-[18px] items-center gap-2">
         {canDrag && (
-          <div className="text-xs text-blue-400 font-medium">
+          <div className="text-xs font-medium text-blue-600">
             Drag to claim
           </div>
         )}
-        
+
         {isCompleted() && (
-          <div className="px-2 py-1 bg-green-600 text-white text-xs rounded">
+          <div className="rounded bg-green-600 px-2 py-1 text-xs text-white">
             ✓ Completed!
           </div>
         )}
       </div>
 
+      <div className="pointer-events-none absolute bottom-1 right-1 rounded border border-stone-500 bg-stone-100 px-1.5 py-1 text-right shadow-sm">
+        <div className="text-[7px] font-semibold uppercase leading-none tracking-wide text-stone-600">
+          XP
+        </div>
+        <div className="text-[10px] font-black leading-none text-stone-900">
+          {experienceValue}
+        </div>
+      </div>
     </div>
   );
 }

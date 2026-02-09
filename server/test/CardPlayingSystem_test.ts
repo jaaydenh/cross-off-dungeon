@@ -1,8 +1,13 @@
 import assert from "assert";
-import { ColyseusTestServer, boot } from "@colyseus/testing";
+import { ColyseusTestServer } from "@colyseus/testing";
 import { describe, it, before, after, beforeEach } from "mocha";
 import appConfig from "../src/app.config";
 import { Card } from "../src/rooms/schema/Card";
+import {
+  bootSandboxSafe,
+  cleanupSandboxSafe,
+  shutdownSandboxSafe
+} from "./helpers/colyseusTestUtils";
 
 const makeConnectedRoomCard = (id: string) =>
   new Card(
@@ -19,11 +24,13 @@ const makeConnectedRoomCard = (id: string) =>
   );
 
 describe("Card Playing System", () => {
-  let colyseus: ColyseusTestServer;
+  let colyseus: ColyseusTestServer | undefined;
 
-  before(async () => colyseus = await boot(appConfig));
-  after(async () => await colyseus.shutdown());
-  beforeEach(async () => await colyseus.cleanup());
+  before(async function () {
+    colyseus = await bootSandboxSafe(this, appConfig);
+  });
+  after(async () => await shutdownSandboxSafe(colyseus));
+  beforeEach(async () => await cleanupSandboxSafe(colyseus));
 
   describe("Card Activation", () => {
     it("should successfully activate a drawn card", async () => {

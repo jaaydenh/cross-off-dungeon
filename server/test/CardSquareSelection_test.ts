@@ -1,9 +1,14 @@
-import { ColyseusTestServer, boot } from "@colyseus/testing";
+import { ColyseusTestServer } from "@colyseus/testing";
 import { Dungeon } from "../src/rooms/Dungeon";
 import assert from "assert";
 import { describe, it, before, after, beforeEach } from "mocha";
 import appConfig from "../src/app.config";
 import { Card } from "../src/rooms/schema/Card";
+import {
+  bootSandboxSafe,
+  cleanupSandboxSafe,
+  shutdownSandboxSafe
+} from "./helpers/colyseusTestUtils";
 
 const makeConnectedRoomCard = (id: string) =>
   new Card(
@@ -19,12 +24,29 @@ const makeConnectedRoomCard = (id: string) =>
     false
   );
 
-describe("Card-Based Square Selection System", () => {
-  let colyseus: ColyseusTestServer;
+const makeAnyTwoRoomOrMonsterCard = (id: string) =>
+  new Card(
+    id,
+    "cross_any_two_room_or_monster",
+    "Cross off up to 2 squares on a single room or monster",
+    "room_or_monster",
+    "squares",
+    1,
+    2,
+    false,
+    false,
+    false,
+    "block"
+  );
 
-  before(async () => colyseus = await boot(appConfig));
-  after(async () => await colyseus.shutdown());
-  beforeEach(async () => await colyseus.cleanup());
+describe("Card-Based Square Selection System", () => {
+  let colyseus: ColyseusTestServer | undefined;
+
+  before(async function () {
+    colyseus = await bootSandboxSafe(this, appConfig);
+  });
+  after(async () => await shutdownSandboxSafe(colyseus));
+  beforeEach(async () => await cleanupSandboxSafe(colyseus));
 
   describe("Card Activation", () => {
     it("should activate a drawn card for square selection", async () => {
@@ -411,6 +433,63 @@ describe("Card-Based Square Selection System", () => {
       const cardState = room.state.getCardSelectionState(client.sessionId);
       assert.strictEqual(cardState.hasActiveCard, false, "Should not have active card after completion");
       assert.strictEqual(cardState.selectedCount, 0, "Should have 0 selected squares after completion");
+    });
+
+    it("should allow confirming the Any Two card after selecting only one room square", async () => {
+      const room = await colyseus.createRoom("dungeon", {});
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
+
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeAnyTwoRoomOrMonsterCard("card_test_any_two"));
+
+      room.send(client, "drawCard", {});
+      await room.waitForNextPatch();
+
+      const player = room.state.players.get(client.sessionId)!;
+      const initialDrawnCount = player.drawnCards.length;
+      const initialDiscardCount = player.discardPile.length;
+      const cardId = player.drawnCards[0].id;
+
+      room.send(client, "playCard", { cardId });
+      await room.waitForNextPatch();
+
+      const roomIndex = room.state.currentRoomIndex;
+      const currentRoom = room.state.getCurrentRoom()!;
+
+      let targetSquare: { x: number; y: number } | null = null;
+      for (let x = 0; x < currentRoom.width; x++) {
+        for (let y = 0; y < currentRoom.height; y++) {
+          const square = currentRoom.getSquare(x, y);
+          if (square && !square.wall && !square.checked) {
+            targetSquare = { x, y };
+            break;
+          }
+        }
+        if (targetSquare) break;
+      }
+
+      assert(targetSquare, "Should find a selectable room square");
+
+      const selectionResult = room.state.selectSquareForCard(
+        client.sessionId,
+        roomIndex,
+        targetSquare.x,
+        targetSquare.y
+      );
+      assert.strictEqual(selectionResult.success, true, "Should select one square successfully");
+
+      const confirmResult = room.state.confirmCardAction(client.sessionId);
+      assert.strictEqual(confirmResult.success, true, "Should confirm with one square selected");
+      assert.strictEqual(confirmResult.completed, true, "Should complete card action");
+
+      assert.strictEqual(
+        currentRoom.getSquare(targetSquare.x, targetSquare.y)?.checked,
+        true,
+        "Selected square should be crossed after confirm"
+      );
+      assert.strictEqual(player.drawnCards.length, initialDrawnCount - 1, "Card should leave drawn pile");
+      assert.strictEqual(player.discardPile.length, initialDiscardCount + 1, "Card should move to discard pile");
     });
   });
 

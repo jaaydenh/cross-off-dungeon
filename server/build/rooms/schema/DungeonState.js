@@ -50,6 +50,7 @@ class DungeonState extends schema_1.Schema {
         this.selectedSquareCount = new Map(); // sessionId -> count
         // Navigation validator for exit adjacency checking
         this.navigationValidator = new NavigationValidator_1.NavigationValidator();
+        this.pendingMonsterAttackPhaseResult = null;
     }
     initializeBoard() {
         console.log('initializeBoard');
@@ -510,6 +511,8 @@ class DungeonState extends schema_1.Schema {
             console.log("Cannot advance turn: not all players are ready");
             return;
         }
+        // Resolve monster attacks before resetting players for the next round.
+        this.pendingMonsterAttackPhaseResult = this.resolveMonsterAttackPhase();
         // Reset all player statuses for the new turn
         this.players.forEach((player) => {
             player.turnStatus = "not_started";
@@ -518,6 +521,117 @@ class DungeonState extends schema_1.Schema {
         // Increment turn counter
         this.currentTurn++;
         console.log(`Advanced to turn ${this.currentTurn}`);
+    }
+    /**
+     * Returns the latest monster attack phase result once, then clears it.
+     * Intended for room-layer messaging right after turn advancement.
+     */
+    consumePendingMonsterAttackPhaseResult() {
+        const result = this.pendingMonsterAttackPhaseResult;
+        this.pendingMonsterAttackPhaseResult = null;
+        return result;
+    }
+    resolveMonsterAttackPhase() {
+        const attacks = [];
+        const attackingMonsters = this.activeMonsters.filter((monster) => monster.playerOwnerId !== "" &&
+            monster.connectedToRoomIndex === -1 &&
+            !monster.isCompleted());
+        for (const monster of attackingMonsters) {
+            const playerSessionId = monster.playerOwnerId;
+            const player = this.players.get(playerSessionId);
+            if (!player) {
+                continue;
+            }
+            const monsterAttack = Math.max(1, Math.min(3, Math.floor(monster.attackRating || 1)));
+            for (let attackNumber = 1; attackNumber <= monsterAttack; attackNumber++) {
+                if (player.deck.length === 0) {
+                    attacks.push({
+                        playerSessionId,
+                        monsterId: monster.id,
+                        monsterName: monster.name,
+                        monsterAttack,
+                        attackNumber,
+                        outcome: "no_card_available"
+                    });
+                    continue;
+                }
+                const defenseCard = player.deck.shift();
+                if (!defenseCard) {
+                    attacks.push({
+                        playerSessionId,
+                        monsterId: monster.id,
+                        monsterName: monster.name,
+                        monsterAttack,
+                        attackNumber,
+                        outcome: "no_card_available"
+                    });
+                    continue;
+                }
+                const defenseSymbol = (defenseCard.defenseSymbol || "empty");
+                const cardSnapshot = {
+                    id: defenseCard.id,
+                    type: defenseCard.type,
+                    description: defenseCard.description,
+                    defenseSymbol
+                };
+                if (defenseSymbol === "block") {
+                    // Block returns the card to the player's deck.
+                    player.deck.push(defenseCard);
+                    attacks.push({
+                        playerSessionId,
+                        monsterId: monster.id,
+                        monsterName: monster.name,
+                        monsterAttack,
+                        attackNumber,
+                        card: cardSnapshot,
+                        outcome: "returned_to_deck"
+                    });
+                    continue;
+                }
+                if (defenseSymbol === "counter") {
+                    // Counter crosses one random available monster square, then returns card to deck.
+                    const counterSquare = this.crossRandomUncrossedMonsterSquare(monster);
+                    player.deck.push(defenseCard);
+                    attacks.push({
+                        playerSessionId,
+                        monsterId: monster.id,
+                        monsterName: monster.name,
+                        monsterAttack,
+                        attackNumber,
+                        card: cardSnapshot,
+                        outcome: "counter_attack",
+                        counterSquare
+                    });
+                    continue;
+                }
+                // Empty symbol loses the card to discard.
+                player.discardPile.push(defenseCard);
+                attacks.push({
+                    playerSessionId,
+                    monsterId: monster.id,
+                    monsterName: monster.name,
+                    monsterAttack,
+                    attackNumber,
+                    card: cardSnapshot,
+                    outcome: "discarded"
+                });
+            }
+        }
+        return {
+            turn: this.currentTurn,
+            totalAttacks: attacks.length,
+            attacks
+        };
+    }
+    crossRandomUncrossedMonsterSquare(monster) {
+        const availableSquares = monster.squares.filter((square) => square.filled && !square.checked);
+        if (availableSquares.length === 0) {
+            return null;
+        }
+        const randomIndex = Math.floor(Math.random() * availableSquares.length);
+        const selectedSquare = availableSquares[randomIndex];
+        selectedSquare.checked = true;
+        return { x: selectedSquare.x, y: selectedSquare.y };
     }
     /**
      * Update a player's turn status

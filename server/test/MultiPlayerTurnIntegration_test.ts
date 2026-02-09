@@ -1,14 +1,21 @@
 import assert from "assert";
-import { ColyseusTestServer, boot } from "@colyseus/testing";
+import { ColyseusTestServer } from "@colyseus/testing";
 import { describe, it, before, after, beforeEach } from "mocha";
 import appConfig from "../src/app.config";
+import {
+    bootSandboxSafe,
+    cleanupSandboxSafe,
+    shutdownSandboxSafe
+} from "./helpers/colyseusTestUtils";
 
 describe("Multi-Player Turn Integration", () => {
-    let colyseus: ColyseusTestServer;
+    let colyseus: ColyseusTestServer | undefined;
 
-    before(async () => colyseus = await boot(appConfig));
-    after(async () => await colyseus.shutdown());
-    beforeEach(async () => await colyseus.cleanup());
+    before(async function () {
+        colyseus = await bootSandboxSafe(this, appConfig);
+    });
+    after(async () => await shutdownSandboxSafe(colyseus));
+    beforeEach(async () => await cleanupSandboxSafe(colyseus));
 
     describe("Turn Initialization", () => {
         it("should initialize turn state when first player joins", async () => {

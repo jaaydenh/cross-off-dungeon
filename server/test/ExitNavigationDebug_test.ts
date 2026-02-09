@@ -1,13 +1,17 @@
-import { ColyseusTestServer, boot } from "@colyseus/testing";
+import { ColyseusTestServer } from "@colyseus/testing";
 import { Dungeon } from "../src/rooms/Dungeon";
 import { DungeonState } from "../src/rooms/schema/DungeonState";
 import assert from "assert";
+import {
+  bootSandboxSafe,
+  shutdownSandboxSafe
+} from "./helpers/colyseusTestUtils";
 
 describe("Exit Navigation Debug Tests", () => {
-  let colyseus: ColyseusTestServer;
+  let colyseus: ColyseusTestServer | undefined;
 
-  before(async () => {
-    colyseus = await boot({
+  before(async function () {
+    colyseus = await bootSandboxSafe(this, {
       initializeGameServer: (gameServer) => {
         gameServer.define("dungeon", Dungeon);
       },
@@ -15,7 +19,7 @@ describe("Exit Navigation Debug Tests", () => {
   });
 
   after(async () => {
-    await colyseus.shutdown();
+    await shutdownSandboxSafe(colyseus);
   });
 
   describe("Debug specific exit navigation scenarios", () => {

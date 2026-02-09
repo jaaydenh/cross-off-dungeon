@@ -82,7 +82,11 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
         {topCard ? (
           <>
             {/* Face-up card content */}
-            <CardFaceContent type={topCard.type} description={topCard.description} />
+            <CardFaceContent
+              type={topCard.type}
+              description={topCard.description}
+              defenseSymbol={topCard.defenseSymbol}
+            />
 
             {/* Card count badge */}
             {discardCount > 1 && (

@@ -1,16 +1,26 @@
 import assert from "assert";
-import { ColyseusTestServer, boot } from "@colyseus/testing";
+import { ColyseusTestServer } from "@colyseus/testing";
 import { describe, it, before, after, beforeEach } from "mocha";
 import appConfig from "../src/app.config";
 import { DungeonState } from "../src/rooms/schema/DungeonState";
+import { CARD_DEFINITIONS } from "../src/rooms/cards/CardRegistry";
+import {
+  bootSandboxSafe,
+  cleanupSandboxSafe,
+  shutdownSandboxSafe
+} from "./helpers/colyseusTestUtils";
+
+const STARTER_DECK_SIZE = CARD_DEFINITIONS.length * 2;
 
 describe("Turn Management", () => {
-  let colyseus: ColyseusTestServer;
+  let colyseus: ColyseusTestServer | undefined;
 
-  before(async () => colyseus = await boot(appConfig));
-  after(async () => await colyseus.shutdown());
+  before(async function () {
+    colyseus = await bootSandboxSafe(this, appConfig);
+  });
+  after(async () => await shutdownSandboxSafe(colyseus));
 
-  beforeEach(async () => await colyseus.cleanup());
+  beforeEach(async () => await cleanupSandboxSafe(colyseus));
 
   describe("Turn State Initialization", () => {
     it("should initialize turn state when first player joins", async () => {
@@ -327,7 +337,7 @@ describe("Turn Management", () => {
       const player = room.state.players.get(client1.sessionId)!;
       
       // Verify initial state
-      assert.strictEqual(player.deck.length, 8);
+      assert.strictEqual(player.deck.length, STARTER_DECK_SIZE);
       assert.strictEqual(player.drawnCards.length, 0);
       assert.strictEqual(player.hasDrawnCard, false);
       assert.strictEqual(player.turnStatus, "not_started");
@@ -340,7 +350,7 @@ describe("Turn Management", () => {
       assert(result.message?.includes("Drew card:"));
       
       // Verify state changes
-      assert.strictEqual(player.deck.length, 7);
+      assert.strictEqual(player.deck.length, STARTER_DECK_SIZE - 1);
       assert.strictEqual(player.drawnCards.length, 1);
       assert.strictEqual(player.hasDrawnCard, true);
       assert.strictEqual(player.turnStatus, "playing_turn");
@@ -352,7 +362,8 @@ describe("Turn Management", () => {
         "cross_connected_squares",
         "cross_any_two_room_or_monster",
         "cross_two_connected_each_monster",
-        "cross_row_room"
+        "cross_row_room",
+        "cross_two_horizontal_then_two_horizontal"
       ]);
       assert(expectedTypes.has(drawnCard.type), `Unexpected type: ${drawnCard.type}`);
       assert.strictEqual(typeof drawnCard.description, "string");
@@ -376,7 +387,7 @@ describe("Turn Management", () => {
       assert(result2.error?.includes("Cannot draw card"));
       
       // Verify state hasn't changed
-      assert.strictEqual(player.deck.length, 7);
+      assert.strictEqual(player.deck.length, STARTER_DECK_SIZE - 1);
       assert.strictEqual(player.drawnCards.length, 1);
       assert.strictEqual(player.hasDrawnCard, true);
       assert.strictEqual(player.turnStatus, "playing_turn");
@@ -402,7 +413,7 @@ describe("Turn Management", () => {
       assert(result.error?.includes("Cannot draw card"));
       
       // Verify state hasn't changed
-      assert.strictEqual(player1.deck.length, 8);
+      assert.strictEqual(player1.deck.length, STARTER_DECK_SIZE);
       assert.strictEqual(player1.drawnCards.length, 0);
       assert.strictEqual(player1.hasDrawnCard, false);
     });
@@ -450,7 +461,7 @@ describe("Turn Management", () => {
       await room.waitForNextPatch();
 
       // Verify state changes
-      assert.strictEqual(player.deck.length, 7);
+      assert.strictEqual(player.deck.length, STARTER_DECK_SIZE - 1);
       assert.strictEqual(player.drawnCards.length, 1);
       assert.strictEqual(player.hasDrawnCard, true);
       assert.strictEqual(player.turnStatus, "playing_turn");

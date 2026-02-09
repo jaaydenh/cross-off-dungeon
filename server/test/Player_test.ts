@@ -2,6 +2,7 @@ import assert from "assert";
 import { describe, it } from "mocha";
 import { Player } from "../src/rooms/schema/Player";
 import { Card } from "../src/rooms/schema/Card";
+import { CARD_DEFINITIONS } from "../src/rooms/cards/CardRegistry";
 
 const makeCard = (id: string, type: string, description: string) =>
   new Card(
@@ -17,35 +18,31 @@ const makeCard = (id: string, type: string, description: string) =>
     false
   );
 
+const STARTER_DECK_SIZE = CARD_DEFINITIONS.length * 2;
+const EXPECTED_CARD_TYPES = new Set(CARD_DEFINITIONS.map((card) => card.id));
+
 describe("Player Schema Extensions", () => {
   describe("Player Construction", () => {
     it("should create a player with correct initial properties", () => {
       const player = new Player("TestPlayer");
       
       assert.strictEqual(player.name, "TestPlayer");
-      assert.strictEqual(player.deck.length, 8);
+      assert.strictEqual(player.deck.length, STARTER_DECK_SIZE);
       assert.strictEqual(player.drawnCards.length, 0);
       assert.strictEqual(player.discardPile.length, 0);
       assert.strictEqual(player.turnStatus, "not_started");
       assert.strictEqual(player.hasDrawnCard, false);
     });
 
-    it("should initialize deck with 8 cards", () => {
+    it("should initialize deck with expected starter cards", () => {
       const player = new Player("TestPlayer");
       
-      assert.strictEqual(player.deck.length, 8);
-
-      const expectedTypes = new Set([
-        "cross_connected_squares",
-        "cross_any_two_room_or_monster",
-        "cross_two_connected_each_monster",
-        "cross_row_room"
-      ]);
+      assert.strictEqual(player.deck.length, STARTER_DECK_SIZE);
 
       const counts = new Map<string, number>();
       for (let i = 0; i < player.deck.length; i++) {
         const card = player.deck[i];
-        assert(expectedTypes.has(card.type), `Unexpected card type: ${card.type}`);
+        assert(EXPECTED_CARD_TYPES.has(card.type), `Unexpected card type: ${card.type}`);
         counts.set(card.type, (counts.get(card.type) || 0) + 1);
         assert.strictEqual(typeof card.description, "string");
         assert(card.description.length > 0);
@@ -55,8 +52,8 @@ describe("Player Schema Extensions", () => {
         assert.strictEqual(typeof card.selectionMode, "string");
       }
 
-      // Deck is 2 copies of each of the 4 starter card types
-      for (const type of expectedTypes) {
+      // Deck is 2 copies of each starter card type
+      for (const type of EXPECTED_CARD_TYPES) {
         assert.strictEqual(counts.get(type), 2, `Expected 2 copies of ${type}`);
       }
     });
@@ -71,7 +68,7 @@ describe("Player Schema Extensions", () => {
         cardIds.add(cardId);
       }
       
-      assert.strictEqual(cardIds.size, 8);
+      assert.strictEqual(cardIds.size, STARTER_DECK_SIZE);
     });
 
     it("should shuffle deck randomly", () => {
@@ -205,14 +202,14 @@ describe("Player Schema Extensions", () => {
   });
 
   describe("Deck Integrity", () => {
-    it("should contain exactly 8 cards with sequential IDs", () => {
+    it("should contain sequential IDs for all starter cards", () => {
       const player = new Player("TestPlayer");
       
       // Collect all card IDs and sort them
       const cardIds = player.deck.map(card => card.id).sort();
       
-      // Verify we have cards 1-8
-      for (let i = 1; i <= 8; i++) {
+      // Verify IDs cover the full starter deck range
+      for (let i = 1; i <= STARTER_DECK_SIZE; i++) {
         assert(cardIds.includes(`card_${i}`), `Missing card_${i}`);
       }
     });
@@ -237,9 +234,9 @@ describe("Player Schema Extensions", () => {
       if (card1) player.drawnCards.push(card1);
       if (card2) player.discardPile.push(card2);
       
-      // Verify total cards remain 8
+      // Verify total cards remain constant
       const totalCards = player.deck.length + player.drawnCards.length + player.discardPile.length;
-      assert.strictEqual(totalCards, 8);
+      assert.strictEqual(totalCards, STARTER_DECK_SIZE);
       
       // Verify no duplicates across all collections
       const allCardIds = new Set();
@@ -249,7 +246,7 @@ describe("Player Schema Extensions", () => {
         allCardIds.add(card.id);
       });
       
-      assert.strictEqual(allCardIds.size, 8);
+      assert.strictEqual(allCardIds.size, STARTER_DECK_SIZE);
     });
   });
 
@@ -257,7 +254,7 @@ describe("Player Schema Extensions", () => {
     it("should handle empty name", () => {
       const player = new Player("");
       assert.strictEqual(player.name, "");
-      assert.strictEqual(player.deck.length, 8); // Deck should still be initialized
+      assert.strictEqual(player.deck.length, STARTER_DECK_SIZE); // Deck should still be initialized
     });
 
     it("should handle special characters in name", () => {

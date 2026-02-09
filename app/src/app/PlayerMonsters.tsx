@@ -6,6 +6,7 @@ import { DungeonState } from '@/types/DungeonState';
 import { Room } from 'colyseus.js';
 import MonsterCard from './MonsterCard';
 import { useState } from 'react';
+import { MonsterAttackAnimation } from '@/types/MonsterAttack';
 
 interface PlayerMonstersProps {
   gameState: DungeonState | null;
@@ -15,6 +16,7 @@ interface PlayerMonstersProps {
   selectedMonsterSquares?: Array<{ monsterId: string; x: number; y: number }>;
   onMonsterSquareClick?: (monsterId: string, x: number, y: number) => void;
   onMonsterDrop?: () => void;
+  attackAnimations?: MonsterAttackAnimation[];
 }
 
 export default function PlayerMonsters({
@@ -24,7 +26,8 @@ export default function PlayerMonsters({
   isMonsterBeingDragged = false,
   selectedMonsterSquares = [],
   onMonsterSquareClick,
-  onMonsterDrop
+  onMonsterDrop,
+  attackAnimations = []
 }: PlayerMonstersProps) {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -119,6 +122,7 @@ export default function PlayerMonsters({
                 .map(pos => ({ x: pos.x, y: pos.y }))}
               onSquareClick={onMonsterSquareClick ? (x, y) => onMonsterSquareClick(monster.id, x, y) : undefined}
               horizontalPairPreviewEnabled={showHorizontalPairPreview}
+              attackAnimations={attackAnimations.filter((attack) => attack.monsterId === monster.id)}
               className="monster-owned"
             />
           ))}

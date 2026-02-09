@@ -13,6 +13,7 @@ export class MonsterCard extends Schema {
     @type("string") public name!: string;
     @type("number") public width!: number;
     @type("number") public height!: number;
+    @type("number") public attackRating!: number;
     @type([MonsterSquare]) public squares!: ArraySchema<MonsterSquare>;
     @type("string") public playerOwnerId!: string;
     @type("number") public connectedToRoomIndex!: number;

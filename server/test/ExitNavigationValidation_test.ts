@@ -1,16 +1,20 @@
-import { ColyseusTestServer, boot } from "@colyseus/testing";
+import { ColyseusTestServer } from "@colyseus/testing";
 import { Dungeon } from "../src/rooms/Dungeon";
 import { DungeonState } from "../src/rooms/schema/DungeonState";
 import { NavigationValidator } from "../src/rooms/NavigationValidator";
 import { Room } from "../src/rooms/schema/Room";
 import { DungeonSquare } from "../src/rooms/schema/DungeonSquare";
 import assert from "assert";
+import {
+  bootSandboxSafe,
+  shutdownSandboxSafe
+} from "./helpers/colyseusTestUtils";
 
 describe("Exit Navigation Validation Integration Tests", () => {
-  let colyseus: ColyseusTestServer;
+  let colyseus: ColyseusTestServer | undefined;
 
-  before(async () => {
-    colyseus = await boot({
+  before(async function () {
+    colyseus = await bootSandboxSafe(this, {
       initializeGameServer: (gameServer) => {
         gameServer.define("dungeon", Dungeon);
       },
@@ -18,7 +22,7 @@ describe("Exit Navigation Validation Integration Tests", () => {
   });
 
   after(async () => {
-    await colyseus.shutdown();
+    await shutdownSandboxSafe(colyseus);
   });
 
   describe("crossSquare method with exit navigation validation", () => {

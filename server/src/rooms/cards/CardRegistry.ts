@@ -1,4 +1,5 @@
 import { Card } from "../schema/Card";
+import type { CardDefenseSymbol } from "../schema/Card";
 
 export type CardSelectionTarget = "room" | "monster" | "room_or_monster" | "monster_each";
 export type CardSelectionMode = "squares" | "row" | "horizontal_pair_twice";
@@ -7,6 +8,7 @@ export type CardDefinition = {
   id: string;
   name: string;
   description: string;
+  defenseSymbol?: CardDefenseSymbol;
   selection: {
     target: CardSelectionTarget;
     mode: CardSelectionMode;
@@ -23,6 +25,7 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
     id: "cross_connected_squares",
     name: "Connected Cross",
     description: "Cross off up to 3 connected squares",
+    defenseSymbol: "empty",
     selection: {
       target: "room",
       mode: "squares",
@@ -35,11 +38,12 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
   {
     id: "cross_any_two_room_or_monster",
     name: "Any Two",
-    description: "Cross off any 2 squares on a single room or monster",
+    description: "Cross off up to 2 squares on a single room or monster",
+    defenseSymbol: "block",
     selection: {
       target: "room_or_monster",
       mode: "squares",
-      minSelections: 2,
+      minSelections: 1,
       maxSelections: 2,
       connected: false,
       // This card allows starting anywhere in a room (no entrance/cross-adjacent requirement).
@@ -51,6 +55,7 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
     id: "cross_two_connected_each_monster",
     name: "Every Monster",
     description: "Cross off 2 connected squares on every monster",
+    defenseSymbol: "counter",
     selection: {
       target: "monster_each",
       mode: "squares",
@@ -64,6 +69,7 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
     id: "cross_row_room",
     name: "Horizontal Sweep",
     description: "Cross off all horizontal squares on a single room",
+    defenseSymbol: "empty",
     selection: {
       target: "room",
       mode: "row",
@@ -76,6 +82,7 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
     id: "cross_two_horizontal_then_two_horizontal",
     name: "Heroic Double Sweep",
     description: "Cross off 2 horizontal squares, then 2 more horizontal squares",
+    defenseSymbol: "counter",
     selection: {
       target: "room_or_monster",
       mode: "horizontal_pair_twice",
@@ -105,7 +112,8 @@ export function createCardFromDefinition(definition: CardDefinition, id: string)
     selection.maxSelections ?? 0,
     selection.connected ?? false,
     selection.requireRoomStartAdjacency ?? false,
-    selection.requireMonsterStartAdjacency ?? false
+    selection.requireMonsterStartAdjacency ?? false,
+    definition.defenseSymbol ?? "empty"
   );
 }
 

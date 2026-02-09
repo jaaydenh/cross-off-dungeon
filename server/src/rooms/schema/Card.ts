@@ -1,5 +1,7 @@
 import { Schema, type } from "@colyseus/schema";
 
+export type CardDefenseSymbol = "empty" | "block" | "counter";
+
 export class Card extends Schema {
   constructor(
     id: string,
@@ -11,7 +13,8 @@ export class Card extends Schema {
     maxSelections: number,
     requiresConnected: boolean,
     requiresRoomStartAdjacency: boolean,
-    requiresMonsterStartAdjacency: boolean
+    requiresMonsterStartAdjacency: boolean,
+    defenseSymbol: CardDefenseSymbol = "empty"
   ) {
     super();
     this.id = id;
@@ -24,6 +27,7 @@ export class Card extends Schema {
     this.requiresConnected = requiresConnected;
     this.requiresRoomStartAdjacency = requiresRoomStartAdjacency;
     this.requiresMonsterStartAdjacency = requiresMonsterStartAdjacency;
+    this.defenseSymbol = defenseSymbol;
     this.isActive = false;
   }
 
@@ -37,5 +41,6 @@ export class Card extends Schema {
   @type("boolean") requiresConnected: boolean = false;
   @type("boolean") requiresRoomStartAdjacency: boolean = false;
   @type("boolean") requiresMonsterStartAdjacency: boolean = false;
+  @type("string") defenseSymbol: CardDefenseSymbol = "empty"; // empty, block, counter
   @type("boolean") isActive: boolean = false;
 }

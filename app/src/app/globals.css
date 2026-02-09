@@ -195,6 +195,69 @@ body {
     }
   }
 
+  .monster-attack-card-fly {
+    opacity: 0;
+    animation: monster-attack-card-fly 0.62s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  }
+
+  .monster-attack-outcome-pop {
+    opacity: 0;
+    animation: monster-attack-outcome-pop 0.32s ease-out forwards;
+  }
+
+  .monster-attack-return-card {
+    opacity: 0;
+    animation: monster-attack-return-to-deck 0.95s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+    transform: translate3d(0, 0, 0) scale(1);
+    transform-origin: center center;
+    will-change: transform, opacity;
+  }
+
+  @keyframes monster-attack-card-fly {
+    0% {
+      opacity: 0;
+      transform: translate(-220px, 120px) rotate(-10deg) scale(0.6);
+    }
+    70% {
+      opacity: 1;
+      transform: translate(6px, -4px) rotate(2deg) scale(1.02);
+    }
+    100% {
+      opacity: 1;
+      transform: translate(0, 0) rotate(0deg) scale(1);
+    }
+  }
+
+  @keyframes monster-attack-outcome-pop {
+    0% {
+      opacity: 0;
+      transform: translateY(4px) scale(0.9);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes monster-attack-return-to-deck {
+    0% {
+      opacity: 0;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    12% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    82% {
+      opacity: 1;
+      transform: translate3d(var(--return-dx), var(--return-dy), 0) scale(0.72);
+    }
+    100% {
+      opacity: 0;
+      transform: translate3d(var(--return-dx), var(--return-dy), 0) scale(0.58);
+    }
+  }
+
   @media (max-width: 768px) {
     
     .card-deck, .card-discard {

@@ -75,6 +75,9 @@ export class Dungeon extends Room<DungeonState> {
       if (success) {
         // Check if turn advanced by comparing turn numbers
         const turnAdvanced = this.state.currentTurn > currentTurnBefore;
+        const attackPhaseResult = turnAdvanced
+          ? this.state.consumePendingMonsterAttackPhaseResult()
+          : null;
         
         client.send("endTurnResult", { 
           success: true,
@@ -85,6 +88,10 @@ export class Dungeon extends Room<DungeonState> {
 
         // If turn advanced, notify all clients about the new turn
         if (turnAdvanced) {
+          if (attackPhaseResult && attackPhaseResult.totalAttacks > 0) {
+            this.broadcast("monsterAttackPhase", attackPhaseResult);
+          }
+
           this.broadcast("turnAdvanced", {
             newTurn: this.state.currentTurn,
             message: `Turn ${this.state.currentTurn} has begun`

@@ -9,13 +9,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Card = void 0;
 const schema_1 = require("@colyseus/schema");
 class Card extends schema_1.Schema {
-    constructor(id, type, description, selectionTarget, selectionMode, minSelections, maxSelections, requiresConnected, requiresRoomStartAdjacency, requiresMonsterStartAdjacency) {
+    constructor(id, type, description, selectionTarget, selectionMode, minSelections, maxSelections, requiresConnected, requiresRoomStartAdjacency, requiresMonsterStartAdjacency, defenseSymbol = "empty") {
         super();
         this.minSelections = 1;
         this.maxSelections = 0;
         this.requiresConnected = false;
         this.requiresRoomStartAdjacency = false;
         this.requiresMonsterStartAdjacency = false;
+        this.defenseSymbol = "empty"; // empty, block, counter
         this.isActive = false;
         this.id = id;
         this.type = type;
@@ -27,6 +28,7 @@ class Card extends schema_1.Schema {
         this.requiresConnected = requiresConnected;
         this.requiresRoomStartAdjacency = requiresRoomStartAdjacency;
         this.requiresMonsterStartAdjacency = requiresMonsterStartAdjacency;
+        this.defenseSymbol = defenseSymbol;
         this.isActive = false;
     }
 }
@@ -61,6 +63,9 @@ __decorate([
 __decorate([
     (0, schema_1.type)("boolean")
 ], Card.prototype, "requiresMonsterStartAdjacency", void 0);
+__decorate([
+    (0, schema_1.type)("string")
+], Card.prototype, "defenseSymbol", void 0);
 __decorate([
     (0, schema_1.type)("boolean")
 ], Card.prototype, "isActive", void 0);

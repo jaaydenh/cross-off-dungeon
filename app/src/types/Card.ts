@@ -19,5 +19,6 @@ export class Card extends Schema {
     @type("boolean") public requiresConnected!: boolean;
     @type("boolean") public requiresRoomStartAdjacency!: boolean;
     @type("boolean") public requiresMonsterStartAdjacency!: boolean;
+    @type("string") public defenseSymbol!: string;
     @type("boolean") public isActive!: boolean;
 }

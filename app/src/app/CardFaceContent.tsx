@@ -7,6 +7,7 @@ const DOUBLE_SWEEP_CARD_TYPE = 'cross_two_horizontal_then_two_horizontal';
 type CardFaceContentProps = {
   type: string;
   description: string;
+  defenseSymbol?: string;
 };
 
 function HeroicDoubleSweepVisual() {
@@ -28,8 +29,14 @@ function HeroicDoubleSweepVisual() {
   );
 }
 
-export default function CardFaceContent({ type, description }: CardFaceContentProps) {
+export default function CardFaceContent({ type, description, defenseSymbol = 'empty' }: CardFaceContentProps) {
   const isDoubleSweep = type === DOUBLE_SWEEP_CARD_TYPE;
+  const defenseIcon = defenseSymbol === 'block' ? '🛡️' : defenseSymbol === 'counter' ? '⚔️' : '○';
+  const defenseLabel = defenseSymbol === 'block'
+    ? 'Block'
+    : defenseSymbol === 'counter'
+      ? 'Counter Attack'
+      : 'Empty';
 
   return (
     <div className="absolute inset-0 rounded-lg overflow-hidden">
@@ -43,7 +50,12 @@ export default function CardFaceContent({ type, description }: CardFaceContentPr
           <CardFaceText text={description} className="text-black" maxFontPx={11} minFontPx={7} />
         )}
       </div>
+      <div
+        className="absolute bottom-1 right-1 h-5 w-5 rounded-full border border-gray-400 bg-white/95 flex items-center justify-center text-[10px] leading-none"
+        title={defenseLabel}
+      >
+        {defenseIcon}
+      </div>
     </div>
   );
 }
-

@@ -1,19 +1,26 @@
 import assert from "assert";
-import { ColyseusTestServer, boot } from "@colyseus/testing";
+import { ColyseusTestServer } from "@colyseus/testing";
 import { describe, it, before, after, beforeEach } from "mocha";
 
 // import your "app.config.ts" file here.
 import appConfig from "../src/app.config";
 import { DungeonState } from "../src/rooms/schema/DungeonState";
 import { Room } from "../src/rooms/schema/Room";
+import {
+  bootSandboxSafe,
+  cleanupSandboxSafe,
+  shutdownSandboxSafe
+} from "./helpers/colyseusTestUtils";
 
 describe("Dungeon Room", () => {
-  let colyseus: ColyseusTestServer;
+  let colyseus: ColyseusTestServer | undefined;
 
-  before(async () => colyseus = await boot(appConfig));
-  after(async () => colyseus.shutdown());
+  before(async function () {
+    colyseus = await bootSandboxSafe(this, appConfig);
+  });
+  after(async () => await shutdownSandboxSafe(colyseus));
 
-  beforeEach(async () => await colyseus.cleanup());
+  beforeEach(async () => await cleanupSandboxSafe(colyseus));
 
   it("should initialize with 1 room (real-time generation)", async () => {
     // Create a room

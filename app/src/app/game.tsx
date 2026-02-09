@@ -16,6 +16,8 @@ import TurnControls from './TurnControls';
 import CancelButton from './CancelButton';
 import ConfirmMoveButton from './ConfirmMoveButton';
 import PlayerMonsters from './PlayerMonsters';
+import { MonsterAttackAnimation } from '@/types/MonsterAttack';
+import CardFaceContent from './CardFaceContent';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +43,16 @@ export default function Game() {
   
   // Monster drag and drop state
   const [isMonsterBeingDragged, setIsMonsterBeingDragged] = useState(false);
+  const [monsterAttackAnimations, setMonsterAttackAnimations] = useState<MonsterAttackAnimation[]>([]);
+  const [deckReturnAnimations, setDeckReturnAnimations] = useState<Array<{
+    id: string;
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+    delayMs: number;
+    card: { type: string; description: string; defenseSymbol: string };
+  }>>([]);
 
   const activeCard = currentPlayer?.drawnCards?.find((card) => card.isActive) || null;
   const hasActiveCard = !!activeCard;
@@ -753,6 +765,105 @@ export default function Game() {
         // This handler just acknowledges the message to prevent warnings
       });
 
+      roomRef.current.onMessage('monsterAttackPhase', (message) => {
+        const sessionId = roomRef.current?.sessionId;
+        if (!sessionId) {
+          return;
+        }
+
+        const attacks = Array.isArray(message?.attacks) ? message.attacks : [];
+        const relevantAttacks = attacks.filter((attack: any) => attack?.playerSessionId === sessionId && !!attack?.monsterId);
+        if (relevantAttacks.length === 0) {
+          return;
+        }
+
+        const createdAt = Date.now();
+        const nextAnimations: MonsterAttackAnimation[] = relevantAttacks.map((attack: any, index: number) => {
+          const defenseSymbol =
+            attack?.card?.defenseSymbol === 'block' || attack?.card?.defenseSymbol === 'counter'
+              ? attack.card.defenseSymbol
+              : 'empty';
+
+          return {
+            id: `${attack.monsterId}-${attack.attackNumber || 1}-${createdAt}-${index}`,
+            monsterId: attack.monsterId,
+            attackNumber: Math.max(1, Number(attack.attackNumber || 1)),
+            monsterAttack: Math.max(1, Number(attack.monsterAttack || 1)),
+            outcome: attack.outcome || 'discarded',
+            counterSquare: attack.counterSquare || null,
+            card: attack.card
+              ? {
+                  id: String(attack.card.id || ''),
+                  type: String(attack.card.type || ''),
+                  description: String(attack.card.description || ''),
+                  defenseSymbol
+                }
+              : undefined
+          };
+        });
+
+        const idsToRemove = new Set(nextAnimations.map((attack) => attack.id));
+        setMonsterAttackAnimations((prev) => [...prev, ...nextAnimations]);
+
+        const deckCardEl = document.querySelector('[data-player-deck-card="true"]') as HTMLElement | null;
+        if (deckCardEl) {
+          const deckRect = deckCardEl.getBoundingClientRect();
+          const toX = deckRect.left + deckRect.width / 2 - 32;
+          const toY = deckRect.top + deckRect.height / 2 - 48;
+
+          const returnAnimations = nextAnimations
+            .filter(
+              (attack) =>
+                (attack.outcome === 'returned_to_deck' || attack.outcome === 'counter_attack') &&
+                !!attack.card
+            )
+            .flatMap((attack) => {
+              const escape = (window as any).CSS?.escape;
+              const escapedMonsterId = escape ? escape(attack.monsterId) : attack.monsterId.replace(/"/g, '\\"');
+              const monsterEl = document.querySelector(`[data-monster-card-id="${escapedMonsterId}"]`) as HTMLElement | null;
+              if (!monsterEl || !attack.card) return [];
+
+              const monsterRect = monsterEl.getBoundingClientRect();
+              const fromX = monsterRect.left + monsterRect.width / 2 - 32;
+              const fromY = monsterRect.top - 108;
+              const delayMs = Math.max(0, (attack.attackNumber || 1) - 1) * 280 + 860;
+
+              return [{
+                id: `${attack.id}-return`,
+                fromX,
+                fromY,
+                toX,
+                toY,
+                delayMs,
+                card: {
+                  type: attack.card.type,
+                  description: attack.card.description,
+                  defenseSymbol: attack.card.defenseSymbol
+                }
+              }];
+            });
+
+          if (returnAnimations.length > 0) {
+            const returnIds = new Set(returnAnimations.map((anim) => anim.id));
+            setDeckReturnAnimations((prev) => [...prev, ...returnAnimations]);
+
+            const maxDelay = returnAnimations.reduce((max, anim) => Math.max(max, anim.delayMs), 0);
+            setTimeout(() => {
+              setDeckReturnAnimations((prev) => prev.filter((anim) => !returnIds.has(anim.id)));
+            }, maxDelay + 1200);
+          }
+        }
+
+        const maxAttackNumber = nextAnimations.reduce(
+          (max, attack) => Math.max(max, attack.attackNumber || 1),
+          1
+        );
+        const animationDurationMs = 2200 + maxAttackNumber * 320;
+        setTimeout(() => {
+          setMonsterAttackAnimations((prev) => prev.filter((attack) => !idsToRemove.has(attack.id)));
+        }, animationDurationMs);
+      });
+
       // Monster actions are authoritative on the server and reflected via state patches.
       // NOTE: We intentionally do not rely on "*Result" messages here because sending them
       // has intermittently triggered msgpackr RangeErrors in this project.
@@ -999,12 +1110,33 @@ export default function Game() {
                   onMonsterDrop={() => setIsMonsterBeingDragged(false)}
                   selectedMonsterSquares={selectedMonsterSquares}
                   onMonsterSquareClick={handleMonsterSquareClick}
+                  attackAnimations={monsterAttackAnimations}
                 />
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {deckReturnAnimations.map((anim) => (
+        <div
+          key={anim.id}
+          className="monster-attack-return-card fixed z-[80] pointer-events-none w-16 h-24 rounded border-2 border-gray-300 bg-white shadow-xl"
+          style={{
+            left: `${anim.fromX}px`,
+            top: `${anim.fromY}px`,
+            animationDelay: `${anim.delayMs}ms`,
+            ['--return-dx' as any]: `${anim.toX - anim.fromX}px`,
+            ['--return-dy' as any]: `${anim.toY - anim.fromY}px`
+          }}
+        >
+          <CardFaceContent
+            type={anim.card.type}
+            description={anim.card.description}
+            defenseSymbol={anim.card.defenseSymbol}
+          />
+        </div>
+      ))}
     </main>
   );
 }

@@ -7,6 +7,7 @@ exports.CARD_DEFINITIONS = [
         id: "cross_connected_squares",
         name: "Connected Cross",
         description: "Cross off up to 3 connected squares",
+        defenseSymbol: "empty",
         selection: {
             target: "room",
             mode: "squares",
@@ -19,11 +20,12 @@ exports.CARD_DEFINITIONS = [
     {
         id: "cross_any_two_room_or_monster",
         name: "Any Two",
-        description: "Cross off any 2 squares on a single room or monster",
+        description: "Cross off up to 2 squares on a single room or monster",
+        defenseSymbol: "block",
         selection: {
             target: "room_or_monster",
             mode: "squares",
-            minSelections: 2,
+            minSelections: 1,
             maxSelections: 2,
             connected: false,
             // This card allows starting anywhere in a room (no entrance/cross-adjacent requirement).
@@ -35,6 +37,7 @@ exports.CARD_DEFINITIONS = [
         id: "cross_two_connected_each_monster",
         name: "Every Monster",
         description: "Cross off 2 connected squares on every monster",
+        defenseSymbol: "counter",
         selection: {
             target: "monster_each",
             mode: "squares",
@@ -48,6 +51,7 @@ exports.CARD_DEFINITIONS = [
         id: "cross_row_room",
         name: "Horizontal Sweep",
         description: "Cross off all horizontal squares on a single room",
+        defenseSymbol: "empty",
         selection: {
             target: "room",
             mode: "row",
@@ -60,6 +64,7 @@ exports.CARD_DEFINITIONS = [
         id: "cross_two_horizontal_then_two_horizontal",
         name: "Heroic Double Sweep",
         description: "Cross off 2 horizontal squares, then 2 more horizontal squares",
+        defenseSymbol: "counter",
         selection: {
             target: "room_or_monster",
             mode: "horizontal_pair_twice",
@@ -77,7 +82,7 @@ function getCardDefinition(id) {
 exports.getCardDefinition = getCardDefinition;
 function createCardFromDefinition(definition, id) {
     const selection = definition.selection;
-    return new Card_1.Card(id, definition.id, definition.description, selection.target, selection.mode, selection.minSelections ?? 1, selection.maxSelections ?? 0, selection.connected ?? false, selection.requireRoomStartAdjacency ?? false, selection.requireMonsterStartAdjacency ?? false);
+    return new Card_1.Card(id, definition.id, definition.description, selection.target, selection.mode, selection.minSelections ?? 1, selection.maxSelections ?? 0, selection.connected ?? false, selection.requireRoomStartAdjacency ?? false, selection.requireMonsterStartAdjacency ?? false, definition.defenseSymbol ?? "empty");
 }
 exports.createCardFromDefinition = createCardFromDefinition;
 function createStarterDeck() {

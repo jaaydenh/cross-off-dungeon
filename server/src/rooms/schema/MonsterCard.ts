@@ -2,12 +2,13 @@ import { Schema, type, ArraySchema } from "@colyseus/schema";
 import { MonsterSquare } from "./MonsterSquare";
 
 export class MonsterCard extends Schema {
-  constructor(id: string, name: string, width: number, height: number) {
+  constructor(id: string, name: string, width: number, height: number, attackRating: number = 1) {
     super();
     this.id = id;
     this.name = name;
     this.width = width;
     this.height = height;
+    this.attackRating = Math.max(1, Math.min(3, Math.floor(attackRating)));
     this.squares = new ArraySchema<MonsterSquare>();
     this.playerOwnerId = "";
     this.connectedToRoomIndex = -1;
@@ -24,6 +25,7 @@ export class MonsterCard extends Schema {
   @type("string") name: string; // bat, goblin, rat, troll, slime
   @type("number") width: number;
   @type("number") height: number;
+  @type("number") attackRating: number = 1; // Number of attacks this monster performs each monster phase
   @type([MonsterSquare]) squares = new ArraySchema<MonsterSquare>();
   @type("string") playerOwnerId: string = ""; // SessionId of player who owns this monster, empty if unowned
   @type("number") connectedToRoomIndex: number = -1; // Index of room this monster is connected to (-1 if in player area)
