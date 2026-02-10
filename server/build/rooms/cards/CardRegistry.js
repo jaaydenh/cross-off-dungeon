@@ -73,6 +73,21 @@ exports.CARD_DEFINITIONS = [
             connected: false,
             requireRoomStartAdjacency: false
         }
+    },
+    {
+        id: "reposition",
+        name: "Reposition",
+        description: "Move 2 then draw another card",
+        defenseSymbol: "empty",
+        drawCardsOnResolve: 1,
+        selection: {
+            target: "room",
+            mode: "squares",
+            minSelections: 2,
+            maxSelections: 2,
+            connected: true,
+            requireRoomStartAdjacency: true
+        }
     }
 ];
 const CARD_DEFINITIONS_BY_ID = new Map(exports.CARD_DEFINITIONS.map((card) => [card.id, card]));
@@ -82,7 +97,7 @@ function getCardDefinition(id) {
 exports.getCardDefinition = getCardDefinition;
 function createCardFromDefinition(definition, id) {
     const selection = definition.selection;
-    return new Card_1.Card(id, definition.id, definition.description, selection.target, selection.mode, selection.minSelections ?? 1, selection.maxSelections ?? 0, selection.connected ?? false, selection.requireRoomStartAdjacency ?? false, selection.requireMonsterStartAdjacency ?? false, definition.defenseSymbol ?? "empty");
+    return new Card_1.Card(id, definition.id, definition.description, selection.target, selection.mode, selection.minSelections ?? 1, selection.maxSelections ?? 0, selection.connected ?? false, selection.requireRoomStartAdjacency ?? false, selection.requireMonsterStartAdjacency ?? false, definition.defenseSymbol ?? "empty", definition.drawCardsOnResolve ?? 0);
 }
 exports.createCardFromDefinition = createCardFromDefinition;
 function createStarterDeck() {

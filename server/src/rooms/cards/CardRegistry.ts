@@ -9,6 +9,7 @@ export type CardDefinition = {
   name: string;
   description: string;
   defenseSymbol?: CardDefenseSymbol;
+  drawCardsOnResolve?: number;
   selection: {
     target: CardSelectionTarget;
     mode: CardSelectionMode;
@@ -91,6 +92,21 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
       connected: false,
       requireRoomStartAdjacency: false
     }
+  },
+  {
+    id: "reposition",
+    name: "Reposition",
+    description: "Move 2 then draw another card",
+    defenseSymbol: "empty",
+    drawCardsOnResolve: 1,
+    selection: {
+      target: "room",
+      mode: "squares",
+      minSelections: 2,
+      maxSelections: 2,
+      connected: true,
+      requireRoomStartAdjacency: true
+    }
   }
 ];
 
@@ -113,7 +129,8 @@ export function createCardFromDefinition(definition: CardDefinition, id: string)
     selection.connected ?? false,
     selection.requireRoomStartAdjacency ?? false,
     selection.requireMonsterStartAdjacency ?? false,
-    definition.defenseSymbol ?? "empty"
+    definition.defenseSymbol ?? "empty",
+    definition.drawCardsOnResolve ?? 0
   );
 }
 

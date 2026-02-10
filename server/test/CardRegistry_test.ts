@@ -25,4 +25,32 @@ describe("Card Registry", () => {
     assert.strictEqual(created.maxSelections, 2);
     assert.strictEqual(created.description, "Cross off up to 2 squares on a single room or monster");
   });
+
+  it("should configure Reposition as a room-only adjacent move with a bonus draw", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "reposition");
+    assert(definition, "Reposition card definition should exist");
+
+    assert.strictEqual(definition.name, "Reposition");
+    assert.strictEqual(definition.selection.target, "room");
+    assert.strictEqual(definition.selection.mode, "squares");
+    assert.strictEqual(definition.selection.minSelections, 2);
+    assert.strictEqual(definition.selection.maxSelections, 2);
+    assert.strictEqual(definition.selection.connected, true);
+    assert.strictEqual(definition.selection.requireRoomStartAdjacency, true);
+    assert.strictEqual(definition.drawCardsOnResolve, 1);
+  });
+
+  it("should create Reposition cards with drawCardsOnResolve = 1", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "reposition");
+    assert(definition, "Reposition card definition should exist");
+
+    const created = createCardFromDefinition(definition, "test_reposition");
+
+    assert.strictEqual(created.type, "reposition");
+    assert.strictEqual(created.minSelections, 2);
+    assert.strictEqual(created.maxSelections, 2);
+    assert.strictEqual(created.requiresConnected, true);
+    assert.strictEqual(created.selectionTarget, "room");
+    assert.strictEqual(created.drawCardsOnResolve, 1);
+  });
 });

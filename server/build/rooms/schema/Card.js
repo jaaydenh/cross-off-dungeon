@@ -9,7 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Card = void 0;
 const schema_1 = require("@colyseus/schema");
 class Card extends schema_1.Schema {
-    constructor(id, type, description, selectionTarget, selectionMode, minSelections, maxSelections, requiresConnected, requiresRoomStartAdjacency, requiresMonsterStartAdjacency, defenseSymbol = "empty") {
+    constructor(id, type, description, selectionTarget, selectionMode, minSelections, maxSelections, requiresConnected, requiresRoomStartAdjacency, requiresMonsterStartAdjacency, defenseSymbol = "empty", drawCardsOnResolve = 0) {
         super();
         this.minSelections = 1;
         this.maxSelections = 0;
@@ -17,6 +17,7 @@ class Card extends schema_1.Schema {
         this.requiresRoomStartAdjacency = false;
         this.requiresMonsterStartAdjacency = false;
         this.defenseSymbol = "empty"; // empty, block, counter
+        this.drawCardsOnResolve = 0;
         this.isActive = false;
         this.id = id;
         this.type = type;
@@ -29,6 +30,7 @@ class Card extends schema_1.Schema {
         this.requiresRoomStartAdjacency = requiresRoomStartAdjacency;
         this.requiresMonsterStartAdjacency = requiresMonsterStartAdjacency;
         this.defenseSymbol = defenseSymbol;
+        this.drawCardsOnResolve = Math.max(0, Math.floor(drawCardsOnResolve || 0));
         this.isActive = false;
     }
 }
@@ -66,6 +68,9 @@ __decorate([
 __decorate([
     (0, schema_1.type)("string")
 ], Card.prototype, "defenseSymbol", void 0);
+__decorate([
+    (0, schema_1.type)("number")
+], Card.prototype, "drawCardsOnResolve", void 0);
 __decorate([
     (0, schema_1.type)("boolean")
 ], Card.prototype, "isActive", void 0);

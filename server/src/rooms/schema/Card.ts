@@ -14,7 +14,8 @@ export class Card extends Schema {
     requiresConnected: boolean,
     requiresRoomStartAdjacency: boolean,
     requiresMonsterStartAdjacency: boolean,
-    defenseSymbol: CardDefenseSymbol = "empty"
+    defenseSymbol: CardDefenseSymbol = "empty",
+    drawCardsOnResolve: number = 0
   ) {
     super();
     this.id = id;
@@ -28,6 +29,7 @@ export class Card extends Schema {
     this.requiresRoomStartAdjacency = requiresRoomStartAdjacency;
     this.requiresMonsterStartAdjacency = requiresMonsterStartAdjacency;
     this.defenseSymbol = defenseSymbol;
+    this.drawCardsOnResolve = Math.max(0, Math.floor(drawCardsOnResolve || 0));
     this.isActive = false;
   }
 
@@ -42,5 +44,6 @@ export class Card extends Schema {
   @type("boolean") requiresRoomStartAdjacency: boolean = false;
   @type("boolean") requiresMonsterStartAdjacency: boolean = false;
   @type("string") defenseSymbol: CardDefenseSymbol = "empty"; // empty, block, counter
+  @type("number") drawCardsOnResolve: number = 0;
   @type("boolean") isActive: boolean = false;
 }

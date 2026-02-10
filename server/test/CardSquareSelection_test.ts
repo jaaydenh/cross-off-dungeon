@@ -39,6 +39,22 @@ const makeAnyTwoRoomOrMonsterCard = (id: string) =>
     "block"
   );
 
+const makeRepositionCard = (id: string) =>
+  new Card(
+    id,
+    "reposition",
+    "Move 2 then draw another card",
+    "room",
+    "squares",
+    2,
+    2,
+    true,
+    true,
+    false,
+    "empty",
+    1
+  );
+
 describe("Card-Based Square Selection System", () => {
   let colyseus: ColyseusTestServer | undefined;
 
@@ -490,6 +506,70 @@ describe("Card-Based Square Selection System", () => {
       );
       assert.strictEqual(player.drawnCards.length, initialDrawnCount - 1, "Card should leave drawn pile");
       assert.strictEqual(player.discardPile.length, initialDiscardCount + 1, "Card should move to discard pile");
+    });
+
+    it("should draw one additional card after completing Reposition", async () => {
+      const room = await colyseus.createRoom("dungeon", {});
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
+
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeRepositionCard("card_test_reposition"));
+      seededPlayer.deck.push(makeConnectedRoomCard("card_followup"));
+
+      room.send(client, "drawCard", {});
+      await room.waitForNextPatch();
+
+      const player = room.state.players.get(client.sessionId)!;
+      assert.strictEqual(player.drawnCards.length, 1, "Should have drawn Reposition");
+      assert.strictEqual(player.drawnCards[0].type, "reposition");
+      assert.strictEqual(player.deck.length, 1, "Deck should have one card left before playing Reposition");
+
+      room.send(client, "playCard", { cardId: player.drawnCards[0].id });
+      await room.waitForNextPatch();
+
+      const currentRoom = room.state.getCurrentRoom()!;
+      const startX = currentRoom.entranceX;
+      const startY = currentRoom.entranceY;
+      const directions = [
+        { dx: 1, dy: 0 },
+        { dx: -1, dy: 0 },
+        { dx: 0, dy: 1 },
+        { dx: 0, dy: -1 }
+      ];
+
+      let secondSquare: { x: number; y: number } | null = null;
+      for (const direction of directions) {
+        const nextX = startX + direction.dx;
+        const nextY = startY + direction.dy;
+        if (!currentRoom.isValidPosition(nextX, nextY)) continue;
+        const square = currentRoom.getSquare(nextX, nextY);
+        if (!square || square.wall || square.checked) continue;
+        secondSquare = { x: nextX, y: nextY };
+        break;
+      }
+
+      assert(secondSquare, "Should find a valid adjacent square for Reposition");
+
+      const selectFirst = room.state.selectSquareForCard(client.sessionId, room.state.currentRoomIndex, startX, startY);
+      assert.strictEqual(selectFirst.success, true, "First Reposition square should be valid");
+
+      const selectSecond = room.state.selectSquareForCard(
+        client.sessionId,
+        room.state.currentRoomIndex,
+        secondSquare.x,
+        secondSquare.y
+      );
+      assert.strictEqual(selectSecond.success, true, "Second Reposition square should be valid and adjacent");
+
+      const confirmResult = room.state.confirmCardAction(client.sessionId);
+      assert.strictEqual(confirmResult.success, true, "Reposition should confirm successfully");
+      assert.strictEqual(confirmResult.completed, true, "Reposition should complete on confirm");
+
+      assert.strictEqual(player.discardPile.length, 1, "Reposition should be moved to discard");
+      assert.strictEqual(player.drawnCards.length, 1, "Reposition should draw one replacement card");
+      assert.strictEqual(player.drawnCards[0].id, "card_followup", "Follow-up card should be drawn");
+      assert.strictEqual(player.deck.length, 0, "Deck should now be empty");
     });
   });
 

@@ -65,12 +65,12 @@ export default function MonsterBadge({ monster, canDrag, onDragStart, onDragEnd 
         </div>
 
         {/* Hover preview */}
-        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 p-2">
+        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 p-2 flex flex-col items-center">
           <MonsterCard
             monster={monster}
             isOwnedByPlayer={false}
             canDrag={false}
-            className="monster-in-room"
+            className="monster-owned w-fit pointer-events-none"
           />
           <div className="mt-2 text-center text-xs text-slate-200 font-semibold">
             Drag to claim
@@ -80,4 +80,3 @@ export default function MonsterBadge({ monster, canDrag, onDragStart, onDragEnd 
     </div>
   );
 }
-

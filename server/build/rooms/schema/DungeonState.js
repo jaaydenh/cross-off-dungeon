@@ -755,6 +755,21 @@ class DungeonState extends schema_1.Schema {
         }
         return { success: false, error: "Failed to draw card" };
     }
+    drawCardsFromDeckForEffect(sessionId, count) {
+        const player = this.players.get(sessionId);
+        if (!player || count <= 0) {
+            return 0;
+        }
+        let drawnCount = 0;
+        while (drawnCount < count && player.deck.length > 0) {
+            const drawnCard = player.deck.shift();
+            if (!drawnCard)
+                break;
+            player.drawnCards.push(drawnCard);
+            drawnCount += 1;
+        }
+        return drawnCount;
+    }
     /**
      * Activate a drawn card for square selection
      * @param sessionId Session ID of the player
@@ -1190,10 +1205,24 @@ class DungeonState extends schema_1.Schema {
         // Clean up card selection state
         this.activeCardPlayers.delete(sessionId);
         this.clearSelections(sessionId);
+        const requestedBonusDraws = Math.max(0, Math.floor(card.drawCardsOnResolve || 0));
+        const actualBonusDraws = requestedBonusDraws > 0 ? this.drawCardsFromDeckForEffect(sessionId, requestedBonusDraws) : 0;
         console.log(`Player ${sessionId} completed card action with card ${activeCardId}`);
+        let message = "Card action completed! Squares crossed and card moved to discard pile.";
+        if (requestedBonusDraws > 0) {
+            if (actualBonusDraws === requestedBonusDraws) {
+                message += ` Drew ${actualBonusDraws} bonus card${actualBonusDraws === 1 ? "" : "s"}.`;
+            }
+            else if (actualBonusDraws > 0) {
+                message += ` Drew ${actualBonusDraws} bonus card${actualBonusDraws === 1 ? "" : "s"} (deck emptied before drawing all requested cards).`;
+            }
+            else {
+                message += " Could not draw a bonus card because the deck is empty.";
+            }
+        }
         return {
             success: true,
-            message: "Card action completed! Squares crossed and card moved to discard pile.",
+            message,
             completed: true
         };
     }
