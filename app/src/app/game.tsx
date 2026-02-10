@@ -390,30 +390,6 @@ export default function Game() {
     const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
       (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
 
-    // Starting square rule (per monster): if the monster already has crossed squares, the first selection
-    // must be orthogonally adjacent to an already-crossed square.
-    if (activeCard.requiresMonsterStartAdjacency && selectedForMonster.length === 0) {
-      const hasAnyCrossed = monster.squares.some(s => s.filled && s.checked);
-      if (hasAnyCrossed) {
-        let adjacentToCrossed = false;
-        for (let checkY = 0; checkY < monster.height; checkY++) {
-          for (let checkX = 0; checkX < monster.width; checkX++) {
-            const checkSquare = monster.squares[checkY * monster.width + checkX];
-            if (checkSquare?.filled && checkSquare.checked && isOrthAdjacent(x, y, checkX, checkY)) {
-              adjacentToCrossed = true;
-              break;
-            }
-          }
-          if (adjacentToCrossed) break;
-        }
-
-        if (!adjacentToCrossed) {
-          console.log('First monster square must be adjacent to an already crossed square');
-          return;
-        }
-      }
-    }
-
     // Connectivity (per monster): subsequent squares must be adjacent to existing selections on this monster
     if (activeCard.requiresConnected && selectedForMonster.length > 0) {
       const isConnected = selectedForMonster.some(pos => isOrthAdjacent(x, y, pos.x, pos.y));

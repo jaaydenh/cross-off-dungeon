@@ -4,6 +4,7 @@ import assert from "assert";
 import { describe, it, before, after, beforeEach } from "mocha";
 import appConfig from "../src/app.config";
 import { Card } from "../src/rooms/schema/Card";
+import { MonsterCard } from "../src/rooms/schema/MonsterCard";
 import {
   bootSandboxSafe,
   cleanupSandboxSafe,
@@ -53,6 +54,20 @@ const makeRepositionCard = (id: string) =>
     false,
     "empty",
     1
+  );
+
+const makeMonsterAnywhereCard = (id: string) =>
+  new Card(
+    id,
+    "monster_anywhere_test",
+    "Cross off 1 monster square",
+    "monster",
+    "squares",
+    1,
+    1,
+    false,
+    false,
+    true
   );
 
 describe("Card-Based Square Selection System", () => {
@@ -379,6 +394,44 @@ describe("Card-Based Square Selection System", () => {
       assert.strictEqual(result.success, false, "Should fail to select already crossed square");
       assert.strictEqual(result.invalidSquare, true, "Should mark as invalid square");
       assert(result.error?.includes("already crossed"), "Should have appropriate error message");
+    });
+
+    it("should allow selecting a monster square even when not adjacent to an existing crossed monster square", async () => {
+      const room = await colyseus.createRoom("dungeon", {});
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
+
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeMonsterAnywhereCard("card_test_monster_anywhere"));
+
+      const monster = new MonsterCard("monster_test_anywhere", "slime", 3, 3, 1);
+      for (let y = 0; y < monster.height; y++) {
+        for (let x = 0; x < monster.width; x++) {
+          monster.setSquareFilled(x, y, true);
+        }
+      }
+      monster.playerOwnerId = client.sessionId;
+      monster.connectedToRoomIndex = -1;
+      const preCrossed = monster.getSquare(0, 0);
+      assert(preCrossed, "Monster should have a square at 0,0");
+      preCrossed.checked = true;
+      room.state.activeMonsters.push(monster);
+
+      room.send(client, "drawCard", {});
+      await room.waitForNextPatch();
+
+      const player = room.state.players.get(client.sessionId)!;
+      const cardId = player.drawnCards[0].id;
+      room.send(client, "playCard", { cardId });
+      await room.waitForNextPatch();
+
+      const selection = room.state.crossMonsterSquare(client.sessionId, monster.id, 2, 2);
+      assert.strictEqual(selection.success, true, "Should allow selecting any monster square");
+
+      const confirm = room.state.confirmCardAction(client.sessionId);
+      assert.strictEqual(confirm.success, true, "Should confirm monster selection");
+      assert.strictEqual(confirm.completed, true, "Should complete card action");
+      assert.strictEqual(monster.getSquare(2, 2)?.checked, true, "Selected monster square should be crossed");
     });
   });
 

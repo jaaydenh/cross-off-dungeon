@@ -243,9 +243,13 @@ class DungeonState extends schema_1.Schema {
         this.addPlayerToTurnOrder(id);
     }
     removePlayer(id) {
-        this.players.delete(id);
+        if (this.players.has(id)) {
+            this.players.delete(id);
+        }
         // Clean up any in-progress card action state for this session.
-        this.activeCardPlayers.delete(id);
+        if (this.activeCardPlayers.has(id)) {
+            this.activeCardPlayers.delete(id);
+        }
         this.selectedSquares.delete(id);
         this.selectedSquareCount.delete(id);
         // Remove player from turn order

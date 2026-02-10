@@ -1,11 +1,128 @@
 import { Room, Client } from "@colyseus/core";
-import { DungeonState } from "./schema/DungeonState";
+import { DungeonState, type MonsterAttackPhaseResult } from "./schema/DungeonState";
 
 export class Dungeon extends Room<DungeonState> {
   maxClients = 4;
 
   // Room name used by clients when joining (helpful for debugging/logging)
   static readonly ROOM_NAME = "dungeon";
+
+  private toFiniteInt(value: unknown, fallback: number): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return fallback;
+    }
+    return Math.trunc(value);
+  }
+
+  private toSafeString(value: unknown): string {
+    return typeof value === "string" ? value : "";
+  }
+
+  private normalizeMonsterAttackPhasePayload(
+    payload: MonsterAttackPhaseResult
+  ): {
+    turn: number;
+    totalAttacks: number;
+    attacks: Array<{
+      playerSessionId: string;
+      monsterId: string;
+      monsterName: string;
+      monsterAttack: number;
+      attackNumber: number;
+      outcome: string;
+      card: {
+        id: string;
+        type: string;
+        description: string;
+        defenseSymbol: "empty" | "block" | "counter";
+      } | null;
+      counterSquare: { x: number; y: number } | null;
+    }>;
+  } {
+    const attacks = (Array.isArray(payload.attacks) ? payload.attacks : []).map((attack) => {
+      const cardDefenseSymbol: "empty" | "block" | "counter" =
+        attack.card?.defenseSymbol === "block" || attack.card?.defenseSymbol === "counter"
+          ? attack.card.defenseSymbol
+          : "empty";
+
+      const card: {
+        id: string;
+        type: string;
+        description: string;
+        defenseSymbol: "empty" | "block" | "counter";
+      } | null = attack.card
+        ? {
+            id: this.toSafeString(attack.card.id),
+            type: this.toSafeString(attack.card.type),
+            description: this.toSafeString(attack.card.description),
+            defenseSymbol: cardDefenseSymbol
+          }
+        : null;
+
+      const counterSquare =
+        attack.counterSquare &&
+        typeof attack.counterSquare.x === "number" &&
+        Number.isFinite(attack.counterSquare.x) &&
+        typeof attack.counterSquare.y === "number" &&
+        Number.isFinite(attack.counterSquare.y)
+          ? {
+              x: Math.trunc(attack.counterSquare.x),
+              y: Math.trunc(attack.counterSquare.y)
+            }
+          : null;
+
+      return {
+        playerSessionId: this.toSafeString(attack.playerSessionId),
+        monsterId: this.toSafeString(attack.monsterId),
+        monsterName: this.toSafeString(attack.monsterName),
+        monsterAttack: Math.max(1, this.toFiniteInt(attack.monsterAttack, 1)),
+        attackNumber: Math.max(1, this.toFiniteInt(attack.attackNumber, 1)),
+        outcome: this.toSafeString(attack.outcome) || "no_card_available",
+        card,
+        counterSquare
+      };
+    });
+
+    return {
+      turn: this.toFiniteInt(payload.turn, this.state.currentTurn),
+      totalAttacks: attacks.length,
+      attacks
+    };
+  }
+
+  private trySend(client: Client, type: string, payload: unknown): boolean {
+    try {
+      client.send(type, payload as any);
+      return true;
+    } catch (error) {
+      console.error(`[Dungeon] Failed to send '${type}' to ${client.sessionId}:`, error);
+      return false;
+    }
+  }
+
+  private sendWithFallback(client: Client, type: string, payload: unknown, fallback: unknown): void {
+    if (this.trySend(client, type, payload)) {
+      return;
+    }
+    this.trySend(client, type, fallback);
+  }
+
+  private tryBroadcast(type: string, payload: unknown): boolean {
+    try {
+      this.broadcast(type, payload as any);
+      return true;
+    } catch (error) {
+      console.error(`[Dungeon] Failed to broadcast '${type}':`, error);
+      return false;
+    }
+  }
+
+  private broadcastWithFallback(type: string, payload: unknown, fallback: unknown): void {
+    if (this.tryBroadcast(type, payload)) {
+      return;
+    }
+    this.tryBroadcast(type, fallback);
+  }
 
   onCreate(options: any) {
     this.setState(new DungeonState());
@@ -32,42 +149,75 @@ export class Dungeon extends Room<DungeonState> {
       const player = this.state.players.get(client.sessionId);
       
       if (!player) {
-        client.send("endTurnResult", { 
-          success: false, 
-          error: "Player not found" 
-        });
+        this.sendWithFallback(
+          client,
+          "endTurnResult",
+          {
+            success: false,
+            message: null,
+            error: "Player not found",
+            turnAdvanced: false,
+            currentTurn: this.state.currentTurn
+          },
+          {
+            success: false,
+            message: null,
+            error: "Serialization error",
+            turnAdvanced: false,
+            currentTurn: this.state.currentTurn
+          }
+        );
         return;
       }
 
       // Prevent ending the turn while a card is still active.
       if (this.state.activeCardPlayers.has(client.sessionId)) {
-        client.send("endTurnResult", {
-          success: false,
-          error: "Cannot end turn while a card is active. Confirm or cancel it first."
-        });
+        this.sendWithFallback(
+          client,
+          "endTurnResult",
+          {
+            success: false,
+            message: null,
+            error: "Cannot end turn while a card is active. Confirm or cancel it first.",
+            turnAdvanced: false,
+            currentTurn: this.state.currentTurn
+          },
+          {
+            success: false,
+            message: null,
+            error: "Serialization error",
+            turnAdvanced: false,
+            currentTurn: this.state.currentTurn
+          }
+        );
         return;
       }
 
       // Validate that the player can end their turn
       if (!this.state.canPlayerPerformAction(client.sessionId, "endTurn")) {
-        client.send("endTurnResult", { 
-          success: false, 
-          error: "Cannot end turn: player must be in 'playing_turn' status" 
-        });
+        this.sendWithFallback(
+          client,
+          "endTurnResult",
+          {
+            success: false,
+            message: null,
+            error: "Cannot end turn: player must be in 'playing_turn' status",
+            turnAdvanced: false,
+            currentTurn: this.state.currentTurn
+          },
+          {
+            success: false,
+            message: null,
+            error: "Serialization error",
+            turnAdvanced: false,
+            currentTurn: this.state.currentTurn
+          }
+        );
         return;
       }
 
       // Store the current turn before updating status
       const currentTurnBefore = this.state.currentTurn;
-      
-      // Check if all players will be ready after this player completes their turn
-      const willAllPlayersBeReady = this.state.turnOrder.every(sessionId => {
-        if (sessionId === client.sessionId) {
-          return true; // This player will be turn_complete
-        }
-        const otherPlayer = this.state.players.get(sessionId);
-        return otherPlayer && otherPlayer.turnStatus === "turn_complete";
-      });
 
       // Update player status to turn_complete
       const success = this.state.updatePlayerTurnStatus(client.sessionId, "turn_complete");
@@ -78,30 +228,72 @@ export class Dungeon extends Room<DungeonState> {
         const attackPhaseResult = turnAdvanced
           ? this.state.consumePendingMonsterAttackPhaseResult()
           : null;
-        
-        client.send("endTurnResult", { 
-          success: true,
-          message: "Turn ended successfully",
-          turnAdvanced: turnAdvanced,
-          currentTurn: this.state.currentTurn
-        });
+
+        this.sendWithFallback(
+          client,
+          "endTurnResult",
+          {
+            success: true,
+            message: "Turn ended successfully",
+            error: null,
+            turnAdvanced,
+            currentTurn: this.state.currentTurn
+          },
+          {
+            success: true,
+            message: null,
+            error: "Serialization error",
+            turnAdvanced,
+            currentTurn: this.state.currentTurn
+          }
+        );
 
         // If turn advanced, notify all clients about the new turn
         if (turnAdvanced) {
           if (attackPhaseResult && attackPhaseResult.totalAttacks > 0) {
-            this.broadcast("monsterAttackPhase", attackPhaseResult);
+            const normalizedAttackPhaseResult = this.normalizeMonsterAttackPhasePayload(attackPhaseResult);
+            this.broadcastWithFallback(
+              "monsterAttackPhase",
+              normalizedAttackPhaseResult,
+              {
+                turn: this.state.currentTurn,
+                totalAttacks: 0,
+                attacks: []
+              }
+            );
           }
 
-          this.broadcast("turnAdvanced", {
-            newTurn: this.state.currentTurn,
-            message: `Turn ${this.state.currentTurn} has begun`
-          });
+          this.broadcastWithFallback(
+            "turnAdvanced",
+            {
+              newTurn: this.state.currentTurn,
+              message: `Turn ${this.state.currentTurn} has begun`
+            },
+            {
+              newTurn: this.state.currentTurn,
+              message: `Turn ${this.state.currentTurn}`
+            }
+          );
         }
       } else {
-        client.send("endTurnResult", { 
-          success: false, 
-          error: "Failed to update turn status" 
-        });
+        this.sendWithFallback(
+          client,
+          "endTurnResult",
+          {
+            success: false,
+            message: null,
+            error: "Failed to update turn status",
+            turnAdvanced: false,
+            currentTurn: this.state.currentTurn
+          },
+          {
+            success: false,
+            message: null,
+            error: "Serialization error",
+            turnAdvanced: false,
+            currentTurn: this.state.currentTurn
+          }
+        );
       }
     });
 

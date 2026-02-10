@@ -53,7 +53,7 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
     return (
       <div className="flex flex-col items-center gap-2">
         <h3 className="text-md font-semibold text-white">Drawn Card</h3>
-        <div className="w-24 h-32 bg-gray-700 border-2 border-gray-600 rounded-lg flex items-center justify-center">
+        <div className="w-[121px] h-[176px] bg-gray-700 border-2 border-gray-600 rounded-lg flex items-center justify-center">
           <p className="text-gray-400 text-xs text-center">No card drawn</p>
         </div>
       </div>
@@ -67,7 +67,7 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
       {/* Drawn Card */}
       <div
         className={`
-          relative w-20 h-28 bg-white border-2 rounded-lg card-zoom
+          relative w-[121px] h-[176px] bg-white border-2 rounded-lg card-zoom
           ${drawnCard.isActive
             ? 'border-yellow-400 bg-yellow-100 shadow-lg shadow-yellow-400/50 cursor-not-allowed'
             : 'border-gray-300 cursor-pointer hover:border-blue-400'

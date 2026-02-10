@@ -316,10 +316,14 @@ export class DungeonState extends Schema {
   }
 
   removePlayer(id: string) {
-    this.players.delete(id);
+    if (this.players.has(id)) {
+      this.players.delete(id);
+    }
 
     // Clean up any in-progress card action state for this session.
-    this.activeCardPlayers.delete(id);
+    if (this.activeCardPlayers.has(id)) {
+      this.activeCardPlayers.delete(id);
+    }
     this.selectedSquares.delete(id);
     this.selectedSquareCount.delete(id);
 
@@ -2003,30 +2007,6 @@ export class DungeonState extends Schema {
 
     const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
       (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
-
-    if (card.requiresMonsterStartAdjacency && currentForMonster.length === 0) {
-      const hasAnyCrossed = monster.squares.some((s) => s.filled && s.checked);
-      if (hasAnyCrossed) {
-        let adjacentToCrossed = false;
-        for (let checkY = 0; checkY < monster.height; checkY++) {
-          for (let checkX = 0; checkX < monster.width; checkX++) {
-            const s = monster.getSquare(checkX, checkY);
-            if (s?.filled && s.checked && isOrthAdjacent(x, y, checkX, checkY)) {
-              adjacentToCrossed = true;
-              break;
-            }
-          }
-          if (adjacentToCrossed) break;
-        }
-        if (!adjacentToCrossed) {
-          return {
-            success: false,
-            error: "First square must be adjacent to an already crossed monster square",
-            invalidSquare: true
-          };
-        }
-      }
-    }
 
     if (card.requiresConnected && currentForMonster.length > 0) {
       const isConnected = currentForMonster.some((pos) => isOrthAdjacent(x, y, pos.x, pos.y));
