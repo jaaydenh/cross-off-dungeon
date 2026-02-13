@@ -51,13 +51,16 @@ export default function Game() {
     toX: number;
     toY: number;
     delayMs: number;
-    card: { type: string; description: string; defenseSymbol: string };
+    card: { type: string; name: string; description: string; defenseSymbol: string; color: string };
   }>>([]);
   const [dayBanner, setDayBanner] = useState<string | null>(null);
   const [gameResultBanner, setGameResultBanner] = useState<string | null>(null);
   const dayBannerTimeoutRef = useRef<any>(null);
   const lastAnnouncedDayRef = useRef<number | null>(null);
   const lastGameStatusRef = useRef<string | null>(null);
+  const hasGameState = gameState !== null;
+  const currentDay = Number(gameState?.currentDay || 1);
+  const currentGameStatus = gameState?.gameStatus || null;
 
   const activeCard = currentPlayer?.drawnCards?.find((card) => card.isActive) || null;
   const hasActiveCard = !!activeCard;
@@ -65,6 +68,8 @@ export default function Game() {
   const mapScrollRef = useRef<HTMLDivElement>(null);
   const playerAreaRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<Room>();
+  const isHeroicMoveAndFightCard = (card: any): boolean => card?.type === 'heroic_move_two_and_fight_two';
+  const isCombatCard = (card: any): boolean => card?.type === 'combat_fight_three_diagonal_or_move_three';
 
   useEffect(() => {
     if (!hasActiveCard) {
@@ -82,9 +87,8 @@ export default function Game() {
   }, []);
 
   useEffect(() => {
-    if (!inRoom || !gameState) return;
+    if (!inRoom || !hasGameState) return;
 
-    const currentDay = Number(gameState.currentDay || 1);
     if (lastAnnouncedDayRef.current !== currentDay) {
       lastAnnouncedDayRef.current = currentDay;
       setDayBanner(`Day ${currentDay}`);
@@ -98,17 +102,17 @@ export default function Game() {
       }, 2200);
     }
 
-    if (lastGameStatusRef.current !== gameState.gameStatus) {
-      lastGameStatusRef.current = gameState.gameStatus;
-      if (gameState.gameStatus === 'won') {
+    if (lastGameStatusRef.current !== currentGameStatus) {
+      lastGameStatusRef.current = currentGameStatus;
+      if (currentGameStatus === 'won') {
         setGameResultBanner('Victory! Boss Defeated');
-      } else if (gameState.gameStatus === 'lost') {
+      } else if (currentGameStatus === 'lost') {
         setGameResultBanner('Defeat! 3 Days Elapsed');
       } else {
         setGameResultBanner(null);
       }
     }
-  }, [inRoom, gameState]);
+  }, [inRoom, hasGameState, currentDay, currentGameStatus]);
 
   const handleCancelCleanup = useCallback(() => {
     setSelectedSquares([]);
@@ -208,7 +212,7 @@ export default function Game() {
     }
 
     // Prevent mixing monster + room selections in the same card action
-    if (selectedMonsterSquares.length > 0) {
+    if (selectedMonsterSquares.length > 0 && !isHeroicMoveAndFightCard(activeCard)) {
       console.log('Cannot select room squares while monster squares are selected');
       return;
     }
@@ -355,13 +359,14 @@ export default function Game() {
     }
 
     // Prevent mixing monster + room selections in the same card action
-    if (selectedSquares.length > 0) {
+    if (selectedSquares.length > 0 && !isHeroicMoveAndFightCard(activeCard)) {
       console.log('Cannot select monster squares while room squares are selected');
       return;
     }
 
     const allowsMultiMonster = activeCard.selectionTarget === 'monster_each';
     const maxSelections = activeCard.maxSelections || 0;
+    const maxSelectionsForMonster = isHeroicMoveAndFightCard(activeCard) ? 2 : maxSelections;
 
     // Enforce single-monster selection per card action
     if (!allowsMultiMonster && selectedMonsterSquares.length > 0 && selectedMonsterSquares.some(pos => pos.monsterId !== monsterId)) {
@@ -402,14 +407,14 @@ export default function Game() {
     const selectedForMonster = selectedMonsterSquares.filter((pos) => pos.monsterId === monsterId);
 
     // Enforce max selection limits
-    if (maxSelections > 0) {
+    if (maxSelectionsForMonster > 0) {
       if (allowsMultiMonster) {
-        if (selectedForMonster.length >= maxSelections) {
-          console.log(`Maximum of ${maxSelections} squares can be selected per monster`);
+        if (selectedForMonster.length >= maxSelectionsForMonster) {
+          console.log(`Maximum of ${maxSelectionsForMonster} squares can be selected per monster`);
           return;
         }
-      } else if (selectedMonsterSquares.length >= maxSelections) {
-        console.log(`Maximum of ${maxSelections} squares can be selected per card`);
+      } else if (selectedMonsterSquares.length >= maxSelectionsForMonster) {
+        console.log(`Maximum of ${maxSelectionsForMonster} squares can be selected per card`);
         return;
       }
     }
@@ -431,12 +436,20 @@ export default function Game() {
 
     const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
       (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
+    const isDiagonalAdjacent = (ax: number, ay: number, bx: number, by: number) =>
+      Math.abs(ax - bx) === 1 && Math.abs(ay - by) === 1;
 
     // Connectivity (per monster): subsequent squares must be adjacent to existing selections on this monster
     if (activeCard.requiresConnected && selectedForMonster.length > 0) {
-      const isConnected = selectedForMonster.some(pos => isOrthAdjacent(x, y, pos.x, pos.y));
+      const isConnected = isCombatCard(activeCard)
+        ? selectedForMonster.some(pos => isDiagonalAdjacent(x, y, pos.x, pos.y))
+        : selectedForMonster.some(pos => isOrthAdjacent(x, y, pos.x, pos.y));
       if (!isConnected) {
-        console.log('Monster square must be orthogonally connected to selected squares');
+        console.log(
+          isCombatCard(activeCard)
+            ? 'Monster square must be diagonally connected to selected squares'
+            : 'Monster square must be orthogonally connected to selected squares'
+        );
         return;
       }
     }
@@ -487,8 +500,9 @@ export default function Game() {
     }
 
     const maxSelections = card?.maxSelections || 0;
-    if (maxSelections > 0 && selectedSquares.length >= maxSelections) {
-      return { valid: false, reason: `Maximum of ${maxSelections} squares can be selected per card` };
+    const maxRoomSelections = isHeroicMoveAndFightCard(card) ? 2 : maxSelections;
+    if (maxRoomSelections > 0 && selectedSquares.length >= maxRoomSelections) {
+      return { valid: false, reason: `Maximum of ${maxRoomSelections} squares can be selected per card` };
     }
 
     // Validate connectivity for non-first squares (when required)
@@ -801,6 +815,10 @@ export default function Game() {
             attack?.card?.defenseSymbol === 'block' || attack?.card?.defenseSymbol === 'counter'
               ? attack.card.defenseSymbol
               : 'empty';
+          const color =
+            attack?.card?.color === 'red' || attack?.card?.color === 'blue' || attack?.card?.color === 'green'
+              ? attack.card.color
+              : 'clear';
 
           return {
             id: `${attack.monsterId}-${attack.attackNumber || 1}-${createdAt}-${index}`,
@@ -810,11 +828,13 @@ export default function Game() {
             outcome: attack.outcome || 'discarded',
             counterSquare: attack.counterSquare || null,
             card: attack.card
-              ? {
+                ? {
                   id: String(attack.card.id || ''),
                   type: String(attack.card.type || ''),
+                  name: String(attack.card.name || ''),
                   description: String(attack.card.description || ''),
-                  defenseSymbol
+                  defenseSymbol,
+                  color
                 }
               : undefined
           };
@@ -855,8 +875,10 @@ export default function Game() {
                 delayMs,
                 card: {
                   type: attack.card.type,
+                  name: attack.card.name || '',
                   description: attack.card.description,
-                  defenseSymbol: attack.card.defenseSymbol
+                  defenseSymbol: attack.card.defenseSymbol,
+                  color: attack.card.color
                 }
               }];
             });
@@ -972,6 +994,32 @@ export default function Game() {
     }
 
     if (target === 'room_or_monster') {
+      if (isHeroicMoveAndFightCard(activeCard)) {
+        if (roomCount !== 2) return false;
+
+        const roomIndex = selectedSquares[0]?.roomIndex;
+        if (roomIndex === undefined || selectedSquares.some((s) => s.roomIndex !== roomIndex)) return false;
+
+        const sessionId = roomRef.current?.sessionId;
+        if (!sessionId || !gameState?.activeMonsters) return false;
+
+        const eligibleMonsters = gameState.activeMonsters.filter(
+          (m: any) => m.playerOwnerId === sessionId && !isMonsterCompleted(m)
+        );
+
+        if (monsterCount === 0) {
+          return eligibleMonsters.length === 0;
+        }
+
+        if (monsterCount > 2) return false;
+
+        const monsterId = selectedMonsterSquares[0]?.monsterId;
+        if (!monsterId || selectedMonsterSquares.some((s) => s.monsterId !== monsterId)) return false;
+        if (!eligibleMonsters.some((m: any) => m.id === monsterId)) return false;
+
+        return true;
+      }
+
       if (roomCount > 0 && monsterCount > 0) return false;
       const count = roomCount > 0 ? roomCount : monsterCount;
       if (count === 0) return false;
@@ -1109,11 +1157,11 @@ export default function Game() {
           </div>
 
           {/* Bottom drawer for player's area */}
-          <div ref={playerAreaRef} className="player-area fixed bottom-0 left-0 right-0 h-80 bg-slate-800 border-t border-slate-700 p-2 z-50">
+          <div ref={playerAreaRef} className="player-area fixed bottom-0 left-0 right-0 h-72 bg-slate-800 border-t-2 border-slate-600 p-2 z-50">
             <div className="flex flex-col h-full gap-2">
-              <div className="flex-1 flex gap-4 min-h-0">
-                <div className="bg-slate-700 p-4 rounded flex-1">
-                  <div className="flex justify-start gap-6">
+              <div className="flex-1 flex gap-4 min-h-0 items-center">
+                <div className="bg-slate-700 border-2 border-slate-600 p-4 rounded flex-1 h-full flex items-center">
+                  <div className="flex justify-start gap-6 items-center">
                     <CardDeck player={currentPlayer} room={roomRef.current} />
                     <DrawnCard player={currentPlayer} room={roomRef.current} key={updateCounter} />
                     <DiscardPile player={currentPlayer} room={roomRef.current} />
@@ -1169,11 +1217,14 @@ export default function Game() {
             ['--return-dx' as any]: `${anim.toX - anim.fromX}px`,
             ['--return-dy' as any]: `${anim.toY - anim.fromY}px`
           }}
+          title={`${(anim.card.name || '').trim() || 'Heroic'}: ${anim.card.description}`}
         >
           <CardFaceContent
             type={anim.card.type}
+            name={anim.card.name}
             description={anim.card.description}
             defenseSymbol={anim.card.defenseSymbol}
+            color={anim.card.color}
           />
         </div>
       ))}

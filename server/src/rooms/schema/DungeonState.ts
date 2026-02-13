@@ -7,6 +7,8 @@ import { NavigationValidator } from "../NavigationValidator";
 import { MonsterCard } from "./MonsterCard";
 import { MonsterFactory } from "../MonsterFactory";
 import { Card } from "./Card";
+import { HEROIC_MOVE_AND_FIGHT_CARD_ID, COMBAT_CARD_ID } from "../cards/CardRegistry";
+import type { CardColor } from "./Card";
 
 const BOARD_WIDTH = 4;
 type GameStatus = "in_progress" | "won" | "lost";
@@ -17,8 +19,10 @@ type Selection =
 type MonsterAttackCardSnapshot = {
   id: string;
   type: string;
+  name: string;
   description: string;
   defenseSymbol: "empty" | "block" | "counter";
+  color: CardColor;
 };
 
 type MonsterAttackOutcome = "discarded" | "returned_to_deck" | "counter_attack" | "no_card_available";
@@ -445,10 +449,14 @@ export class DungeonState extends Schema {
     if (!activeCardId) {
       return { success: false, error: "You need an active card to cross squares" };
     }
+    const activeCard = this.getActiveCard(client.sessionId);
+    if (!activeCard) {
+      return { success: false, error: "No active card for player" };
+    }
 
     // Do not allow mixing monster + room selections in a single card action.
     const existing = this.parseSelections(this.selectedSquares.get(client.sessionId) || "");
-    if (existing.some((s) => s.kind === "monster")) {
+    if (existing.some((s) => s.kind === "monster") && !this.allowsMixedRoomAndMonsterSelections(activeCard)) {
       return { success: false, error: "Cannot mix monster and room selections in the same card action", invalidSquare: true };
     }
 
@@ -940,11 +948,14 @@ export class DungeonState extends Schema {
         }
 
         const defenseSymbol = (defenseCard.defenseSymbol || "empty") as "empty" | "block" | "counter";
+        const cardColor = (defenseCard.color || "clear") as CardColor;
         const cardSnapshot: MonsterAttackCardSnapshot = {
           id: defenseCard.id,
           type: defenseCard.type,
+          name: defenseCard.name || "",
           description: defenseCard.description,
-          defenseSymbol
+          defenseSymbol,
+          color: cardColor
         };
 
         if (defenseSymbol === "block") {
@@ -1268,6 +1279,18 @@ export class DungeonState extends Schema {
     return card.selectionTarget === "monster_each";
   }
 
+  private isHeroicMoveAndFightCard(card?: { type?: string } | null): boolean {
+    return card?.type === HEROIC_MOVE_AND_FIGHT_CARD_ID;
+  }
+
+  private isCombatCard(card?: { type?: string } | null): boolean {
+    return card?.type === COMBAT_CARD_ID;
+  }
+
+  private allowsMixedRoomAndMonsterSelections(card?: { type?: string } | null): boolean {
+    return this.isHeroicMoveAndFightCard(card);
+  }
+
   private getSelections(sessionId: string): Selection[] {
     const selectionsString = this.selectedSquares.get(sessionId) || "";
     return this.parseSelections(selectionsString);
@@ -1392,7 +1415,7 @@ export class DungeonState extends Schema {
       (s): s is { kind: "monster"; monsterId: string; x: number; y: number } => s.kind === "monster"
     );
 
-    if (monsterSelections.length > 0) {
+    if (monsterSelections.length > 0 && !this.allowsMixedRoomAndMonsterSelections(card)) {
       return { success: false, error: "Cannot mix monster and room selections in the same card action", invalidSquare: true };
     }
 
@@ -1548,6 +1571,14 @@ export class DungeonState extends Schema {
       return { success: false, error: "Square already selected", invalidSquare: true };
     }
 
+    if (this.isHeroicMoveAndFightCard(card) && roomSelections.length >= 2) {
+      return {
+        success: false,
+        error: "Move 2 allows selecting only 2 room squares",
+        invalidSquare: true
+      };
+    }
+
     const maxSelections = card.maxSelections || 0;
     if (maxSelections > 0 && roomSelections.length >= maxSelections) {
       return {
@@ -1577,7 +1608,8 @@ export class DungeonState extends Schema {
     this.setSelections(sessionId, updatedSelections);
 
     const newCount = roomSelections.length + 1;
-    const maxLabel = maxSelections > 0 ? `/${maxSelections}` : "";
+    const cardLabelLimit = this.isHeroicMoveAndFightCard(card) ? 2 : maxSelections;
+    const maxLabel = cardLabelLimit > 0 ? `/${cardLabelLimit}` : "";
 
     console.log(`Player ${sessionId} selected square ${x},${y} in room ${roomIndex} (${newCount})`);
 
@@ -1835,7 +1867,11 @@ export class DungeonState extends Schema {
       const roomSquares: Array<{ roomIndex: number; x: number; y: number }> = payloadRoomSquares || [];
       const monsterSquares: Array<{ monsterId: string; x: number; y: number }> = payloadMonsterSquares || [];
 
-      if (roomSquares.length > 0 && monsterSquares.length > 0) {
+      if (
+        roomSquares.length > 0 &&
+        monsterSquares.length > 0 &&
+        !this.allowsMixedRoomAndMonsterSelections(card)
+      ) {
         return { success: false, error: "Cannot confirm a move that mixes room and monster selections" };
       }
 
@@ -1892,7 +1928,9 @@ export class DungeonState extends Schema {
             }
           }
         }
-      } else if (monsterSquares.length > 0) {
+      }
+
+      if (monsterSquares.length > 0) {
         if (!this.cardAllowsMonster(card)) {
           return { success: false, error: "This card does not allow selecting monster squares" };
         }
@@ -1939,7 +1977,11 @@ export class DungeonState extends Schema {
       (s): s is { kind: "monster"; monsterId: string; x: number; y: number } => s.kind === "monster"
     );
 
-    if (roomSelections.length > 0 && monsterSelections.length > 0) {
+    if (
+      roomSelections.length > 0 &&
+      monsterSelections.length > 0 &&
+      !this.allowsMixedRoomAndMonsterSelections(card)
+    ) {
       return { success: false, error: "Cannot confirm a move that mixes room and monster selections" };
     }
 
@@ -1991,6 +2033,47 @@ export class DungeonState extends Schema {
       return this.completeCardAction(sessionId, selectedSelections);
     }
 
+    if (this.isHeroicMoveAndFightCard(card)) {
+      if (roomSelections.length !== 2) {
+        return { success: false, error: "Move 2 requires exactly 2 room squares" };
+      }
+
+      const roomIndex = roomSelections[0].roomIndex;
+      if (roomSelections.some((s) => s.roomIndex !== roomIndex)) {
+        return { success: false, error: "Move 2 must stay within a single room" };
+      }
+
+      const eligibleMonsters = this.getPlayerMonsters(sessionId).filter((m) => !m.isCompleted());
+      const hasEligibleMonster = eligibleMonsters.length > 0;
+
+      if (monsterSelections.length === 0) {
+        if (hasEligibleMonster) {
+          return {
+            success: false,
+            error: "Move 2 and fight 2 requires at least 1 monster square when a monster is available"
+          };
+        }
+
+        return this.completeCardAction(sessionId, selectedSelections);
+      }
+
+      if (monsterSelections.length > 2) {
+        return { success: false, error: "Fight 2 allows selecting at most 2 monster squares" };
+      }
+
+      const monsterId = monsterSelections[0].monsterId;
+      if (monsterSelections.some((s) => s.monsterId !== monsterId)) {
+        return { success: false, error: "Fight 2 must target a single monster" };
+      }
+
+      const targetMonster = eligibleMonsters.find((m) => m.id === monsterId);
+      if (!targetMonster) {
+        return { success: false, error: "Fight 2 must target an available monster you own" };
+      }
+
+      return this.completeCardAction(sessionId, selectedSelections);
+    }
+
     const minSelections = card.minSelections || 1;
     const maxSelections = card.maxSelections || 0;
 
@@ -2005,7 +2088,11 @@ export class DungeonState extends Schema {
       if (roomSelections.length === 0 && monsterSelections.length === 0) {
         return { success: false, error: "No squares selected to confirm" };
       }
-      if (roomSelections.length > 0 && monsterSelections.length > 0) {
+      if (
+        roomSelections.length > 0 &&
+        monsterSelections.length > 0 &&
+        !this.allowsMixedRoomAndMonsterSelections(card)
+      ) {
         return { success: false, error: "Cannot confirm a move that mixes room and monster selections" };
       }
     } else if (card.selectionTarget === "monster_each") {
@@ -2153,7 +2240,7 @@ export class DungeonState extends Schema {
       (s): s is { kind: "monster"; monsterId: string; x: number; y: number } => s.kind === "monster"
     );
 
-    if (roomSelections.length > 0) {
+    if (roomSelections.length > 0 && !this.allowsMixedRoomAndMonsterSelections(card)) {
       return { success: false, error: "Cannot mix monster and room selections in the same card action", invalidSquare: true };
     }
 
@@ -2235,8 +2322,16 @@ export class DungeonState extends Schema {
       return { success: false, error: "Square already selected", invalidSquare: true };
     }
 
-    const maxSelections = card.maxSelections || 0;
     const currentForMonster = monsterSelections.filter((p) => p.monsterId === monster.id);
+    if (this.isHeroicMoveAndFightCard(card) && currentForMonster.length >= 2) {
+      return {
+        success: false,
+        error: "Fight 2 allows selecting only 2 monster squares",
+        invalidSquare: true
+      };
+    }
+
+    const maxSelections = card.maxSelections || 0;
     if (maxSelections > 0) {
       if (allowsMultiMonster) {
         if (currentForMonster.length >= maxSelections) {
@@ -2257,11 +2352,18 @@ export class DungeonState extends Schema {
 
     const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
       (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
+    const isDiagonalAdjacent = (ax: number, ay: number, bx: number, by: number) =>
+      Math.abs(ax - bx) === 1 && Math.abs(ay - by) === 1;
 
     if (card.requiresConnected && currentForMonster.length > 0) {
-      const isConnected = currentForMonster.some((pos) => isOrthAdjacent(x, y, pos.x, pos.y));
+      const isConnected = this.isCombatCard(card)
+        ? currentForMonster.some((pos) => isDiagonalAdjacent(x, y, pos.x, pos.y))
+        : currentForMonster.some((pos) => isOrthAdjacent(x, y, pos.x, pos.y));
       if (!isConnected) {
-        return { success: false, error: "Square must be orthogonally connected to selected squares", invalidSquare: true };
+        const error = this.isCombatCard(card)
+          ? "Square must be diagonally connected to selected squares"
+          : "Square must be orthogonally connected to selected squares";
+        return { success: false, error, invalidSquare: true };
       }
     }
 
@@ -2269,7 +2371,8 @@ export class DungeonState extends Schema {
     this.setSelections(sessionId, updatedSelections);
 
     const newCountForMonster = currentForMonster.length + 1;
-    const maxLabel = maxSelections > 0 ? `/${maxSelections}` : "";
+    const cardLabelLimit = this.isHeroicMoveAndFightCard(card) ? 2 : maxSelections;
+    const maxLabel = cardLabelLimit > 0 ? `/${cardLabelLimit}` : "";
 
     console.log(`Player ${sessionId} selected monster square ${x},${y} on ${monster.id} (${newCountForMonster})`);
 
@@ -2368,10 +2471,14 @@ export class DungeonState extends Schema {
     if (!activeCardId) {
       return { success: false, error: "You need an active card to cross monster squares" };
     }
+    const activeCard = this.getActiveCard(sessionId);
+    if (!activeCard) {
+      return { success: false, error: "No active card for player" };
+    }
 
     // Do not allow mixing monster + room selections in a single card action.
     const existing = this.parseSelections(this.selectedSquares.get(sessionId) || "");
-    if (existing.some((s) => s.kind === "room")) {
+    if (existing.some((s) => s.kind === "room") && !this.allowsMixedRoomAndMonsterSelections(activeCard)) {
       return { success: false, error: "Cannot mix monster and room selections in the same card action", invalidSquare: true };
     }
 

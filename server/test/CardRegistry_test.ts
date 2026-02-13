@@ -53,4 +53,64 @@ describe("Card Registry", () => {
     assert.strictEqual(created.selectionTarget, "room");
     assert.strictEqual(created.drawCardsOnResolve, 1);
   });
+
+  it("should configure Heroic Move and Fight as a counter card that requires 2 room + 2 monster squares", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "heroic_move_two_and_fight_two");
+    assert(definition, "Heroic Move and Fight card definition should exist");
+
+    assert.strictEqual(definition.name, "Heroic Move and Fight");
+    assert.strictEqual(definition.description, "Move 2 and fight 2");
+    assert.strictEqual(definition.color, "clear");
+    assert.strictEqual(definition.defenseSymbol, "counter");
+    assert.strictEqual(definition.selection.target, "room_or_monster");
+    assert.strictEqual(definition.selection.mode, "squares");
+    assert.strictEqual(definition.selection.minSelections, 4);
+    assert.strictEqual(definition.selection.maxSelections, 4);
+    assert.strictEqual(definition.selection.connected, true);
+  });
+
+  it("should create Heroic Move and Fight cards with counter defense symbol", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "heroic_move_two_and_fight_two");
+    assert(definition, "Heroic Move and Fight card definition should exist");
+
+    const created = createCardFromDefinition(definition, "test_heroic_move_and_fight");
+
+    assert.strictEqual(created.type, "heroic_move_two_and_fight_two");
+    assert.strictEqual(created.color, "clear");
+    assert.strictEqual(created.defenseSymbol, "counter");
+    assert.strictEqual(created.minSelections, 4);
+    assert.strictEqual(created.maxSelections, 4);
+    assert.strictEqual(created.requiresConnected, true);
+    assert.strictEqual(created.selectionTarget, "room_or_monster");
+  });
+
+  it("should configure Combat as a red card with fight 3 diagonal or move 3", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "combat_fight_three_diagonal_or_move_three");
+    assert(definition, "Combat card definition should exist");
+
+    assert.strictEqual(definition.name, "Combat");
+    assert.strictEqual(definition.description, "Fight 3 diagonal or move 3");
+    assert.strictEqual(definition.color, "red");
+    assert.strictEqual(definition.defenseSymbol, "counter");
+    assert.strictEqual(definition.selection.target, "room_or_monster");
+    assert.strictEqual(definition.selection.mode, "squares");
+    assert.strictEqual(definition.selection.minSelections, 3);
+    assert.strictEqual(definition.selection.maxSelections, 3);
+    assert.strictEqual(definition.selection.connected, true);
+  });
+
+  it("should create Combat cards with red color and connected selection", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "combat_fight_three_diagonal_or_move_three");
+    assert(definition, "Combat card definition should exist");
+
+    const created = createCardFromDefinition(definition, "test_combat");
+
+    assert.strictEqual(created.type, "combat_fight_three_diagonal_or_move_three");
+    assert.strictEqual(created.color, "red");
+    assert.strictEqual(created.defenseSymbol, "counter");
+    assert.strictEqual(created.minSelections, 3);
+    assert.strictEqual(created.maxSelections, 3);
+    assert.strictEqual(created.requiresConnected, true);
+    assert.strictEqual(created.selectionTarget, "room_or_monster");
+  });
 });

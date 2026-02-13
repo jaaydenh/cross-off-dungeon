@@ -6,8 +6,10 @@ const DOUBLE_SWEEP_CARD_TYPE = 'cross_two_horizontal_then_two_horizontal';
 
 type CardFaceContentProps = {
   type: string;
+  name?: string;
   description: string;
   defenseSymbol?: string;
+  color?: string;
 };
 
 function HeroicDoubleSweepVisual() {
@@ -29,18 +31,54 @@ function HeroicDoubleSweepVisual() {
   );
 }
 
-export default function CardFaceContent({ type, description, defenseSymbol = 'empty' }: CardFaceContentProps) {
+const getCardColorTheme = (color: string): {
+  fallbackTitle: string;
+  headerClasses: string;
+} => {
+  switch (color) {
+    case 'red':
+      return {
+        fallbackTitle: 'Red',
+        headerClasses: 'bg-red-600 border-red-700 text-white'
+      };
+    case 'blue':
+      return {
+        fallbackTitle: 'Blue',
+        headerClasses: 'bg-blue-600 border-blue-700 text-white'
+      };
+    case 'green':
+      return {
+        fallbackTitle: 'Green',
+        headerClasses: 'bg-green-600 border-green-700 text-white'
+      };
+    default:
+      return {
+        fallbackTitle: 'Heroic',
+        headerClasses: 'bg-gray-300 border-gray-400 text-black'
+      };
+  }
+};
+
+export default function CardFaceContent({
+  type,
+  name = '',
+  description,
+  defenseSymbol = 'empty',
+  color = 'clear'
+}: CardFaceContentProps) {
   const isDoubleSweep = type === DOUBLE_SWEEP_CARD_TYPE;
   const hasDefenseAbility = defenseSymbol === 'block' || defenseSymbol === 'counter';
   const defenseIcon = defenseSymbol === 'block' ? '🛡️' : '⚔️';
   const defenseLabel = defenseSymbol === 'block' ? 'Block' : 'Counter Attack';
+  const theme = getCardColorTheme(color);
+  const titleText = (name || '').trim().length > 0 ? name : theme.fallbackTitle;
 
   return (
     <div className="absolute inset-0 rounded-lg overflow-hidden">
-      <div className="h-5 bg-gray-200 border-b border-gray-300 flex items-center justify-center">
-        <span className="text-[10px] font-bold tracking-tight text-black leading-none">Heroic</span>
+      <div className={`h-6 border-b flex items-center justify-center px-1 ${theme.headerClasses}`}>
+        <span className="text-[10px] font-bold tracking-tight leading-none text-center">{titleText}</span>
       </div>
-      <div className="h-[calc(100%-1.25rem)]">
+      <div className="h-[calc(100%-1.5rem)]">
         {isDoubleSweep ? (
           <HeroicDoubleSweepVisual />
         ) : (

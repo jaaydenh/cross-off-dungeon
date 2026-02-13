@@ -11,6 +11,7 @@ import { Schema, type, ArraySchema, MapSchema, SetSchema, DataChange } from '@co
 export class Card extends Schema {
     @type("string") public id!: string;
     @type("string") public type!: string;
+    @type("string") public name!: string;
     @type("string") public description!: string;
     @type("string") public selectionTarget!: string;
     @type("string") public selectionMode!: string;
@@ -21,5 +22,6 @@ export class Card extends Schema {
     @type("boolean") public requiresMonsterStartAdjacency!: boolean;
     @type("string") public defenseSymbol!: string;
     @type("number") public drawCardsOnResolve!: number;
+    @type("string") public color!: string;
     @type("boolean") public isActive!: boolean;
 }

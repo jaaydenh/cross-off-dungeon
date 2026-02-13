@@ -3,14 +3,12 @@ import { ColyseusTestServer } from "@colyseus/testing";
 import { describe, it, before, after, beforeEach } from "mocha";
 import appConfig from "../src/app.config";
 import { DungeonState } from "../src/rooms/schema/DungeonState";
-import { CARD_DEFINITIONS } from "../src/rooms/cards/CardRegistry";
+import { STARTER_DECK_SIZE } from "../src/rooms/cards/CardRegistry";
 import {
   bootSandboxSafe,
   cleanupSandboxSafe,
   shutdownSandboxSafe
 } from "./helpers/colyseusTestUtils";
-
-const STARTER_DECK_SIZE = CARD_DEFINITIONS.length * 2;
 
 describe("Turn Management", () => {
   let colyseus: ColyseusTestServer | undefined;
@@ -364,6 +362,8 @@ describe("Turn Management", () => {
         "cross_two_connected_each_monster",
         "cross_row_room",
         "cross_two_horizontal_then_two_horizontal",
+        "heroic_move_two_and_fight_two",
+        "combat_fight_three_diagonal_or_move_three",
         "reposition"
       ]);
       assert(expectedTypes.has(drawnCard.type), `Unexpected type: ${drawnCard.type}`);

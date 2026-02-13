@@ -15,6 +15,11 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
   const [discardCount, setDiscardCount] = useState(0);
   const [topCard, setTopCard] = useState<Card | null>(null);
 
+  const cardTitle = (card: Card): string => {
+    const name = (card.name || '').trim() || 'Heroic';
+    return `${name}: ${card.description}`;
+  };
+
   useEffect(() => {
     if (player) {
       console.log("SetDiscardPile - Initial setup")
@@ -77,15 +82,17 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
             : 'bg-white border-gray-300 card-zoom'
           }
         `}
-        title={topCard?.description}
+        title={topCard ? cardTitle(topCard) : undefined}
       >
         {topCard ? (
           <>
             {/* Face-up card content */}
             <CardFaceContent
               type={topCard.type}
+              name={topCard.name}
               description={topCard.description}
               defenseSymbol={topCard.defenseSymbol}
+              color={topCard.color}
             />
 
             {/* Card count badge */}

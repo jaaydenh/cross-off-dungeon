@@ -24,6 +24,7 @@ describe("Card Schema", () => {
       assert.strictEqual(card.id, "test_id");
       assert.strictEqual(card.type, "cross_connected_squares");
       assert.strictEqual(card.description, "Test description");
+      assert.strictEqual(card.color, "clear");
       assert.strictEqual(card.isActive, false);
     });
 
@@ -65,6 +66,12 @@ describe("Card Schema", () => {
       const card = makeCard("id", "type", "original_desc");
       card.description = "new_desc";
       assert.strictEqual(card.description, "new_desc");
+    });
+
+    it("should support assigning card colors", () => {
+      const card = makeCard("id", "type", "desc");
+      card.color = "red";
+      assert.strictEqual(card.color, "red");
     });
   });
 

@@ -95,7 +95,7 @@ export default function PlayerMonsters({
 
   return (
     <div 
-      className={`bg-slate-700 p-4 rounded flex-1 transition-all duration-300 ${
+      className={`bg-slate-700 border-2 border-slate-600 p-4 rounded flex-1 h-full flex flex-col justify-center transition-all duration-300 ${
         showDragPrompt ? 'ring-4 ring-blue-500 ring-opacity-50 bg-slate-600 shadow-lg' : ''
       }`}
       onDragOver={handleDragOver}
@@ -109,7 +109,7 @@ export default function PlayerMonsters({
       )}
       
   {hasMonsters ? (
-        <div className="flex gap-4 flex-wrap">
+        <div className="flex gap-4 flex-wrap items-center">
           {playerMonsters.map(monster => (
             <MonsterCard
               key={monster.id}

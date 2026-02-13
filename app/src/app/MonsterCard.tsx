@@ -358,11 +358,14 @@ export default function MonsterCard({
                 <div
                   className="monster-attack-card-fly relative h-24 w-16 rounded border-2 border-gray-300 bg-white shadow-lg"
                   style={{ animationDelay: `${Math.max(0, attack.attackNumber - 1) * 280}ms` }}
+                  title={`${(attack.card.name || '').trim() || 'Heroic'}: ${attack.card.description}`}
                 >
                   <CardFaceContent
                     type={attack.card.type}
+                    name={attack.card.name}
                     description={attack.card.description}
                     defenseSymbol={attack.card.defenseSymbol}
+                    color={attack.card.color}
                   />
                 </div>
               ) : (

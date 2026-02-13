@@ -28,8 +28,14 @@ class Dungeon extends core_1.Room {
                 ? {
                     id: this.toSafeString(attack.card.id),
                     type: this.toSafeString(attack.card.type),
+                    name: this.toSafeString(attack.card.name),
                     description: this.toSafeString(attack.card.description),
-                    defenseSymbol: cardDefenseSymbol
+                    defenseSymbol: cardDefenseSymbol,
+                    color: attack.card.color === "red" ||
+                        attack.card.color === "blue" ||
+                        attack.card.color === "green"
+                        ? attack.card.color
+                        : "clear"
                 }
                 : null;
             const counterSquare = attack.counterSquare &&

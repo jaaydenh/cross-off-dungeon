@@ -9,7 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Card = void 0;
 const schema_1 = require("@colyseus/schema");
 class Card extends schema_1.Schema {
-    constructor(id, type, description, selectionTarget, selectionMode, minSelections, maxSelections, requiresConnected, requiresRoomStartAdjacency, requiresMonsterStartAdjacency, defenseSymbol = "empty", drawCardsOnResolve = 0) {
+    constructor(id, type, description, selectionTarget, selectionMode, minSelections, maxSelections, requiresConnected, requiresRoomStartAdjacency, requiresMonsterStartAdjacency, defenseSymbol = "empty", drawCardsOnResolve = 0, color = "clear", name = "") {
         super();
         this.minSelections = 1;
         this.maxSelections = 0;
@@ -18,9 +18,11 @@ class Card extends schema_1.Schema {
         this.requiresMonsterStartAdjacency = false;
         this.defenseSymbol = "empty"; // empty, block, counter
         this.drawCardsOnResolve = 0;
+        this.color = "clear";
         this.isActive = false;
         this.id = id;
         this.type = type;
+        this.name = name;
         this.description = description;
         this.selectionTarget = selectionTarget;
         this.selectionMode = selectionMode;
@@ -31,6 +33,7 @@ class Card extends schema_1.Schema {
         this.requiresMonsterStartAdjacency = requiresMonsterStartAdjacency;
         this.defenseSymbol = defenseSymbol;
         this.drawCardsOnResolve = Math.max(0, Math.floor(drawCardsOnResolve || 0));
+        this.color = color;
         this.isActive = false;
     }
 }
@@ -41,6 +44,9 @@ __decorate([
 __decorate([
     (0, schema_1.type)("string")
 ], Card.prototype, "type", void 0);
+__decorate([
+    (0, schema_1.type)("string")
+], Card.prototype, "name", void 0);
 __decorate([
     (0, schema_1.type)("string")
 ], Card.prototype, "description", void 0);
@@ -71,6 +77,9 @@ __decorate([
 __decorate([
     (0, schema_1.type)("number")
 ], Card.prototype, "drawCardsOnResolve", void 0);
+__decorate([
+    (0, schema_1.type)("string")
+], Card.prototype, "color", void 0);
 __decorate([
     (0, schema_1.type)("boolean")
 ], Card.prototype, "isActive", void 0);

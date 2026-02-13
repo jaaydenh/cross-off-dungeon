@@ -33,8 +33,10 @@ export class Dungeon extends Room<DungeonState> {
       card: {
         id: string;
         type: string;
+        name: string;
         description: string;
         defenseSymbol: "empty" | "block" | "counter";
+        color: "clear" | "red" | "blue" | "green";
       } | null;
       counterSquare: { x: number; y: number } | null;
     }>;
@@ -48,14 +50,23 @@ export class Dungeon extends Room<DungeonState> {
       const card: {
         id: string;
         type: string;
+        name: string;
         description: string;
         defenseSymbol: "empty" | "block" | "counter";
+        color: "clear" | "red" | "blue" | "green";
       } | null = attack.card
         ? {
             id: this.toSafeString(attack.card.id),
             type: this.toSafeString(attack.card.type),
+            name: this.toSafeString(attack.card.name),
             description: this.toSafeString(attack.card.description),
-            defenseSymbol: cardDefenseSymbol
+            defenseSymbol: cardDefenseSymbol,
+            color:
+              attack.card.color === "red" ||
+              attack.card.color === "blue" ||
+              attack.card.color === "green"
+                ? attack.card.color
+                : "clear"
           }
         : null;
 

@@ -9,8 +9,10 @@ export type MonsterAttackOutcome =
 export type MonsterAttackCardSnapshot = {
   id: string;
   type: string;
+  name: string;
   description: string;
   defenseSymbol: CardDefenseSymbol;
+  color: 'clear' | 'red' | 'blue' | 'green';
 };
 
 export type MonsterAttackAnimation = {

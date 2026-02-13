@@ -2,7 +2,7 @@ import assert from "assert";
 import { describe, it } from "mocha";
 import { Player } from "../src/rooms/schema/Player";
 import { Card } from "../src/rooms/schema/Card";
-import { CARD_DEFINITIONS } from "../src/rooms/cards/CardRegistry";
+import { CARD_DEFINITIONS, STARTER_DECK_SIZE } from "../src/rooms/cards/CardRegistry";
 
 const makeCard = (id: string, type: string, description: string) =>
   new Card(
@@ -18,7 +18,6 @@ const makeCard = (id: string, type: string, description: string) =>
     false
   );
 
-const STARTER_DECK_SIZE = CARD_DEFINITIONS.length * 2;
 const EXPECTED_CARD_TYPES = new Set(CARD_DEFINITIONS.map((card) => card.id));
 
 describe("Player Schema Extensions", () => {
@@ -39,22 +38,17 @@ describe("Player Schema Extensions", () => {
       
       assert.strictEqual(player.deck.length, STARTER_DECK_SIZE);
 
-      const counts = new Map<string, number>();
       for (let i = 0; i < player.deck.length; i++) {
         const card = player.deck[i];
         assert(EXPECTED_CARD_TYPES.has(card.type), `Unexpected card type: ${card.type}`);
-        counts.set(card.type, (counts.get(card.type) || 0) + 1);
+        assert.strictEqual(typeof card.name, "string");
+        assert(card.name.length > 0);
         assert.strictEqual(typeof card.description, "string");
         assert(card.description.length > 0);
         assert.strictEqual(card.isActive, false);
         assert(card.id.startsWith("card_"));
         assert.strictEqual(typeof card.selectionTarget, "string");
         assert.strictEqual(typeof card.selectionMode, "string");
-      }
-
-      // Deck is 2 copies of each starter card type
-      for (const type of EXPECTED_CARD_TYPES) {
-        assert.strictEqual(counts.get(type), 2, `Expected 2 copies of ${type}`);
       }
     });
 

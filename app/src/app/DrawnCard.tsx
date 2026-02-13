@@ -49,10 +49,15 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
     }
   };
 
+  const cardTitle = (card: Card): string => {
+    const name = (card.name || '').trim() || 'Heroic';
+    return `${name}: ${card.description}`;
+  };
+
   if (!player || !drawnCard) {
     return (
       <div className="flex flex-col items-center gap-2">
-        <h3 className="text-md font-semibold text-white">Drawn Card</h3>
+        <h3 className="text-md font-semibold text-white">Active Card</h3>
         <div className="w-[121px] h-[176px] bg-gray-700 border-2 border-gray-600 rounded-lg flex items-center justify-center">
           <p className="text-gray-400 text-xs text-center">No card drawn</p>
         </div>
@@ -62,7 +67,7 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <h3 className="text-md font-semibold text-white">Drawn Card</h3>
+      <h3 className="text-md font-semibold text-white">Active Card</h3>
 
       {/* Drawn Card */}
       <div
@@ -74,13 +79,15 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
           }
         `}
         onClick={handleCardClick}
-        title={drawnCard.description}
+        title={cardTitle(drawnCard)}
       >
         {/* Card content */}
         <CardFaceContent
           type={drawnCard.type}
+          name={drawnCard.name}
           description={drawnCard.description}
           defenseSymbol={drawnCard.defenseSymbol}
+          color={drawnCard.color}
         />
 
         {/* Active state indicator */}

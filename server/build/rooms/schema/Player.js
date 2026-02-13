@@ -24,7 +24,7 @@ class Player extends schema_1.Schema {
         this.discardPile = new schema_1.ArraySchema();
         this.turnStatus = "not_started";
         this.hasDrawnCard = false;
-        // Initialize shuffled deck (2x each starter card type)
+        // Initialize a random 10-card starter deck.
         this.initializeDeck();
     }
     initializeDeck() {
