@@ -125,6 +125,7 @@ export default function MonsterCard({
       case 'rat': return '🐀';
       case 'troll': return '🧌';
       case 'slime': return '🟢';
+      case 'ancient_wyrm': return '🐉';
       default: return '👾';
     }
   };
@@ -231,6 +232,11 @@ export default function MonsterCard({
           </span>
           <span className="text-xl leading-none">{getMonsterEmoji(monster.name)}</span>
         </div>
+        {monster.isBoss && (
+          <div className="mt-1 text-center text-[10px] font-black tracking-widest text-red-700">
+            BOSS
+          </div>
+        )}
         <div className="mt-1 flex items-end justify-between">
           <div className="inline-flex items-center gap-1 rounded border border-red-500 bg-red-200 px-1.5 py-0.5 leading-none">
             <span className="text-[9px] font-semibold uppercase tracking-wide">Atk</span>

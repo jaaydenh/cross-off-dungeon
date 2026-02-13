@@ -11,6 +11,7 @@ import { DungeonSquare } from './DungeonSquare'
 export class Room extends Schema {
     @type("number") public width!: number;
     @type("number") public height!: number;
+    @type("boolean") public isBossRoom!: boolean;
     @type([ DungeonSquare ]) public squares: ArraySchema<DungeonSquare> = new ArraySchema<DungeonSquare>();
     @type("string") public entranceDirection!: string;
     @type("number") public entranceX!: number;

@@ -17,7 +17,8 @@ export default function CardDeck({ player, room }: CardDeckProps) {
     if (player) {
       const newDeckCount = player.deck.length;
       const wasCardDrawn = deckCount > newDeckCount && deckCount > 0;
-      const shouldShowGlow = player.turnStatus === "not_started" && !player.hasDrawnCard;
+      const gameStatus = (room as any)?.state?.gameStatus || 'in_progress';
+      const shouldShowGlow = gameStatus === 'in_progress' && player.turnStatus === "not_started" && !player.hasDrawnCard;
       
       setDeckCount(newDeckCount);
       
@@ -27,10 +28,11 @@ export default function CardDeck({ player, room }: CardDeckProps) {
     } else {
       console.log('  ❌ No player data available');
     }
-  }, [player, player?.turnStatus, player?.hasDrawnCard, player?.deck?.length, deckCount, showGlow]);
+  }, [player, player?.turnStatus, player?.hasDrawnCard, player?.deck?.length, deckCount, showGlow, room]);
 
   const handleDeckClick = () => {
-    if (room && player && player.deck.length > 0) {
+    const gameStatus = (room as any)?.state?.gameStatus || 'in_progress';
+    if (room && player && player.deck.length > 0 && gameStatus === 'in_progress') {
       console.log('  📤 Sending drawCard message to server');
       room.send('drawCard');
     } else {

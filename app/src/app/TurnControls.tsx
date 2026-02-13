@@ -21,6 +21,7 @@ export default function TurnControls({ player, gameState, room }: TurnControlsPr
   });
 
   const hasActiveCard = player?.drawnCards?.some(card => card.isActive) || false;
+  const gameStatus = gameState?.gameStatus || 'in_progress';
 
   const handleEndTurn = () => {
     if (room && player) {
@@ -38,8 +39,17 @@ export default function TurnControls({ player, gameState, room }: TurnControlsPr
         </div>
       ) : (
         <div className="text-center">
+          <div className="text-slate-300 text-sm mb-2">
+            Day {gameState.currentDay}/{gameState.maxDays}
+          </div>
+          {gameStatus === 'won' && (
+            <div className="text-emerald-300 font-bold text-lg">Boss defeated. Victory!</div>
+          )}
+          {gameStatus === 'lost' && (
+            <div className="text-rose-300 font-bold text-lg">Day limit reached. Defeat.</div>
+          )}
           
-          {player.turnStatus === 'playing_turn' && gameState.turnInProgress ? (
+          {gameStatus === 'in_progress' && player.turnStatus === 'playing_turn' && gameState.turnInProgress ? (
             <div className="space-y-2">
               <button
                 onClick={handleEndTurn}
@@ -54,10 +64,13 @@ export default function TurnControls({ player, gameState, room }: TurnControlsPr
                 </div>
               )}
             </div>
-          ) : (
+          ) : gameStatus === 'in_progress' ? (
             <div className="text-yellow-200 font-bold text-lg">
               {player.turnStatus !== 'playing_turn' ? 'DRAW A CARD TO START YOUR TURN' : 'WAITING FOR TURN TO BEGIN'}
             </div>
+          ) : null}
+          {gameStatus !== 'in_progress' && (
+            <div className="text-slate-200 text-sm mt-2">The run has ended.</div>
           )}
         </div>
       )}

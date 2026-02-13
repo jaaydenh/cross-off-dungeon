@@ -25,6 +25,15 @@ export class DungeonState extends Schema {
     @type("number") public currentTurn!: number;
     @type("boolean") public turnInProgress!: boolean;
     @type([ "string" ]) public turnOrder: ArraySchema<string> = new ArraySchema<string>();
+    @type("number") public currentDay!: number;
+    @type("number") public maxDays!: number;
+    @type("string") public gameStatus!: string;
+    @type("number") public roomDeckSize!: number;
+    @type("number") public roomsDrawn!: number;
+    @type("number") public bossRoomDrawIndex!: number;
+    @type("boolean") public bossRoomDiscovered!: boolean;
+    @type("string") public bossMonsterId!: string;
+    @type("boolean") public bossDefeated!: boolean;
     @type({ map: "string" }) public activeCardPlayers: MapSchema<string> = new MapSchema<string>();
     @type({ map: "string" }) public selectedSquares: MapSchema<string> = new MapSchema<string>();
     @type({ map: "number" }) public selectedSquareCount: MapSchema<number> = new MapSchema<number>();

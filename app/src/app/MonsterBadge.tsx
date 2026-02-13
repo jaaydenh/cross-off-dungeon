@@ -16,6 +16,7 @@ const getMonsterEmoji = (name: string): string => {
     case 'rat': return '🐀';
     case 'troll': return '🧌';
     case 'slime': return '🟢';
+    case 'ancient_wyrm': return '🐉';
     default: return '👾';
   }
 };

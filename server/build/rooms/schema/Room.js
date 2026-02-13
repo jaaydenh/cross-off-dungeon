@@ -12,6 +12,7 @@ const DungeonSquare_1 = require("./DungeonSquare");
 class Room extends schema_1.Schema {
     constructor(width = 8, height = 8) {
         super();
+        this.isBossRoom = false;
         this.squares = new schema_1.ArraySchema();
         this.entranceDirection = "none"; // Direction from which player entered
         this.entranceX = -1;
@@ -277,6 +278,9 @@ __decorate([
 __decorate([
     (0, schema_1.type)("number")
 ], Room.prototype, "height", void 0);
+__decorate([
+    (0, schema_1.type)("boolean")
+], Room.prototype, "isBossRoom", void 0);
 __decorate([
     (0, schema_1.type)([DungeonSquare_1.DungeonSquare])
 ], Room.prototype, "squares", void 0);

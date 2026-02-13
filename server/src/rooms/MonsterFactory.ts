@@ -155,6 +155,31 @@ export class MonsterFactory {
   }
 
   /**
+   * Create a boss monster card.
+   * Pattern: large fortress-like body intended to take many turns to clear.
+   */
+  static createBoss(id: string): MonsterCard {
+    const boss = new MonsterCard(id, "ancient_wyrm", 7, 7, 3, true);
+
+    for (let y = 0; y < boss.height; y++) {
+      for (let x = 0; x < boss.width; x++) {
+        // Hollow corners to keep the silhouette readable but still dense.
+        const isCorner =
+          (x === 0 && y === 0) ||
+          (x === boss.width - 1 && y === 0) ||
+          (x === 0 && y === boss.height - 1) ||
+          (x === boss.width - 1 && y === boss.height - 1);
+
+        if (!isCorner) {
+          boss.setSquareFilled(x, y, true);
+        }
+      }
+    }
+
+    return boss;
+  }
+
+  /**
    * Create a shuffled deck of monster cards
    */
   static createMonsterDeck(): MonsterCard[] {

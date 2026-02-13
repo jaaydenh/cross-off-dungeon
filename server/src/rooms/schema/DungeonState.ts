@@ -6,8 +6,10 @@ import { Room } from "./Room";
 import { NavigationValidator } from "../NavigationValidator";
 import { MonsterCard } from "./MonsterCard";
 import { MonsterFactory } from "../MonsterFactory";
+import { Card } from "./Card";
 
 const BOARD_WIDTH = 4;
+type GameStatus = "in_progress" | "won" | "lost";
 type Selection =
   | { kind: "room"; roomIndex: number; x: number; y: number }
   | { kind: "monster"; monsterId: string; x: number; y: number };
@@ -38,6 +40,11 @@ export type MonsterAttackPhaseResult = {
   attacks: MonsterAttackEvent[];
 };
 
+type DrawnRoomCard = {
+  drawIndex: number;
+  isBossRoom: boolean;
+};
+
 export class DungeonState extends Schema {
 
   @type({ map: Player }) players = new MapSchema<Player>();
@@ -61,6 +68,17 @@ export class DungeonState extends Schema {
   @type("number") currentTurn = 1;
   @type("boolean") turnInProgress = false;
   @type(["string"]) turnOrder = new ArraySchema<string>(); // Player session IDs
+  @type("number") currentDay = 1;
+  @type("number") maxDays = 3;
+  @type("string") gameStatus: GameStatus = "in_progress";
+
+  // Room deck properties
+  @type("number") roomDeckSize = 10;
+  @type("number") roomsDrawn = 0;
+  @type("number") bossRoomDrawIndex = -1;
+  @type("boolean") bossRoomDiscovered = false;
+  @type("string") bossMonsterId = "";
+  @type("boolean") bossDefeated = false;
 
   // Card-based square selection tracking
   @type({ map: "string" }) activeCardPlayers = new MapSchema<string>(); // sessionId -> cardId
@@ -82,6 +100,8 @@ export class DungeonState extends Schema {
 
   initializeBoard() {
     console.log('initializeBoard');
+    this.configureRoomDeckForPlayerCount(1);
+
     for (let x = 0; x < 4; x++) {
       for (let y = 0; y < 4; y++) {
         this.board.set(`${x},${y}`, new DungeonSquare());
@@ -101,6 +121,48 @@ export class DungeonState extends Schema {
 
     // Assign grid coordinates to the first room at the origin
     this.assignGridCoordinates(0, this.gridOriginX, this.gridOriginY);
+  }
+
+  private getRoomDeckSizeForPlayerCount(playerCount: number): number {
+    switch (Math.max(1, Math.min(4, Math.floor(playerCount || 1)))) {
+      case 1:
+        return 10;
+      case 2:
+        return 15;
+      case 3:
+        return 20;
+      default:
+        return 25;
+    }
+  }
+
+  private rollBossRoomDrawIndex(deckSize: number): number {
+    const bottomRangeStart = Math.max(1, deckSize - 4);
+    const bottomRangeSize = deckSize - bottomRangeStart + 1;
+    return bottomRangeStart + Math.floor(Math.random() * bottomRangeSize);
+  }
+
+  private configureRoomDeckForPlayerCount(playerCount: number): void {
+    this.roomDeckSize = this.getRoomDeckSizeForPlayerCount(playerCount);
+    this.roomsDrawn = Math.min(this.rooms.length, this.roomDeckSize);
+    this.bossRoomDrawIndex = this.rollBossRoomDrawIndex(this.roomDeckSize);
+    this.bossRoomDiscovered = false;
+  }
+
+  private drawRoomCard(): DrawnRoomCard | null {
+    if (this.roomsDrawn >= this.roomDeckSize) {
+      console.log("No room cards left in deck");
+      return null;
+    }
+
+    this.roomsDrawn += 1;
+    const drawIndex = this.roomsDrawn;
+    const isBossRoom = drawIndex === this.bossRoomDrawIndex;
+    if (isBossRoom) {
+      this.bossRoomDiscovered = true;
+    }
+
+    return { drawIndex, isBossRoom };
   }
 
   /**
@@ -131,11 +193,20 @@ export class DungeonState extends Schema {
     return monster || null;
   }
 
+  drawBossMonsterCard(): MonsterCard {
+    const bossMonster = MonsterFactory.createBoss(`boss_${this.currentDay}_${this.roomsDrawn}`);
+    this.activeMonsters.push(bossMonster);
+    this.bossMonsterId = bossMonster.id;
+    console.log(`Drew boss monster: ${bossMonster.name} (${bossMonster.id})`);
+    return bossMonster;
+  }
+
   /**
    * Create the initial starting room
    */
   createInitialRoom() {
-    const room = this.createNewRoom();
+    const roomCard = this.drawRoomCard();
+    const room = this.createNewRoom(undefined, roomCard?.isBossRoom ?? false);
     room.generateExits(); // No entrance direction for the starting room
 
     // Add an entrance to the first room (players need a way to enter)
@@ -145,7 +216,7 @@ export class DungeonState extends Schema {
     this.currentRoomIndex = 0;
 
     // Draw a monster for the initial room too
-    const monster = this.drawMonsterCard();
+    const monster = room.isBossRoom ? this.drawBossMonsterCard() : this.drawMonsterCard();
     if (monster) {
       monster.connectedToRoomIndex = 0;
       console.log(`Assigned monster ${monster.name} to initial room 0`);
@@ -155,14 +226,16 @@ export class DungeonState extends Schema {
   /**
    * Create a new room with random dimensions and wall placement
    * @param entranceDirection Optional entrance direction for the room
+   * @param isBossRoom Whether this room is the boss room from the room deck
    * @returns A new Room instance
    */
-  createNewRoom(entranceDirection?: string): Room {
+  createNewRoom(entranceDirection?: string, isBossRoom: boolean = false): Room {
     // Generate random dimensions
     const width = Math.floor(Math.random() * 3) + 6; // 6-8
     const height = Math.floor(Math.random() * 3) + 4; // 4-6
 
     const room = new Room(width, height);
+    room.isBossRoom = isBossRoom;
 
     // Add random inner walls
     this.addRandomWalls(room);
@@ -257,9 +330,16 @@ export class DungeonState extends Schema {
       // Establish bidirectional connection
       this.establishConnection(fromRoomIndex, exitIndex, targetRoomIndex, exitDirection);
     } else {
+      const roomCard = this.drawRoomCard();
+      if (!roomCard) {
+        console.warn(`Cannot create new room from exit ${exitDirection}: room deck is empty`);
+        this.currentRoomIndex = fromRoomIndex;
+        return sourceRoom;
+      }
+
       // No room exists - create a new room with real-time generation
       const entranceDirection = this.getOppositeDirection(exitDirection);
-      const newRoom = this.createNewRoom(entranceDirection);
+      const newRoom = this.createNewRoom(entranceDirection, roomCard.isBossRoom);
 
       // Add the new room to the rooms array
       targetRoomIndex = this.rooms.length;
@@ -270,7 +350,7 @@ export class DungeonState extends Schema {
       this.assignGridCoordinates(targetRoomIndex, targetX, targetY);
 
       // Draw a monster for the new room
-      const monster = this.drawMonsterCard();
+      const monster = newRoom.isBossRoom ? this.drawBossMonsterCard() : this.drawMonsterCard();
       if (monster) {
         monster.connectedToRoomIndex = targetRoomIndex;
         console.log(`Assigned monster ${monster.name} to new room ${targetRoomIndex}`);
@@ -313,6 +393,7 @@ export class DungeonState extends Schema {
 
     // Add player to turn order if turn system is active
     this.addPlayerToTurnOrder(id);
+    this.reconfigureRoomDeckForLobbyPlayerCount();
   }
 
   removePlayer(id: string) {
@@ -329,9 +410,23 @@ export class DungeonState extends Schema {
 
     // Remove player from turn order
     this.removePlayerFromTurnOrder(id);
+    this.reconfigureRoomDeckForLobbyPlayerCount();
+  }
+
+  private reconfigureRoomDeckForLobbyPlayerCount(): void {
+    // Keep deck sizing dynamic only before exploration has begun.
+    if (this.currentDay !== 1 || this.currentTurn !== 1 || this.rooms.length > 1) {
+      return;
+    }
+
+    this.configureRoomDeckForPlayerCount(this.players.size || 1);
   }
 
   crossSquare(client: Client, data: any) {
+    if (!this.isGameInProgress()) {
+      return { success: false, error: "Game is already complete" };
+    }
+
     const player = this.players.get(client.sessionId);
     if (!player) {
       return { success: false, error: "Player not found" };
@@ -470,9 +565,14 @@ export class DungeonState extends Schema {
       return existingRoomIndex;
     }
 
+    const roomCard = this.drawRoomCard();
+    if (!roomCard) {
+      return -1;
+    }
+
     // No room exists - create a new one with real-time generation
     const entranceDirection = this.getOppositeDirection(direction);
-    const newRoom = this.createNewRoom(entranceDirection);
+    const newRoom = this.createNewRoom(entranceDirection, roomCard.isBossRoom);
 
     // Add the new room to the rooms array
     const newRoomIndex = this.rooms.length;
@@ -480,6 +580,11 @@ export class DungeonState extends Schema {
 
     // Assign grid coordinates to the new room
     this.assignGridCoordinates(newRoomIndex, targetX, targetY);
+
+    const monster = newRoom.isBossRoom ? this.drawBossMonsterCard() : this.drawMonsterCard();
+    if (monster) {
+      monster.connectedToRoomIndex = newRoomIndex;
+    }
 
     console.log(`Created new room ${newRoomIndex} with entrance from ${entranceDirection}`);
 
@@ -576,11 +681,20 @@ export class DungeonState extends Schema {
       player.hasDrawnCard = false;
     });
 
+    this.configureRoomDeckForPlayerCount(this.players.size || 1);
+    this.currentDay = 1;
+    this.gameStatus = "in_progress";
+    this.bossDefeated = false;
+
     // Initialize turn state
     this.currentTurn = 1;
     this.turnInProgress = true;
 
     console.log(`Turn state initialized for ${this.turnOrder.length} players`);
+  }
+
+  isGameInProgress(): boolean {
+    return this.gameStatus === "in_progress";
   }
 
   /**
@@ -640,19 +754,136 @@ export class DungeonState extends Schema {
       return;
     }
 
+    if (!this.isGameInProgress()) {
+      console.log("Cannot advance turn: game is already complete");
+      return;
+    }
+
+    const dayCompleted = this.areAllPlayerDecksEmptyForDay();
+
     // Resolve monster attacks before resetting players for the next round.
     this.pendingMonsterAttackPhaseResult = this.resolveMonsterAttackPhase();
+    this.checkAndHandleBossDefeat();
+    if (dayCompleted) {
+      if (this.currentDay >= this.maxDays && !this.bossDefeated) {
+        this.gameStatus = "lost";
+        this.turnInProgress = false;
+        this.resetPlayersForFreshTurn();
+        this.currentTurn++;
+        console.log(`Game lost on day ${this.currentDay}: boss not defeated in time`);
+        return;
+      }
 
-    // Reset all player statuses for the new turn
+      this.startNextDay();
+    } else {
+      this.resetPlayersForFreshTurn();
+    }
+
+    this.currentTurn++;
+
+    if (dayCompleted && this.isGameInProgress()) {
+      console.log(`Advanced to turn ${this.currentTurn} (day ${this.currentDay})`);
+      return;
+    }
+
+    console.log(`Advanced to turn ${this.currentTurn}`);
+  }
+
+  private resetPlayersForFreshTurn(): void {
     this.players.forEach((player) => {
       player.turnStatus = "not_started";
       player.hasDrawnCard = false;
     });
+  }
 
-    // Increment turn counter
-    this.currentTurn++;
+  private areAllPlayerDecksEmptyForDay(): boolean {
+    if (this.turnOrder.length === 0) {
+      return false;
+    }
 
-    console.log(`Advanced to turn ${this.currentTurn}`);
+    for (const sessionId of this.turnOrder) {
+      const player = this.players.get(sessionId);
+      if (!player) {
+        return false;
+      }
+
+      if (player.deck.length > 0) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private shuffleCards(cards: Card[]): void {
+    for (let i = cards.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [cards[i], cards[j]] = [cards[j], cards[i]];
+    }
+  }
+
+  private startNextDay(): void {
+    this.currentDay++;
+
+    this.players.forEach((player) => {
+      const carryOverCards: Card[] = [];
+
+      while (player.deck.length > 0) {
+        const card = player.deck.shift();
+        if (card) {
+          card.isActive = false;
+          carryOverCards.push(card);
+        }
+      }
+
+      while (player.drawnCards.length > 0) {
+        const card = player.drawnCards.shift();
+        if (card) {
+          card.isActive = false;
+          carryOverCards.push(card);
+        }
+      }
+
+      while (player.discardPile.length > 0) {
+        const card = player.discardPile.shift();
+        if (card) {
+          card.isActive = false;
+          carryOverCards.push(card);
+        }
+      }
+
+      this.shuffleCards(carryOverCards);
+      carryOverCards.forEach((card) => player.deck.push(card));
+    });
+
+    this.activeCardPlayers.clear();
+    this.selectedSquares.clear();
+    this.selectedSquareCount.clear();
+    this.resetPlayersForFreshTurn();
+    this.turnInProgress = true;
+
+    console.log(`Day ${this.currentDay} has started`);
+  }
+
+  private checkAndHandleBossDefeat(): boolean {
+    if (this.bossDefeated) {
+      return true;
+    }
+
+    if (!this.bossMonsterId) {
+      return false;
+    }
+
+    const boss = this.activeMonsters.find((monster) => monster.id === this.bossMonsterId);
+    if (!boss || !boss.isCompleted()) {
+      return false;
+    }
+
+    this.bossDefeated = true;
+    this.gameStatus = "won";
+    this.turnInProgress = false;
+    console.log(`Boss ${boss.name} defeated. Players win.`);
+    return true;
   }
 
   /**
@@ -734,6 +965,7 @@ export class DungeonState extends Schema {
         if (defenseSymbol === "counter") {
           // Counter crosses one random available monster square, then returns card to deck.
           const counterSquare = this.crossRandomUncrossedMonsterSquare(monster);
+          this.checkAndHandleBossDefeat();
           player.deck.push(defenseCard);
           attacks.push({
             playerSessionId,
@@ -869,7 +1101,7 @@ export class DungeonState extends Schema {
    */
   canPlayerPerformAction(sessionId: string, action: "drawCard" | "playCard" | "endTurn"): boolean {
     const player = this.players.get(sessionId);
-    if (!player || !this.turnInProgress) {
+    if (!player || !this.turnInProgress || !this.isGameInProgress()) {
       return false;
     }
 
@@ -891,6 +1123,10 @@ export class DungeonState extends Schema {
    * @returns Result object with success status and message
    */
   drawCard(sessionId: string): { success: boolean; message?: string; error?: string } {
+    if (!this.isGameInProgress()) {
+      return { success: false, error: "Game is already complete" };
+    }
+
     const player = this.players.get(sessionId);
     if (!player) {
       return { success: false, error: "Player not found" };
@@ -954,6 +1190,10 @@ export class DungeonState extends Schema {
    * @returns Result object with success status and message
    */
   playCard(sessionId: string, cardId: string): { success: boolean; message?: string; error?: string } {
+    if (!this.isGameInProgress()) {
+      return { success: false, error: "Game is already complete" };
+    }
+
     const player = this.players.get(sessionId);
     if (!player) {
       return { success: false, error: "Player not found" };
@@ -1126,6 +1366,10 @@ export class DungeonState extends Schema {
     invalidSquare?: boolean;
     completed?: boolean;
   } {
+    if (!this.isGameInProgress()) {
+      return { success: false, error: "Game is already complete" };
+    }
+
     const player = this.players.get(sessionId);
     if (!player) {
       return { success: false, error: "Player not found" };
@@ -1479,6 +1723,8 @@ export class DungeonState extends Schema {
       }
     }
 
+    this.checkAndHandleBossDefeat();
+
     // Process exit navigation after all squares have been crossed.
     // This ensures that exits included in multi-square moves (like row sweeps) open reliably,
     // even when the exit's adjacent squares are crossed within the same action.
@@ -1558,6 +1804,10 @@ export class DungeonState extends Schema {
    * @returns Result object with success status and message
    */
   confirmCardAction(sessionId: string, data?: any): { success: boolean; message?: string; error?: string; completed?: boolean } {
+    if (!this.isGameInProgress()) {
+      return { success: false, error: "Game is already complete" };
+    }
+
     const player = this.players.get(sessionId);
     if (!player) {
       return { success: false, error: "Player not found" };
@@ -2039,6 +2289,10 @@ export class DungeonState extends Schema {
    * @returns Result object with success status and message
    */
   claimMonster(sessionId: string, monsterId: string): { success: boolean; message?: string; error?: string } {
+    if (!this.isGameInProgress()) {
+      return { success: false, error: "Game is already complete" };
+    }
+
     const player = this.players.get(sessionId);
     if (!player) {
       return { success: false, error: "Player not found" };
@@ -2089,6 +2343,10 @@ export class DungeonState extends Schema {
     invalidSquare?: boolean;
     completed?: boolean;
   } {
+    if (!this.isGameInProgress()) {
+      return { success: false, error: "Game is already complete" };
+    }
+
     const player = this.players.get(sessionId);
     if (!player) {
       return { success: false, error: "Player not found" };

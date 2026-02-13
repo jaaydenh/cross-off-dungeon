@@ -4,6 +4,7 @@ import { DungeonSquare } from "./DungeonSquare";
 export class Room extends Schema {
   @type("number") width: number;
   @type("number") height: number;
+  @type("boolean") isBossRoom: boolean = false;
   @type([ DungeonSquare ]) squares = new ArraySchema<DungeonSquare>();
   @type("string") entranceDirection: string = "none"; // Direction from which player entered
   @type("number") entranceX: number = -1;

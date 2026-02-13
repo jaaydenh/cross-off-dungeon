@@ -10,9 +10,10 @@ exports.MonsterCard = void 0;
 const schema_1 = require("@colyseus/schema");
 const MonsterSquare_1 = require("./MonsterSquare");
 class MonsterCard extends schema_1.Schema {
-    constructor(id, name, width, height, attackRating = 1) {
+    constructor(id, name, width, height, attackRating = 1, isBoss = false) {
         super();
         this.attackRating = 1; // Number of attacks this monster performs each monster phase
+        this.isBoss = false;
         this.squares = new schema_1.ArraySchema();
         this.playerOwnerId = ""; // SessionId of player who owns this monster, empty if unowned
         this.connectedToRoomIndex = -1; // Index of room this monster is connected to (-1 if in player area)
@@ -21,6 +22,7 @@ class MonsterCard extends schema_1.Schema {
         this.width = width;
         this.height = height;
         this.attackRating = Math.max(1, Math.min(3, Math.floor(attackRating)));
+        this.isBoss = isBoss;
         this.squares = new schema_1.ArraySchema();
         this.playerOwnerId = "";
         this.connectedToRoomIndex = -1;
@@ -95,6 +97,9 @@ __decorate([
 __decorate([
     (0, schema_1.type)("number")
 ], MonsterCard.prototype, "attackRating", void 0);
+__decorate([
+    (0, schema_1.type)("boolean")
+], MonsterCard.prototype, "isBoss", void 0);
 __decorate([
     (0, schema_1.type)([MonsterSquare_1.MonsterSquare])
 ], MonsterCard.prototype, "squares", void 0);

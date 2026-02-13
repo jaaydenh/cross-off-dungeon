@@ -53,6 +53,11 @@ export default function Game() {
     delayMs: number;
     card: { type: string; description: string; defenseSymbol: string };
   }>>([]);
+  const [dayBanner, setDayBanner] = useState<string | null>(null);
+  const [gameResultBanner, setGameResultBanner] = useState<string | null>(null);
+  const dayBannerTimeoutRef = useRef<any>(null);
+  const lastAnnouncedDayRef = useRef<number | null>(null);
+  const lastGameStatusRef = useRef<string | null>(null);
 
   const activeCard = currentPlayer?.drawnCards?.find((card) => card.isActive) || null;
   const hasActiveCard = !!activeCard;
@@ -67,6 +72,43 @@ export default function Game() {
       setSelectedMonsterSquares([]);
     }
   }, [hasActiveCard]);
+
+  useEffect(() => {
+    return () => {
+      if (dayBannerTimeoutRef.current) {
+        clearTimeout(dayBannerTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!inRoom || !gameState) return;
+
+    const currentDay = Number(gameState.currentDay || 1);
+    if (lastAnnouncedDayRef.current !== currentDay) {
+      lastAnnouncedDayRef.current = currentDay;
+      setDayBanner(`Day ${currentDay}`);
+
+      if (dayBannerTimeoutRef.current) {
+        clearTimeout(dayBannerTimeoutRef.current);
+      }
+
+      dayBannerTimeoutRef.current = setTimeout(() => {
+        setDayBanner(null);
+      }, 2200);
+    }
+
+    if (lastGameStatusRef.current !== gameState.gameStatus) {
+      lastGameStatusRef.current = gameState.gameStatus;
+      if (gameState.gameStatus === 'won') {
+        setGameResultBanner('Victory! Boss Defeated');
+      } else if (gameState.gameStatus === 'lost') {
+        setGameResultBanner('Defeat! 3 Days Elapsed');
+      } else {
+        setGameResultBanner(null);
+      }
+    }
+  }, [inRoom, gameState]);
 
   const handleCancelCleanup = useCallback(() => {
     setSelectedSquares([]);
@@ -1090,6 +1132,28 @@ export default function Game() {
                 />
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {inRoom && dayBanner && (
+        <div className="fixed inset-0 z-[90] pointer-events-none flex items-center justify-center">
+          <div className="rounded-xl border-4 border-amber-300 bg-slate-950/90 px-12 py-8 text-6xl font-black tracking-wide text-amber-200 shadow-2xl">
+            {dayBanner}
+          </div>
+        </div>
+      )}
+
+      {inRoom && gameResultBanner && (
+        <div className="fixed inset-0 z-[95] pointer-events-none flex items-center justify-center">
+          <div
+            className={`rounded-xl border-4 bg-slate-950/92 px-12 py-8 text-5xl font-black tracking-wide shadow-2xl ${
+              gameState?.gameStatus === 'lost'
+                ? 'border-rose-300 text-rose-200'
+                : 'border-emerald-300 text-emerald-200'
+            }`}
+          >
+            {gameResultBanner}
           </div>
         </div>
       )}
