@@ -1,8 +1,18 @@
 import { Room, Client } from "@colyseus/core";
 import { DungeonState, type MonsterAttackPhaseResult } from "./schema/DungeonState";
 
+type DungeonLobbyMetadata = {
+  roomCode: string;
+  currentDay: number;
+  currentTurn: number;
+  gameStatus: string;
+  playerCount: number;
+  maxPlayers: number;
+};
+
 export class Dungeon extends Room<DungeonState> {
   maxClients = 4;
+  private readonly reconnectionWindowSeconds = 90;
 
   // Room name used by clients when joining (helpful for debugging/logging)
   static readonly ROOM_NAME = "dungeon";
@@ -16,6 +26,31 @@ export class Dungeon extends Room<DungeonState> {
 
   private toSafeString(value: unknown): string {
     return typeof value === "string" ? value : "";
+  }
+
+  private normalizePlayerName(value: unknown): string {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value.trim().replace(/\s+/g, " ").slice(0, 24);
+  }
+
+  private async updateLobbyMetadata(): Promise<void> {
+    const metadata: DungeonLobbyMetadata = {
+      roomCode: this.roomId,
+      currentDay: this.state.currentDay,
+      currentTurn: this.state.currentTurn,
+      gameStatus: this.state.gameStatus,
+      playerCount: this.state.players.size,
+      maxPlayers: this.maxClients
+    };
+
+    try {
+      await this.setMetadata(metadata);
+    } catch (error) {
+      console.error("[Dungeon] Failed to update room metadata:", error);
+    }
   }
 
   private normalizeMonsterAttackPhasePayload(
@@ -139,6 +174,7 @@ export class Dungeon extends Room<DungeonState> {
     this.setState(new DungeonState());
 
     this.state.initializeBoard();
+    void this.updateLobbyMetadata();
 
     this.onMessage("crossSquare", (client, message) => {
       // Mutates state; clients will see changes via state patches.
@@ -239,6 +275,7 @@ export class Dungeon extends Room<DungeonState> {
         const attackPhaseResult = turnAdvanced
           ? this.state.consumePendingMonsterAttackPhaseResult()
           : null;
+        void this.updateLobbyMetadata();
 
         this.sendWithFallback(
           client,
@@ -349,21 +386,52 @@ export class Dungeon extends Room<DungeonState> {
     });
   }
 
-  onJoin(client: Client, options: any) {
-    this.state.createPlayer(client.sessionId, options.name);
+  onAuth(client: Client, options: any) {
+    const playerName = this.normalizePlayerName(options?.name);
+    if (!playerName) {
+      throw new Error("Player name is required");
+    }
 
-    console.log(client.sessionId + ' : player: ' + options.name, "joined!");
+    return { playerName };
+  }
+
+  onJoin(client: Client, options: any, auth: { playerName?: string } | undefined) {
+    const playerName = this.normalizePlayerName(auth?.playerName ?? options?.name);
+    if (!playerName) {
+      throw new Error("Player name is required");
+    }
+
+    this.state.createPlayer(client.sessionId, playerName);
+
+    console.log(client.sessionId + ' : player: ' + playerName, "joined!");
     console.log(this.state.players.size, "players in room");
 
     // Initialize turn state when the first player joins
     if (this.state.players.size === 1) {
       this.state.initializeTurnState();
       console.log("Turn state initialized for the first player");
+      void this.updateLobbyMetadata();
+      return;
     }
+
+    void this.updateLobbyMetadata();
   }
 
-  onLeave(client: Client, consented: boolean) {
+  async onLeave(client: Client, consented: boolean) {
+    // Keep accidental refreshes/disconnects reconnectable for a short window.
+    if (!consented) {
+      try {
+        await this.allowReconnection(client, this.reconnectionWindowSeconds);
+        console.log(client.sessionId, "reconnected");
+        void this.updateLobbyMetadata();
+        return;
+      } catch (error) {
+        console.log(client.sessionId, "did not reconnect in time");
+      }
+    }
+
     this.state.removePlayer(client.sessionId);
+    void this.updateLobbyMetadata();
     console.log(client.sessionId, "left!");
   }
 

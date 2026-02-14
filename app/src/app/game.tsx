@@ -22,11 +22,38 @@ import CardFaceContent from './CardFaceContent';
 export const dynamic = 'force-dynamic';
 
 interface DungeonRoomState extends DungeonState { }
+type LobbyRoomMetadata = {
+  roomCode?: string;
+  currentDay?: number;
+  currentTurn?: number;
+  gameStatus?: string;
+  playerCount?: number;
+  maxPlayers?: number;
+};
+type LobbyRoomInfo = {
+  name: string;
+  roomId: string;
+  clients: number;
+  maxClients: number;
+  metadata?: LobbyRoomMetadata;
+};
+type PersistedReconnection = {
+  token: string;
+  name: string;
+  savedAt: number;
+};
+
+const DUNGEON_ROOM_NAME = 'dungeon';
+const DEFAULT_SERVER_URL = 'ws://localhost:2567';
+const RECONNECT_STORAGE_KEY = 'cross-off-dungeon.reconnect';
 
 export default function Game() {
   const [name, setName] = useState('');
+  const [roomCodeInput, setRoomCodeInput] = useState('');
   const [inRoom, setInRoom] = useState(false);
-  const [players, setPlayers] = useState([]);
+  const [isJoiningRoom, setIsJoiningRoom] = useState(false);
+  const [lobbyError, setLobbyError] = useState<string | null>(null);
+  const [availableRooms, setAvailableRooms] = useState<LobbyRoomInfo[]>([]);
   const [currentPlayer, setCurrentPlayer] = useState<Player | null>(null);
   const [currentRoom, setCurrentRoom] = useState<DungeonRoom | null>(null);
   const [displayedRooms, setDisplayedRooms] = useState<{ room: DungeonRoom, x: number, y: number }[]>([]);
@@ -68,8 +95,58 @@ export default function Game() {
   const mapScrollRef = useRef<HTMLDivElement>(null);
   const playerAreaRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<Room>();
+  const clientRef = useRef<Colyseus.Client | null>(null);
+  const reconnectNameRef = useRef('');
   const isHeroicMoveAndFightCard = (card: any): boolean => card?.type === 'heroic_move_two_and_fight_two';
   const isCombatCard = (card: any): boolean => card?.type === 'combat_fight_three_diagonal_or_move_three';
+  const roomCode = roomRef.current?.roomId || '';
+  const normalizedName = name.trim().replace(/\s+/g, ' ').slice(0, 24);
+  const canJoinLobbyActions = normalizedName.length > 0 && !isJoiningRoom;
+  const readPersistedReconnection = useCallback((): PersistedReconnection | null => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    const raw = window.localStorage.getItem(RECONNECT_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as PersistedReconnection;
+      if (!parsed?.token || typeof parsed.token !== 'string') {
+        return null;
+      }
+      return {
+        token: parsed.token,
+        name: typeof parsed.name === 'string' ? parsed.name : '',
+        savedAt: Number(parsed.savedAt || Date.now())
+      };
+    } catch (error) {
+      console.error('failed to parse reconnection data', error);
+      return null;
+    }
+  }, []);
+
+  const savePersistedReconnection = useCallback((token: string, playerName: string) => {
+    if (typeof window === 'undefined' || !token) {
+      return;
+    }
+
+    const payload: PersistedReconnection = {
+      token,
+      name: playerName,
+      savedAt: Date.now()
+    };
+    window.localStorage.setItem(RECONNECT_STORAGE_KEY, JSON.stringify(payload));
+  }, []);
+
+  const clearPersistedReconnection = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.removeItem(RECONNECT_STORAGE_KEY);
+  }, []);
 
   useEffect(() => {
     if (!hasActiveCard) {
@@ -113,6 +190,74 @@ export default function Game() {
       }
     }
   }, [inRoom, hasGameState, currentDay, currentGameStatus]);
+
+  useEffect(() => {
+    const serverUrl = process.env.NEXT_PUBLIC_COLYSEUS_URL || DEFAULT_SERVER_URL;
+    clientRef.current = new Colyseus.Client(serverUrl);
+  }, []);
+
+  useEffect(() => {
+    if (!clientRef.current) {
+      return;
+    }
+
+    const persisted = readPersistedReconnection();
+    if (!persisted) {
+      return;
+    }
+
+    reconnectNameRef.current = persisted.name || '';
+    if (persisted.name) {
+      setName((currentName) => currentName || persisted.name);
+    }
+
+    void (async () => {
+      const didReconnect = await connectToRoom(() => clientRef.current!.reconnect(persisted.token));
+      if (!didReconnect) {
+        clearPersistedReconnection();
+      }
+    })();
+    // We intentionally run this once on mount with persisted data.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clearPersistedReconnection, readPersistedReconnection]);
+
+  const refreshLobbyRooms = useCallback(async () => {
+    if (inRoom || !clientRef.current) {
+      return;
+    }
+
+    try {
+      const rooms = await clientRef.current.getAvailableRooms<LobbyRoomMetadata>(DUNGEON_ROOM_NAME);
+      setAvailableRooms(rooms.sort((a, b) => {
+        const dayA = Number(a.metadata?.currentDay || 1);
+        const dayB = Number(b.metadata?.currentDay || 1);
+        if (dayA !== dayB) {
+          return dayA - dayB;
+        }
+
+        const turnA = Number(a.metadata?.currentTurn || 1);
+        const turnB = Number(b.metadata?.currentTurn || 1);
+        return turnA - turnB;
+      }));
+      setLobbyError(null);
+    } catch (error) {
+      console.error('failed to fetch rooms', error);
+      setLobbyError('Unable to load game list. Is the server running?');
+    }
+  }, [inRoom]);
+
+  useEffect(() => {
+    if (inRoom) {
+      return;
+    }
+
+    void refreshLobbyRooms();
+    const interval = setInterval(() => {
+      void refreshLobbyRooms();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [inRoom, refreshLobbyRooms]);
 
   const handleCancelCleanup = useCallback(() => {
     setSelectedSquares([]);
@@ -668,20 +813,44 @@ export default function Game() {
     }
   };
 
-  async function joinRoom() {
-    var client = new Colyseus.Client('ws://localhost:2567');
-    // var client = new Colyseus.Client('https://us-ewr-120d3744.colyseus.cloud');
+  const getJoinErrorMessage = (error: any): string => {
+    if (typeof error?.message === 'string' && error.message.trim().length > 0) {
+      return error.message;
+    }
+    return 'Unable to join room.';
+  };
+
+  async function connectToRoom(joinAction: () => Promise<Room<DungeonRoomState>>): Promise<boolean> {
+    setIsJoiningRoom(true);
+    setLobbyError(null);
 
     try {
-      roomRef.current = await client.joinOrCreate('dungeon', { name: name });
+      roomRef.current = await joinAction();
 
       setInRoom(true);
       console.log('joined successfully', roomRef);
 
+      setSelectedSquares([]);
+      setSelectedMonsterSquares([]);
+      setMonsterAttackAnimations([]);
+      setDeckReturnAnimations([]);
+      setRoomCodeInput('');
+      lastAnnouncedDayRef.current = null;
+      lastGameStatusRef.current = null;
+      setDayBanner(null);
+      setGameResultBanner(null);
+
+      const playerNameForReconnect = reconnectNameRef.current || normalizedName || '';
+      if (playerNameForReconnect) {
+        setName(playerNameForReconnect);
+      }
+      if (roomRef.current.reconnectionToken) {
+        savePersistedReconnection(roomRef.current.reconnectionToken, playerNameForReconnect);
+      }
+
       roomRef.current.state.players.onAdd((player, sessionId) => {
         console.log(`Player added: ${player.name} (sessionId: ${sessionId})`);
         setInRoom(true);
-        setPlayers((players) => [...players, player.name]);
       });
 
       roomRef.current.state.rooms.onAdd((room, index) => {
@@ -755,7 +924,7 @@ export default function Game() {
 
         if (message.success && !message.completed) {
           // Square was successfully selected but card action not yet completed
-          // We need to track this locally for visual feedback since the server doesn't 
+          // We need to track this locally for visual feedback since the server doesn't
           // immediately mark squares as checked during card selection
           // The actual coordinates should be extracted from the last sent message
           // For now, we'll rely on the client-side tracking in handleSquareClick
@@ -918,9 +1087,61 @@ export default function Game() {
       roomRef.current.onStateChange.once((state) => {
         setInitialState(state);
       });
-    } catch (e) {
-      console.error('join error', e);
+      return true;
+    } catch (error) {
+      console.error('join error', error);
+      setLobbyError(getJoinErrorMessage(error));
+      setInRoom(false);
+      roomRef.current = undefined;
+      return false;
+    } finally {
+      setIsJoiningRoom(false);
     }
+  }
+
+  async function createRoom() {
+    if (!clientRef.current || !canJoinLobbyActions) {
+      if (!normalizedName.length) {
+        setLobbyError('Enter your character name before creating a game.');
+      }
+      return;
+    }
+
+    setName(normalizedName);
+    reconnectNameRef.current = normalizedName;
+    await connectToRoom(() => clientRef.current!.create(DUNGEON_ROOM_NAME, { name: normalizedName }));
+  }
+
+  async function joinRoomByCode() {
+    if (!clientRef.current || !canJoinLobbyActions) {
+      if (!normalizedName.length) {
+        setLobbyError('Enter your character name before joining a game.');
+      }
+      return;
+    }
+
+    const requestedRoomCode = roomCodeInput.trim();
+    if (!requestedRoomCode) {
+      setLobbyError('Enter a room code.');
+      return;
+    }
+
+    setName(normalizedName);
+    reconnectNameRef.current = normalizedName;
+    await connectToRoom(() => clientRef.current!.joinById(requestedRoomCode, { name: normalizedName }));
+  }
+
+  async function joinLobbyRoom(roomId: string) {
+    if (!clientRef.current || !canJoinLobbyActions) {
+      if (!normalizedName.length) {
+        setLobbyError('Enter your character name before joining a game.');
+      }
+      return;
+    }
+
+    setName(normalizedName);
+    reconnectNameRef.current = normalizedName;
+    await connectToRoom(() => clientRef.current!.joinById(roomId, { name: normalizedName }));
   }
 
   const setInitialState = (state: DungeonState) => {
@@ -1041,21 +1262,114 @@ export default function Game() {
   return (
     <main className="fixed inset-0 h-screen w-screen overflow-hidden">
       {!inRoom && (
-        <div className="flex flex-col items-center justify-center w-full h-full gap-4">
-          <div>Character Name</div>
-          <input className="border-2 border-gray-300 rounded-md p-2 text-black" type="text" onChange={(e) => setName(e.target.value)} />
-          <button
-            onClick={joinRoom}
-            className="outline-hidden bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-          >
-            Join
-          </button>
+        <div className="flex h-full w-full items-start justify-center bg-slate-950 px-4 py-8 text-slate-100">
+          <div className="w-full max-w-5xl space-y-6">
+            <section className="rounded-xl border border-slate-700 bg-slate-900 p-5">
+              <h1 className="text-2xl font-bold">Cross-Off Dungeon Lobby</h1>
+              <p className="mt-1 text-sm text-slate-300">Enter your name, then create or join a game.</p>
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto]">
+                <input
+                  className="rounded-md border border-slate-500 bg-slate-100 px-3 py-2 text-black"
+                  type="text"
+                  value={name}
+                  placeholder="Character Name"
+                  maxLength={24}
+                  onChange={(e) => setName(e.target.value)}
+                />
+                <button
+                  onClick={createRoom}
+                  disabled={!canJoinLobbyActions}
+                  className="rounded bg-emerald-600 px-4 py-2 font-semibold text-white enabled:hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isJoiningRoom ? 'Joining...' : 'Create Game'}
+                </button>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto]">
+                <input
+                  className="rounded-md border border-slate-500 bg-slate-100 px-3 py-2 text-black"
+                  type="text"
+                  value={roomCodeInput}
+                  placeholder="Room Code"
+                  onChange={(e) => setRoomCodeInput(e.target.value)}
+                />
+                <button
+                  onClick={joinRoomByCode}
+                  disabled={!canJoinLobbyActions}
+                  className="rounded bg-blue-600 px-4 py-2 font-semibold text-white enabled:hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isJoiningRoom ? 'Joining...' : 'Join By Code'}
+                </button>
+              </div>
+              {lobbyError && (
+                <p className="mt-3 text-sm font-medium text-rose-300">{lobbyError}</p>
+              )}
+            </section>
+
+            <section className="rounded-xl border border-slate-700 bg-slate-900 p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-xl font-bold">Available Games</h2>
+                <button
+                  onClick={() => void refreshLobbyRooms()}
+                  disabled={isJoiningRoom}
+                  className="rounded border border-slate-500 px-3 py-1 text-sm font-medium text-slate-100 enabled:hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Refresh
+                </button>
+              </div>
+              {availableRooms.length === 0 && (
+                <p className="text-sm text-slate-300">No joinable games yet. Create one to get started.</p>
+              )}
+              {availableRooms.length > 0 && (
+                <div className="space-y-2">
+                  {availableRooms.map((room) => {
+                    const code = room.metadata?.roomCode || room.roomId;
+                    const day = Number(room.metadata?.currentDay || 1);
+                    const turn = Number(room.metadata?.currentTurn || 1);
+                    const players = Number(room.clients || 0);
+                    const isFull = players >= Number(room.maxClients || 4);
+
+                    return (
+                      <div key={room.roomId} className="grid grid-cols-1 items-center gap-3 rounded border border-slate-700 bg-slate-800 px-3 py-3 text-sm md:grid-cols-[1fr_140px_120px_120px_auto]">
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-slate-400">Room Code</div>
+                          <div className="font-mono text-base font-semibold">{code}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-slate-400">Players</div>
+                          <div>{players}/{room.maxClients}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-slate-400">Day</div>
+                          <div>{day}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs uppercase tracking-wide text-slate-400">Turn</div>
+                          <div>{turn}</div>
+                        </div>
+                        <button
+                          onClick={() => joinLobbyRoom(room.roomId)}
+                          disabled={!canJoinLobbyActions || isFull}
+                          className="rounded bg-cyan-600 px-3 py-2 font-semibold text-white enabled:hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isFull ? 'Full' : 'Join'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          </div>
         </div>
       )}
       {inRoom && (
         <div className="flex h-screen w-full">
           {/* Left side panel for game information */}
           <div className="w-64 flex flex-col bg-slate-800 p-4 overflow-y-auto border-r border-slate-700 h-[calc(100vh-20rem)]" >
+            <div className="mb-4 rounded border border-slate-600 bg-slate-700 p-2">
+              <div className="text-xs uppercase tracking-wide text-slate-300">Room Code</div>
+              <div className="font-mono text-lg font-bold text-white">{roomCode}</div>
+            </div>
             <span>
               <h2 className="text-xl font-bold mb-4">Players</h2>
               <ul className="space-y-2">

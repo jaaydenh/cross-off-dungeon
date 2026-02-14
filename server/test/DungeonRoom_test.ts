@@ -27,7 +27,7 @@ describe("Dungeon Room", () => {
     const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
     // Connect a client
-    const client = await colyseus.connectTo(room);
+    const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
     // Wait for state sync
     await room.waitForNextPatch();
@@ -148,7 +148,7 @@ describe("Dungeon Room", () => {
       const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
       // Connect a client
-      const client = await colyseus.connectTo(room);
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       // Wait for state sync
       await room.waitForNextPatch();
@@ -163,7 +163,7 @@ describe("Dungeon Room", () => {
       const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
       // Connect a client
-      const client = await colyseus.connectTo(room);
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       // Wait for state sync
       await room.waitForNextPatch();
@@ -183,7 +183,7 @@ describe("Dungeon Room", () => {
       const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
       // Connect a client
-      const client = await colyseus.connectTo(room);
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       // Wait for state sync
       await room.waitForNextPatch();
@@ -216,7 +216,7 @@ describe("Dungeon Room", () => {
       const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
       // Connect a client
-      const client = await colyseus.connectTo(room);
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       // Wait for state sync
       await room.waitForNextPatch();
@@ -243,7 +243,7 @@ describe("Dungeon Room", () => {
       const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
       // Connect a client
-      const client = await colyseus.connectTo(room);
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       // Wait for state sync
       await room.waitForNextPatch();
@@ -275,7 +275,7 @@ describe("Dungeon Room", () => {
       const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
       // Connect a client
-      const client = await colyseus.connectTo(room);
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       // Wait for state sync
       await room.waitForNextPatch();
@@ -293,7 +293,7 @@ describe("Dungeon Room", () => {
       const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
       // Connect a client
-      const client = await colyseus.connectTo(room);
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       // Wait for state sync
       await room.waitForNextPatch();
@@ -316,7 +316,7 @@ describe("Dungeon Room", () => {
       const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
       // Connect a client
-      const client = await colyseus.connectTo(room);
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       // Wait for state sync
       await room.waitForNextPatch();
@@ -352,7 +352,7 @@ describe("Dungeon Room", () => {
       const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
       // Connect a client
-      const client = await colyseus.connectTo(room);
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       // Wait for state sync
       await room.waitForNextPatch();
@@ -391,7 +391,7 @@ describe("Dungeon Room", () => {
       const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
       // Connect a client
-      const client = await colyseus.connectTo(room);
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       // Wait for state sync
       await room.waitForNextPatch();
@@ -407,7 +407,7 @@ describe("Dungeon Room", () => {
       const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
       // Connect a client
-      const client = await colyseus.connectTo(room);
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       // Wait for state sync
       await room.waitForNextPatch();
@@ -428,7 +428,7 @@ describe("Dungeon Room", () => {
       const room = await colyseus.createRoom<DungeonState>("dungeon", {});
 
       // Connect a client
-      const client = await colyseus.connectTo(room);
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
 
       // Wait for state sync
       await room.waitForNextPatch();
