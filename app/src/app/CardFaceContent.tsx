@@ -3,6 +3,8 @@
 import CardFaceText from './CardFaceText';
 
 const DOUBLE_SWEEP_CARD_TYPE = 'cross_two_horizontal_then_two_horizontal';
+const COMBAT_CARD_TYPE = 'combat_fight_three_diagonal_or_move_three';
+const SWIPE_CARD_TYPE = 'swipe_fight_l_overlay';
 
 type CardFaceContentProps = {
   type: string;
@@ -26,6 +28,52 @@ function HeroicDoubleSweepVisual() {
       <div className="flex">
         <div className={blockClass} />
         <div className={blockClass} />
+      </div>
+    </div>
+  );
+}
+
+function CombatBlastVisual() {
+  const cellClass = 'h-5 w-5 border border-dashed border-rose-400 bg-rose-200/70';
+
+  return (
+    <div className="h-full w-full flex flex-col items-center justify-center gap-2 text-black">
+      <div className="text-sm font-semibold leading-none">Fight</div>
+      <div className="grid grid-cols-3 gap-0">
+        {[0, 1, 2].map((row) =>
+          [0, 1, 2].map((col) => {
+            const isCenter = row === 1 && col === 1;
+            return (
+              <div
+                key={`combat-cell-${row}-${col}`}
+                className={`${cellClass} ${isCenter ? 'bg-red-500/70 border-red-500' : ''}`}
+              />
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SwipeVisual() {
+  const baseCell = 'h-5 w-5';
+
+  return (
+    <div className="h-full w-full flex flex-col items-center justify-center gap-2 text-black">
+      <div className="text-sm font-semibold leading-none">Fight</div>
+      <div className="grid grid-cols-3 gap-0">
+        <div className={`${baseCell} border border-red-500 bg-red-500/70`} />
+        <div className={`${baseCell} border border-red-500 bg-red-500/70`} />
+        <div className={`${baseCell} border border-dashed border-rose-400 bg-rose-300/55`} />
+
+        <div className={`${baseCell} border border-red-500 bg-red-500/70`} />
+        <div className={baseCell} />
+        <div className={baseCell} />
+
+        <div className={`${baseCell} border border-dashed border-rose-400 bg-rose-300/55`} />
+        <div className={baseCell} />
+        <div className={baseCell} />
       </div>
     </div>
   );
@@ -67,6 +115,8 @@ export default function CardFaceContent({
   color = 'clear'
 }: CardFaceContentProps) {
   const isDoubleSweep = type === DOUBLE_SWEEP_CARD_TYPE;
+  const isCombatBlast = type === COMBAT_CARD_TYPE;
+  const isSwipe = type === SWIPE_CARD_TYPE;
   const hasDefenseAbility = defenseSymbol === 'block' || defenseSymbol === 'counter';
   const defenseIcon = defenseSymbol === 'block' ? '🛡️' : '⚔️';
   const defenseLabel = defenseSymbol === 'block' ? 'Block' : 'Counter Attack';
@@ -81,6 +131,10 @@ export default function CardFaceContent({
       <div className="h-[calc(100%-1.5rem)]">
         {isDoubleSweep ? (
           <HeroicDoubleSweepVisual />
+        ) : isCombatBlast ? (
+          <CombatBlastVisual />
+        ) : isSwipe ? (
+          <SwipeVisual />
         ) : (
           <CardFaceText text={description} className="text-black" maxFontPx={11} minFontPx={7} />
         )}

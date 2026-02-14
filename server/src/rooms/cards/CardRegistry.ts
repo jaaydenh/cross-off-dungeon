@@ -3,9 +3,15 @@ import type { CardDefenseSymbol } from "../schema/Card";
 import type { CardColor } from "../schema/Card";
 
 export type CardSelectionTarget = "room" | "monster" | "room_or_monster" | "monster_each";
-export type CardSelectionMode = "squares" | "row" | "horizontal_pair_twice";
+export type CardSelectionMode =
+  | "squares"
+  | "row"
+  | "horizontal_pair_twice"
+  | "centered_monster_3x3"
+  | "monster_swipe_l";
 export const HEROIC_MOVE_AND_FIGHT_CARD_ID = "heroic_move_two_and_fight_two";
 export const COMBAT_CARD_ID = "combat_fight_three_diagonal_or_move_three";
+export const SWIPE_CARD_ID = "swipe_fight_l_overlay";
 export const STARTER_DECK_SIZE = 10;
 
 export type CardDefinition = {
@@ -122,15 +128,31 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
   {
     id: COMBAT_CARD_ID,
     name: "Combat",
-    description: "Fight 3 diagonal or move 3",
+    description: "Fight",
     color: "red",
     defenseSymbol: "counter",
     selection: {
-      target: "room_or_monster",
-      mode: "squares",
-      minSelections: 3,
-      maxSelections: 3,
-      connected: true,
+      target: "monster",
+      mode: "centered_monster_3x3",
+      minSelections: 1,
+      maxSelections: 1,
+      connected: false,
+      requireRoomStartAdjacency: false,
+      requireMonsterStartAdjacency: false
+    }
+  },
+  {
+    id: SWIPE_CARD_ID,
+    name: "Swipe",
+    description: "Fight",
+    color: "red",
+    defenseSymbol: "empty",
+    selection: {
+      target: "monster",
+      mode: "monster_swipe_l",
+      minSelections: 1,
+      maxSelections: 1,
+      connected: false,
       requireRoomStartAdjacency: false,
       requireMonsterStartAdjacency: false
     }

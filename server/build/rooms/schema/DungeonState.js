@@ -1499,7 +1499,10 @@ class DungeonState extends schema_1.Schema {
         if (!card) {
             return { success: false, error: "No active card to confirm" };
         }
-        if ((card.selectionMode || "squares") === "horizontal_pair_twice") {
+        const selectionMode = card.selectionMode || "squares";
+        if (selectionMode === "horizontal_pair_twice" ||
+            selectionMode === "centered_monster_3x3" ||
+            selectionMode === "monster_swipe_l") {
             return {
                 success: false,
                 error: "This card resolves directly on board clicks and does not use confirm"
@@ -1807,7 +1810,10 @@ class DungeonState extends schema_1.Schema {
             return { success: false, error: "Active card does not allow monster selection", invalidSquare: true };
         }
         const selectionMode = card.selectionMode || "squares";
-        if (selectionMode !== "squares" && selectionMode !== "horizontal_pair_twice") {
+        if (selectionMode !== "squares" &&
+            selectionMode !== "horizontal_pair_twice" &&
+            selectionMode !== "centered_monster_3x3" &&
+            selectionMode !== "monster_swipe_l") {
             return { success: false, error: "Active card does not allow selecting monster squares", invalidSquare: true };
         }
         const currentSelections = this.getSelections(sessionId);
@@ -1862,6 +1868,85 @@ class DungeonState extends schema_1.Schema {
                 success: true,
                 message: "First horizontal pair crossed. Place one more horizontal pair.",
                 completed: false
+            };
+        }
+        if (selectionMode === "centered_monster_3x3") {
+            const blastSelections = [];
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const targetX = x + dx;
+                    const targetY = y + dy;
+                    const targetSquare = monster.getSquare(targetX, targetY);
+                    if (!targetSquare || !targetSquare.filled || targetSquare.checked) {
+                        continue;
+                    }
+                    blastSelections.push({
+                        kind: "monster",
+                        monsterId: monster.id,
+                        x: targetX,
+                        y: targetY
+                    });
+                }
+            }
+            if (blastSelections.length === 0) {
+                return {
+                    success: false,
+                    error: "No valid monster squares available in the Combat area",
+                    invalidSquare: true
+                };
+            }
+            const completed = this.completeCardAction(sessionId, blastSelections);
+            if (!completed.success) {
+                return completed;
+            }
+            return {
+                ...completed,
+                message: `Combat crossed ${blastSelections.length} monster square${blastSelections.length === 1 ? "" : "s"}.`
+            };
+        }
+        if (selectionMode === "monster_swipe_l") {
+            const requiredOffsets = [
+                { dx: 0, dy: 0 },
+                { dx: 1, dy: 0 },
+                { dx: 0, dy: 1 }
+            ];
+            const optionalOffsets = [
+                { dx: 2, dy: 0 },
+                { dx: 0, dy: 2 }
+            ];
+            const toCoord = (offset) => ({ x: x + offset.dx, y: y + offset.dy });
+            const requiredCoords = requiredOffsets.map(toCoord);
+            const optionalCoords = optionalOffsets.map(toCoord);
+            const isCrossable = (coord) => {
+                const sq = monster.getSquare(coord.x, coord.y);
+                return !!sq && sq.filled && !sq.checked;
+            };
+            if (!requiredCoords.every(isCrossable)) {
+                return {
+                    success: false,
+                    error: "Swipe requires all 3 dark red squares to be valid on the monster",
+                    invalidSquare: true
+                };
+            }
+            const swipeSelections = [];
+            for (const coord of [...requiredCoords, ...optionalCoords]) {
+                if (!isCrossable(coord)) {
+                    continue;
+                }
+                swipeSelections.push({
+                    kind: "monster",
+                    monsterId: monster.id,
+                    x: coord.x,
+                    y: coord.y
+                });
+            }
+            const completed = this.completeCardAction(sessionId, swipeSelections);
+            if (!completed.success) {
+                return completed;
+            }
+            return {
+                ...completed,
+                message: `Swipe crossed ${swipeSelections.length} monster square${swipeSelections.length === 1 ? "" : "s"}.`
             };
         }
         const square = monster.getSquare(x, y);

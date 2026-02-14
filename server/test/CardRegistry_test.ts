@@ -84,22 +84,22 @@ describe("Card Registry", () => {
     assert.strictEqual(created.selectionTarget, "room_or_monster");
   });
 
-  it("should configure Combat as a red card with fight 3 diagonal or move 3", () => {
+  it("should configure Combat as a red monster-only 3x3 centered blast card", () => {
     const definition = CARD_DEFINITIONS.find((card) => card.id === "combat_fight_three_diagonal_or_move_three");
     assert(definition, "Combat card definition should exist");
 
     assert.strictEqual(definition.name, "Combat");
-    assert.strictEqual(definition.description, "Fight 3 diagonal or move 3");
+    assert.strictEqual(definition.description, "Fight");
     assert.strictEqual(definition.color, "red");
     assert.strictEqual(definition.defenseSymbol, "counter");
-    assert.strictEqual(definition.selection.target, "room_or_monster");
-    assert.strictEqual(definition.selection.mode, "squares");
-    assert.strictEqual(definition.selection.minSelections, 3);
-    assert.strictEqual(definition.selection.maxSelections, 3);
-    assert.strictEqual(definition.selection.connected, true);
+    assert.strictEqual(definition.selection.target, "monster");
+    assert.strictEqual(definition.selection.mode, "centered_monster_3x3");
+    assert.strictEqual(definition.selection.minSelections, 1);
+    assert.strictEqual(definition.selection.maxSelections, 1);
+    assert.strictEqual(definition.selection.connected, false);
   });
 
-  it("should create Combat cards with red color and connected selection", () => {
+  it("should create Combat cards with red color and monster-only centered mode", () => {
     const definition = CARD_DEFINITIONS.find((card) => card.id === "combat_fight_three_diagonal_or_move_three");
     assert(definition, "Combat card definition should exist");
 
@@ -108,9 +108,42 @@ describe("Card Registry", () => {
     assert.strictEqual(created.type, "combat_fight_three_diagonal_or_move_three");
     assert.strictEqual(created.color, "red");
     assert.strictEqual(created.defenseSymbol, "counter");
-    assert.strictEqual(created.minSelections, 3);
-    assert.strictEqual(created.maxSelections, 3);
-    assert.strictEqual(created.requiresConnected, true);
-    assert.strictEqual(created.selectionTarget, "room_or_monster");
+    assert.strictEqual(created.minSelections, 1);
+    assert.strictEqual(created.maxSelections, 1);
+    assert.strictEqual(created.requiresConnected, false);
+    assert.strictEqual(created.selectionTarget, "monster");
+    assert.strictEqual(created.selectionMode, "centered_monster_3x3");
+  });
+
+  it("should configure Swipe as a red monster-only overlay card", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "swipe_fight_l_overlay");
+    assert(definition, "Swipe card definition should exist");
+
+    assert.strictEqual(definition.name, "Swipe");
+    assert.strictEqual(definition.description, "Fight");
+    assert.strictEqual(definition.color, "red");
+    assert.strictEqual(definition.defenseSymbol, "empty");
+    assert.strictEqual(definition.selection.target, "monster");
+    assert.strictEqual(definition.selection.mode, "monster_swipe_l");
+    assert.strictEqual(definition.selection.minSelections, 1);
+    assert.strictEqual(definition.selection.maxSelections, 1);
+    assert.strictEqual(definition.selection.connected, false);
+  });
+
+  it("should create Swipe cards with monster-only overlay mode", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "swipe_fight_l_overlay");
+    assert(definition, "Swipe card definition should exist");
+
+    const created = createCardFromDefinition(definition, "test_swipe");
+
+    assert.strictEqual(created.type, "swipe_fight_l_overlay");
+    assert.strictEqual(created.name, "Swipe");
+    assert.strictEqual(created.color, "red");
+    assert.strictEqual(created.defenseSymbol, "empty");
+    assert.strictEqual(created.selectionTarget, "monster");
+    assert.strictEqual(created.selectionMode, "monster_swipe_l");
+    assert.strictEqual(created.minSelections, 1);
+    assert.strictEqual(created.maxSelections, 1);
+    assert.strictEqual(created.requiresConnected, false);
   });
 });

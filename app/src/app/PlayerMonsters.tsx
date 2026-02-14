@@ -34,11 +34,18 @@ export default function PlayerMonsters({
   const activeCard = currentPlayer?.drawnCards?.find((card) => card.isActive);
   const canSelectMonsterSquares =
     !!activeCard &&
-    (activeCard.selectionMode === 'squares' || activeCard.selectionMode === 'horizontal_pair_twice') &&
+    (
+      activeCard.selectionMode === 'squares' ||
+      activeCard.selectionMode === 'horizontal_pair_twice' ||
+      activeCard.selectionMode === 'centered_monster_3x3' ||
+      activeCard.selectionMode === 'monster_swipe_l'
+    ) &&
     (activeCard.selectionTarget === 'monster' ||
       activeCard.selectionTarget === 'room_or_monster' ||
       activeCard.selectionTarget === 'monster_each');
   const showHorizontalPairPreview = !!activeCard && activeCard.selectionMode === 'horizontal_pair_twice';
+  const showCombatBlastPreview = !!activeCard && activeCard.selectionMode === 'centered_monster_3x3';
+  const showSwipePreview = !!activeCard && activeCard.selectionMode === 'monster_swipe_l';
 
   const getPlayerMonsters = (): MonsterCardType[] => {
     if (!gameState?.activeMonsters || !currentPlayer) return [];
@@ -122,6 +129,8 @@ export default function PlayerMonsters({
                 .map(pos => ({ x: pos.x, y: pos.y }))}
               onSquareClick={onMonsterSquareClick ? (x, y) => onMonsterSquareClick(monster.id, x, y) : undefined}
               horizontalPairPreviewEnabled={showHorizontalPairPreview}
+              combatBlastPreviewEnabled={showCombatBlastPreview}
+              swipePreviewEnabled={showSwipePreview}
               attackAnimations={attackAnimations.filter((attack) => attack.monsterId === monster.id)}
               className="monster-owned"
             />

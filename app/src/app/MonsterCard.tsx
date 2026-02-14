@@ -19,6 +19,8 @@ interface MonsterCardProps {
   className?: string;
   selectedSquares?: Array<{ x: number; y: number }>;
   horizontalPairPreviewEnabled?: boolean;
+  combatBlastPreviewEnabled?: boolean;
+  swipePreviewEnabled?: boolean;
   attackAnimations?: MonsterAttackAnimation[];
 }
 
@@ -35,6 +37,8 @@ export default function MonsterCard({
   className = '',
   selectedSquares = [],
   horizontalPairPreviewEnabled = false,
+  combatBlastPreviewEnabled = false,
+  swipePreviewEnabled = false,
   attackAnimations = []
 }: MonsterCardProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -61,7 +65,7 @@ export default function MonsterCard({
     return monster.squares[index] || null;
   }, [monster]);
 
-  const previewCells = useMemo(() => {
+  const horizontalPairPreview = useMemo(() => {
     if (!horizontalPairPreviewEnabled || !hoveredSquare) {
       return { cells: [], invalid: false };
     }
@@ -86,6 +90,74 @@ export default function MonsterCard({
       invalid
     };
   }, [horizontalPairPreviewEnabled, hoveredSquare, getSquareAt]);
+
+  const combatBlastPreviewCells = useMemo(() => {
+    if (!combatBlastPreviewEnabled || !hoveredSquare) {
+      return [] as Array<{ x: number; y: number; inBounds: boolean; valid: boolean; isCenter: boolean }>;
+    }
+
+    const cells: Array<{ x: number; y: number; inBounds: boolean; valid: boolean; isCenter: boolean }> = [];
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = hoveredSquare.x + dx;
+        const y = hoveredSquare.y + dy;
+        const inBounds = x >= 0 && x < monster.width && y >= 0 && y < monster.height;
+        const square = getSquareAt(x, y);
+        const valid = !!square && square.filled && !square.checked;
+        cells.push({
+          x,
+          y,
+          inBounds,
+          valid,
+          isCenter: dx === 0 && dy === 0
+        });
+      }
+    }
+
+    return cells;
+  }, [combatBlastPreviewEnabled, hoveredSquare, monster.width, monster.height, getSquareAt]);
+
+  const swipePreviewCells = useMemo(() => {
+    if (!swipePreviewEnabled || !hoveredSquare) {
+      return [] as Array<{
+        x: number;
+        y: number;
+        inBounds: boolean;
+        valid: boolean;
+        required: boolean;
+      }>;
+    }
+
+    const requiredOffsets = [
+      { dx: 0, dy: 0 },
+      { dx: 1, dy: 0 },
+      { dx: 0, dy: 1 }
+    ];
+    const optionalOffsets = [
+      { dx: 2, dy: 0 },
+      { dx: 0, dy: 2 }
+    ];
+
+    const offsets = [
+      ...requiredOffsets.map((o) => ({ ...o, required: true })),
+      ...optionalOffsets.map((o) => ({ ...o, required: false }))
+    ];
+
+    return offsets.map((offset) => {
+      const x = hoveredSquare.x + offset.dx;
+      const y = hoveredSquare.y + offset.dy;
+      const inBounds = x >= 0 && x < monster.width && y >= 0 && y < monster.height;
+      const square = getSquareAt(x, y);
+      const valid = !!square && square.filled && !square.checked;
+      return {
+        x,
+        y,
+        inBounds,
+        valid,
+        required: offset.required
+      };
+    });
+  }, [swipePreviewEnabled, hoveredSquare, monster.width, monster.height, getSquareAt]);
 
   const isCompleted = (): boolean => {
     return totalSquares > 0 && crossedSquares === totalSquares;
@@ -162,6 +234,11 @@ export default function MonsterCard({
 
   const handleSquareClick = (x: number, y: number) => {
     if (isOwnedByPlayer && canSelect && onSquareClick) {
+      if (combatBlastPreviewEnabled || swipePreviewEnabled) {
+        onSquareClick(x, y);
+        return;
+      }
+
       const square = getSquareAt(x, y);
       if (square?.filled && !square.checked) {
         onSquareClick(x, y);
@@ -274,7 +351,13 @@ export default function MonsterCard({
                       ${isFilled ? 'bg-stone-100 text-stone-800' : 'bg-transparent'}
                       ${isChecked ? 'bg-emerald-300 text-stone-900' : ''}
                       ${isSelected ? 'bg-rose-200 text-stone-900' : ''}
-                      ${isFilled && !isChecked && isOwnedByPlayer && canSelect ? 'hover:bg-stone-300 cursor-pointer' : ''}
+                      ${
+                        (combatBlastPreviewEnabled || swipePreviewEnabled) && isOwnedByPlayer && canSelect
+                          ? 'hover:bg-stone-300/70 cursor-crosshair'
+                          : isFilled && !isChecked && isOwnedByPlayer && canSelect
+                            ? 'hover:bg-stone-300 cursor-pointer'
+                            : ''
+                      }
                     `}
                     style={{
                       width: `${squareSize}px`,
@@ -284,7 +367,7 @@ export default function MonsterCard({
                       transition: 'all 0.2s ease'
                     }}
                     onMouseEnter={() => {
-                      if (horizontalPairPreviewEnabled) {
+                      if (horizontalPairPreviewEnabled || combatBlastPreviewEnabled || swipePreviewEnabled) {
                         setHoveredSquare({ x, y });
                       }
                     }}
@@ -317,17 +400,73 @@ export default function MonsterCard({
               ))}
             </svg>
 
-            {horizontalPairPreviewEnabled && previewCells.cells.length > 0 && (
+            {horizontalPairPreviewEnabled && horizontalPairPreview.cells.length > 0 && (
               <div className="pointer-events-none absolute inset-0 z-30">
-                {previewCells.cells
+                {horizontalPairPreview.cells
                   .filter((cell) => cell.x >= 0 && cell.x < monster.width && cell.y >= 0 && cell.y < monster.height)
                   .map((cell) => (
                     <div
                       key={`monster-preview-${monster.id}-${cell.x}-${cell.y}`}
                       className={`absolute border-2 ${
-                        previewCells.invalid
+                        horizontalPairPreview.invalid
                           ? 'bg-red-500/45 border-red-300'
                           : 'bg-sky-500/45 border-sky-300'
+                      }`}
+                      style={{
+                        left: `${cell.x * squareSize}px`,
+                        top: `${cell.y * squareSize}px`,
+                        width: `${squareSize}px`,
+                        height: `${squareSize}px`,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  ))}
+              </div>
+            )}
+
+            {combatBlastPreviewEnabled && combatBlastPreviewCells.length > 0 && (
+              <div className="pointer-events-none absolute inset-0 z-30">
+                {combatBlastPreviewCells
+                  .filter((cell) => cell.inBounds)
+                  .map((cell) => (
+                    <div
+                      key={`monster-combat-preview-${monster.id}-${cell.x}-${cell.y}`}
+                      className={`absolute border border-dashed ${
+                        cell.valid
+                          ? cell.isCenter
+                            ? 'bg-red-500/65 border-red-300'
+                            : 'bg-rose-300/55 border-rose-400'
+                          : cell.isCenter
+                            ? 'bg-red-400/25 border-red-300/70'
+                            : 'bg-stone-500/10 border-stone-400/60'
+                      }`}
+                      style={{
+                        left: `${cell.x * squareSize}px`,
+                        top: `${cell.y * squareSize}px`,
+                        width: `${squareSize}px`,
+                        height: `${squareSize}px`,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  ))}
+              </div>
+            )}
+
+            {swipePreviewEnabled && swipePreviewCells.length > 0 && (
+              <div className="pointer-events-none absolute inset-0 z-30">
+                {swipePreviewCells
+                  .filter((cell) => cell.inBounds)
+                  .map((cell) => (
+                    <div
+                      key={`monster-swipe-preview-${monster.id}-${cell.x}-${cell.y}`}
+                      className={`absolute ${
+                        cell.required
+                          ? cell.valid
+                            ? 'bg-red-500/70 border border-red-500'
+                            : 'bg-red-400/25 border border-dashed border-red-300/70'
+                          : cell.valid
+                            ? 'bg-rose-300/55 border border-dashed border-rose-400'
+                            : 'bg-stone-500/10 border border-dashed border-stone-400/60'
                       }`}
                       style={{
                         left: `${cell.x * squareSize}px`,

@@ -404,6 +404,13 @@ export default function Game() {
       return;
     }
 
+    if (activeCard.selectionMode === 'centered_monster_3x3' || activeCard.selectionMode === 'monster_swipe_l') {
+      if (roomRef.current) {
+        roomRef.current.send('crossMonsterSquare', { monsterId, x, y });
+      }
+      return;
+    }
+
     const selectedForMonster = selectedMonsterSquares.filter((pos) => pos.monsterId === monsterId);
 
     // Enforce max selection limits

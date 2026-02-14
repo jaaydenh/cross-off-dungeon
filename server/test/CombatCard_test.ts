@@ -11,17 +11,18 @@ const makeCombatCard = (id: string) =>
   new Card(
     id,
     COMBAT_CARD_TYPE,
-    "Fight 3 diagonal or move 3",
-    "room_or_monster",
-    "squares",
-    3,
-    3,
-    true,
+    "Fight",
+    "monster",
+    "centered_monster_3x3",
+    1,
+    1,
     false,
     false,
-    "empty",
+    false,
+    "counter",
     0,
-    "red"
+    "red",
+    "Combat"
   );
 
 type Coord = { x: number; y: number };
@@ -49,136 +50,122 @@ const createStateWithActiveCombatCard = (): {
   return { state, player, activeCardId };
 };
 
-const findOrthPathInRoom = (room: any, length: number): Coord[] | null => {
-  const isOrthAdjacent = (a: Coord, b: Coord): boolean =>
-    (Math.abs(a.x - b.x) === 1 && a.y === b.y) || (Math.abs(a.y - b.y) === 1 && a.x === b.x);
-
-  const validSquares: Coord[] = [];
-  for (let y = 0; y < room.height; y++) {
-    for (let x = 0; x < room.width; x++) {
-      const square = room.getSquare(x, y);
-      if (square && !square.wall && !square.checked) {
-        validSquares.push({ x, y });
+const getBlastTargets = (monster: any, centerX: number, centerY: number): Coord[] => {
+  const coords: Coord[] = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const x = centerX + dx;
+      const y = centerY + dy;
+      const square = monster.getSquare(x, y);
+      if (square && square.filled && !square.checked) {
+        coords.push({ x, y });
       }
     }
   }
+  return coords;
+};
 
-  const dfs = (path: Coord[]): Coord[] | null => {
-    if (path.length >= length) return path;
-    const last = path[path.length - 1];
-
-    for (const candidate of validSquares) {
-      if (path.some((p) => p.x === candidate.x && p.y === candidate.y)) continue;
-      if (!isOrthAdjacent(last, candidate)) continue;
-
-      const result = dfs([...path, candidate]);
-      if (result) return result;
+const markAllFilledChecked = (monster: any): void => {
+  for (const square of monster.squares) {
+    if (square.filled) {
+      square.checked = true;
     }
-    return null;
-  };
-
-  for (const start of validSquares) {
-    const result = dfs([start]);
-    if (result) return result;
   }
-
-  return null;
 };
 
 describe("Combat Card", () => {
-  it("should allow moving 3 orthogonally connected squares in a room", () => {
+  it("should cross all valid filled squares in a centered 3x3 area and complete immediately", () => {
     const { state, player } = createStateWithActiveCombatCard();
-    const room = state.getCurrentRoom()!;
-    const movePath = findOrthPathInRoom(room, 3);
-    assert(movePath, "Expected a 3-square orthogonal path in the room");
 
-    for (const square of movePath) {
-      const result = state.crossSquare(
-        { sessionId: TEST_SESSION_ID } as any,
-        { roomIndex: 0, x: square.x, y: square.y }
-      );
-      assert.strictEqual(result.success, true);
-    }
+    const ownedMonster = MonsterFactory.createGoblin("combat_test_monster");
+    ownedMonster.playerOwnerId = TEST_SESSION_ID;
+    ownedMonster.connectedToRoomIndex = -1;
+    state.activeMonsters.push(ownedMonster);
 
-    const confirmResult = state.confirmCardAction(TEST_SESSION_ID);
-    assert.strictEqual(confirmResult.success, true);
-    assert.strictEqual(confirmResult.completed, true);
+    const expectedTargets = getBlastTargets(ownedMonster, 1, 1);
+    assert.strictEqual(expectedTargets.length, 7);
 
-    for (const square of movePath) {
-      assert.strictEqual(room.getSquare(square.x, square.y)?.checked, true);
+    const result = state.crossMonsterSquare(TEST_SESSION_ID, ownedMonster.id, 1, 1);
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.completed, true);
+    assert(result.message?.includes("Combat crossed 7"));
+
+    for (const target of expectedTargets) {
+      assert.strictEqual(ownedMonster.getSquare(target.x, target.y)?.checked, true);
     }
     assert.strictEqual(player.drawnCards.length, 0);
     assert.strictEqual(player.discardPile.length, 1);
     assert.strictEqual(player.discardPile[0].type, COMBAT_CARD_TYPE);
-    assert.strictEqual(player.discardPile[0].color, "red");
   });
 
-  it("should allow fighting 3 diagonally connected monster squares", () => {
-    const { state } = createStateWithActiveCombatCard();
+  it("should allow partial overlays at edges and cross only in-bounds valid squares", () => {
+    const { state, player } = createStateWithActiveCombatCard();
 
     const ownedMonster = MonsterFactory.createGoblin("combat_test_monster");
     ownedMonster.playerOwnerId = TEST_SESSION_ID;
     ownedMonster.connectedToRoomIndex = -1;
     state.activeMonsters.push(ownedMonster);
 
-    const diagonalPath: Coord[] = [
-      { x: 0, y: 0 },
-      { x: 1, y: 1 },
-      { x: 2, y: 0 }
-    ];
+    const expectedTargets = getBlastTargets(ownedMonster, 0, 0);
+    assert.strictEqual(expectedTargets.length, 4);
 
-    for (const square of diagonalPath) {
-      const result = state.crossMonsterSquare(TEST_SESSION_ID, ownedMonster.id, square.x, square.y);
-      assert.strictEqual(result.success, true);
+    const result = state.crossMonsterSquare(TEST_SESSION_ID, ownedMonster.id, 0, 0);
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.completed, true);
+
+    for (const target of expectedTargets) {
+      assert.strictEqual(ownedMonster.getSquare(target.x, target.y)?.checked, true);
     }
 
-    const confirmResult = state.confirmCardAction(TEST_SESSION_ID);
-    assert.strictEqual(confirmResult.success, true);
-    assert.strictEqual(confirmResult.completed, true);
+    // Outside the 3x3 center-at-(0,0) blast area.
+    assert.strictEqual(ownedMonster.getSquare(2, 0)?.checked, false);
+    assert.strictEqual(player.discardPile.length, 1);
+  });
 
-    for (const square of diagonalPath) {
-      assert.strictEqual(ownedMonster.getSquare(square.x, square.y)?.checked, true);
+  it("should ignore invalid squares in the 3x3 area when at least one valid square is present", () => {
+    const { state } = createStateWithActiveCombatCard();
+
+    const ownedMonster = MonsterFactory.createGoblin("combat_test_monster");
+    ownedMonster.playerOwnerId = TEST_SESSION_ID;
+    ownedMonster.connectedToRoomIndex = -1;
+    state.activeMonsters.push(ownedMonster);
+
+    // Pre-check one filled square to ensure checked squares are ignored.
+    ownedMonster.getSquare(1, 1)!.checked = true;
+
+    const expectedTargets = getBlastTargets(ownedMonster, 1, 2);
+    assert.strictEqual(expectedTargets.length, 6);
+
+    const result = state.crossMonsterSquare(TEST_SESSION_ID, ownedMonster.id, 1, 2);
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.completed, true);
+
+    for (const target of expectedTargets) {
+      assert.strictEqual(ownedMonster.getSquare(target.x, target.y)?.checked, true);
     }
+
+    // Empty square in area remains empty and not crossed.
+    assert.strictEqual(ownedMonster.getSquare(0, 2)?.filled, false);
+    assert.strictEqual(ownedMonster.getSquare(0, 2)?.checked, false);
   });
 
-  it("should reject orthogonally connected monster selections for Combat", () => {
-    const { state } = createStateWithActiveCombatCard();
+  it("should fail if no valid squares are available in the 3x3 area", () => {
+    const { state, player } = createStateWithActiveCombatCard();
 
     const ownedMonster = MonsterFactory.createGoblin("combat_test_monster");
     ownedMonster.playerOwnerId = TEST_SESSION_ID;
     ownedMonster.connectedToRoomIndex = -1;
     state.activeMonsters.push(ownedMonster);
+    markAllFilledChecked(ownedMonster);
 
-    const firstPick = state.crossMonsterSquare(TEST_SESSION_ID, ownedMonster.id, 0, 0);
-    assert.strictEqual(firstPick.success, true);
+    const result = state.crossMonsterSquare(TEST_SESSION_ID, ownedMonster.id, 1, 1);
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.invalidSquare, true);
+    assert(result.error?.includes("No valid monster squares"));
 
-    const invalidOrthogonalPick = state.crossMonsterSquare(TEST_SESSION_ID, ownedMonster.id, 1, 0);
-    assert.strictEqual(invalidOrthogonalPick.success, false);
-    assert.strictEqual(invalidOrthogonalPick.invalidSquare, true);
-    assert(invalidOrthogonalPick.error?.includes("diagonally connected"));
-  });
-
-  it("should not allow mixing move and fight selections for Combat", () => {
-    const { state } = createStateWithActiveCombatCard();
-
-    const ownedMonster = MonsterFactory.createGoblin("combat_test_monster");
-    ownedMonster.playerOwnerId = TEST_SESSION_ID;
-    ownedMonster.connectedToRoomIndex = -1;
-    state.activeMonsters.push(ownedMonster);
-
-    const room = state.getCurrentRoom()!;
-    const movePath = findOrthPathInRoom(room, 1);
-    assert(movePath, "Expected at least one room square");
-
-    const roomPick = state.crossSquare(
-      { sessionId: TEST_SESSION_ID } as any,
-      { roomIndex: 0, x: movePath[0].x, y: movePath[0].y }
-    );
-    assert.strictEqual(roomPick.success, true);
-
-    const monsterPick = state.crossMonsterSquare(TEST_SESSION_ID, ownedMonster.id, 0, 0);
-    assert.strictEqual(monsterPick.success, false);
-    assert.strictEqual(monsterPick.invalidSquare, true);
-    assert(monsterPick.error?.includes("Cannot mix monster and room selections"));
+    // Card should remain active/available when nothing was crossed.
+    assert.strictEqual(player.drawnCards.length, 1);
+    assert.strictEqual(player.discardPile.length, 0);
+    assert.strictEqual(player.drawnCards[0].isActive, true);
   });
 });

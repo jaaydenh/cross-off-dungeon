@@ -1,9 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createStarterDeck = exports.createCardFromDefinition = exports.getCardDefinition = exports.CARD_DEFINITIONS = exports.STARTER_DECK_SIZE = exports.COMBAT_CARD_ID = exports.HEROIC_MOVE_AND_FIGHT_CARD_ID = void 0;
+exports.createStarterDeck = exports.createCardFromDefinition = exports.getCardDefinition = exports.CARD_DEFINITIONS = exports.STARTER_DECK_SIZE = exports.SWIPE_CARD_ID = exports.COMBAT_CARD_ID = exports.HEROIC_MOVE_AND_FIGHT_CARD_ID = void 0;
 const Card_1 = require("../schema/Card");
 exports.HEROIC_MOVE_AND_FIGHT_CARD_ID = "heroic_move_two_and_fight_two";
 exports.COMBAT_CARD_ID = "combat_fight_three_diagonal_or_move_three";
+exports.SWIPE_CARD_ID = "swipe_fight_l_overlay";
 exports.STARTER_DECK_SIZE = 10;
 exports.CARD_DEFINITIONS = [
     {
@@ -101,15 +102,31 @@ exports.CARD_DEFINITIONS = [
     {
         id: exports.COMBAT_CARD_ID,
         name: "Combat",
-        description: "Fight 3 diagonal or move 3",
+        description: "Fight",
         color: "red",
         defenseSymbol: "counter",
         selection: {
-            target: "room_or_monster",
-            mode: "squares",
-            minSelections: 3,
-            maxSelections: 3,
-            connected: true,
+            target: "monster",
+            mode: "centered_monster_3x3",
+            minSelections: 1,
+            maxSelections: 1,
+            connected: false,
+            requireRoomStartAdjacency: false,
+            requireMonsterStartAdjacency: false
+        }
+    },
+    {
+        id: exports.SWIPE_CARD_ID,
+        name: "Swipe",
+        description: "Fight",
+        color: "red",
+        defenseSymbol: "empty",
+        selection: {
+            target: "monster",
+            mode: "monster_swipe_l",
+            minSelections: 1,
+            maxSelections: 1,
+            connected: false,
             requireRoomStartAdjacency: false,
             requireMonsterStartAdjacency: false
         }
