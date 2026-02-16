@@ -280,22 +280,22 @@ export default function Game() {
           : null;
 
   const clearMonsterCompletionTimeouts = useCallback(() => {
-    for (const timeoutPair of monsterCompletionTimeoutsRef.current.values()) {
+    monsterCompletionTimeoutsRef.current.forEach((timeoutPair) => {
       clearTimeout(timeoutPair.toFade);
       clearTimeout(timeoutPair.toHide);
-    }
+    });
     monsterCompletionTimeoutsRef.current.clear();
   }, []);
 
   const clearXpAnimationTimeouts = useCallback(() => {
-    for (const timeoutId of xpFlyTimeoutsRef.current.values()) {
+    xpFlyTimeoutsRef.current.forEach((timeoutId) => {
       clearTimeout(timeoutId);
-    }
+    });
     xpFlyTimeoutsRef.current.clear();
 
-    for (const timeoutId of xpPulseTimeoutsRef.current.values()) {
+    xpPulseTimeoutsRef.current.forEach((timeoutId) => {
       clearTimeout(timeoutId);
-    }
+    });
     xpPulseTimeoutsRef.current.clear();
   }, []);
 
