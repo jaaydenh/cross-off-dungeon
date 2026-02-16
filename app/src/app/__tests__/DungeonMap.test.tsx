@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import DungeonMap from '../DungeonMap';
+import DungeonMap, { getFantasyRoomName } from '../DungeonMap';
 import { Room } from '@/types/Room';
 import { DungeonSquare } from '@/types/DungeonSquare';
 import { Player } from '@/types/Player';
@@ -51,6 +51,10 @@ const addExitToRoom = (room: Room, direction: string, connected: boolean = false
     room.exitConnected.push(connected);
 };
 
+const expectedTitleFor = (gridX: number, gridY: number, index: number): string => {
+    return getFantasyRoomName(`${gridX},${gridY}:${index}`);
+};
+
 describe('DungeonMap Grid Positioning', () => {
     const mockHandleSquareClick = jest.fn();
     const mockPlayer = null; // Most tests don't need a specific player
@@ -79,9 +83,9 @@ describe('DungeonMap Grid Positioning', () => {
         expect(screen.getByTestId('room-tile-0-0')).toBeInTheDocument();
         expect(screen.getByTestId('room-tile-2-1')).toBeInTheDocument();
 
-        // Verify room coordinate labels are displayed
-        expect(screen.getByText('Room (0, 0)')).toBeInTheDocument();
-        expect(screen.getByText('Room (2, 1)')).toBeInTheDocument();
+        // Verify generated fantasy room names are displayed
+        expect(screen.getByText(expectedTitleFor(0, 0, 0))).toBeInTheDocument();
+        expect(screen.getByText(expectedTitleFor(2, 1, 1))).toBeInTheDocument();
     });
 
     test('should implement consistent spacing between rooms based on grid layout', () => {
@@ -126,7 +130,7 @@ describe('DungeonMap Grid Positioning', () => {
         expect(gridContainer!.style.gridTemplateRows).toBe('320px 28px 320px');
     });
 
-    test('should show grid-based relationships clearly with room coordinate labels', () => {
+    test('should show grid-based relationships clearly with fantasy room titles', () => {
         const room1 = createMockRoom(0, 0);
         const room2 = createMockRoom(1, 1);
         const room3 = createMockRoom(-1, 2);
@@ -139,10 +143,10 @@ describe('DungeonMap Grid Positioning', () => {
 
         render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} gameState={mockGameState} />);
 
-        // Verify coordinate labels are displayed for each room
-        expect(screen.getByText('Room (0, 0)')).toBeInTheDocument();
-        expect(screen.getByText('Room (1, 1)')).toBeInTheDocument();
-        expect(screen.getByText('Room (-1, 2)')).toBeInTheDocument();
+        // Verify generated fantasy titles are displayed for each room
+        expect(screen.getByText(expectedTitleFor(0, 0, 0))).toBeInTheDocument();
+        expect(screen.getByText(expectedTitleFor(1, 1, 1))).toBeInTheDocument();
+        expect(screen.getByText(expectedTitleFor(-1, 2, 2))).toBeInTheDocument();
     });
 
     test('should add visual connection indicators between rooms with aligned exits', () => {
@@ -180,9 +184,9 @@ describe('DungeonMap Grid Positioning', () => {
         render(<DungeonMap rooms={rooms} handleSquareClick={mockHandleSquareClick} player={mockPlayer} colyseusRoom={mockColyseusRoom} gameState={mockGameState} />);
 
         // All rooms should be rendered regardless of negative coordinates
-        expect(screen.getByText('Room (-2, -1)')).toBeInTheDocument();
-        expect(screen.getByText('Room (0, 0)')).toBeInTheDocument();
-        expect(screen.getByText('Room (1, 2)')).toBeInTheDocument();
+        expect(screen.getByText(expectedTitleFor(-2, -1, 0))).toBeInTheDocument();
+        expect(screen.getByText(expectedTitleFor(0, 0, 1))).toBeInTheDocument();
+        expect(screen.getByText(expectedTitleFor(1, 2, 2))).toBeInTheDocument();
     });
 
     test('should not show connection indicators for unconnected exits', () => {

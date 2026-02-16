@@ -23,6 +23,8 @@ interface DungeonMapProps {
   scrollContainerRef?: React.RefObject<HTMLDivElement>;
   bottomOverlayRef?: React.RefObject<HTMLElement>;
   horizontalPairPreviewEnabled?: boolean;
+  cunningStepPreviewLength?: 1 | 2 | 3 | null;
+  spreadOutPreviewEnabled?: boolean;
 }
 
 const ROOM_TILE_SIZE = 320;
@@ -30,6 +32,8 @@ const HALLWAY_LENGTH = 28;
 const HALLWAY_THICKNESS = 24;
 const BASE_CONTENT_PADDING = 200;
 const ROOM_TILE_INNER_PADDING = 12;
+const ROOM_TITLE_SAFE_HEIGHT = 28;
+const ROOM_TITLE_BADGE_GUTTER = 88;
 
 const buildInterleavedTracks = (count: number, roomSizePx: number, hallwaySizePx: number): string => {
   const sizes: string[] = [];
@@ -57,6 +61,79 @@ const getDirectionDelta = (
   }
 };
 
+const ROOM_NAME_PREFIXES = [
+  'Ancient',
+  'Forgotten',
+  'Moonlit',
+  'Shadowed',
+  'Runed',
+  'Grim',
+  'Gilded',
+  'Dread',
+  'Sunken',
+  'Whispering',
+  'Ember',
+  'Iron',
+  'Frostbound',
+  'Stormcarved',
+  'Twilight',
+  'Bloodstone'
+];
+
+const ROOM_NAME_CORES = [
+  'Crypt',
+  'Sanctum',
+  'Vault',
+  'Keep',
+  'Hollow',
+  'Labyrinth',
+  'Catacombs',
+  'Bastion',
+  'Chamber',
+  'Hall',
+  'Reliquary',
+  'Warrens',
+  'Cavern',
+  'Citadel',
+  'Grotto',
+  'Archive'
+];
+
+const ROOM_NAME_SUFFIXES = [
+  'of Echoes',
+  'of Embers',
+  'of Thorns',
+  'of Night',
+  'of Chains',
+  'of Ash',
+  'of Serpents',
+  'of Bones',
+  'of Lanterns',
+  'of Ruin',
+  'of Mists',
+  'of Cinders',
+  'of Wolves',
+  'of Oaths',
+  'of Sorrows',
+  'of Kings'
+];
+
+const hashString = (value: string): number => {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+};
+
+export const getFantasyRoomName = (seed: string): string => {
+  const prefix = ROOM_NAME_PREFIXES[hashString(`${seed}:prefix`) % ROOM_NAME_PREFIXES.length];
+  const core = ROOM_NAME_CORES[hashString(`${seed}:core`) % ROOM_NAME_CORES.length];
+  const suffix = ROOM_NAME_SUFFIXES[hashString(`${seed}:suffix`) % ROOM_NAME_SUFFIXES.length];
+  return `${prefix} ${core} ${suffix}`;
+};
+
 const DungeonMap: React.FC<DungeonMapProps> = ({
   rooms,
   handleSquareClick,
@@ -68,7 +145,9 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
   onMonsterDragEnd,
   scrollContainerRef,
   bottomOverlayRef,
-  horizontalPairPreviewEnabled = false
+  horizontalPairPreviewEnabled = false,
+  cunningStepPreviewLength = null,
+  spreadOutPreviewEnabled = false
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -280,6 +359,8 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
 
           {rooms.map((roomData, index) => {
             const { room } = roomData;
+            const roomSeed = `${room.gridX},${room.gridY}:${gameState?.displayedRoomIndices?.[index] ?? index}`;
+            const roomTitle = getFantasyRoomName(roomSeed);
 
             const normalizedX = room.gridX - minX;
             const normalizedY = room.gridY - minY;
@@ -287,9 +368,18 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
             const gridColumnStart = normalizedX * 2 + 1;
             const gridRowStart = normalizedY * 2 + 1;
 
-            const maxDim = Math.max(1, Math.max(room.width, room.height));
-            const usableSize = ROOM_TILE_SIZE - ROOM_TILE_INNER_PADDING * 2;
-            const cellSizePx = Math.max(1, Math.floor(usableSize / maxDim));
+            const gridAvailableWidth = ROOM_TILE_SIZE - ROOM_TILE_INNER_PADDING * 2;
+            const gridAvailableHeight =
+              ROOM_TILE_SIZE - ROOM_TILE_INNER_PADDING * 2 - ROOM_TITLE_SAFE_HEIGHT;
+            const cellSizePx = Math.max(
+              1,
+              Math.floor(
+                Math.min(
+                  gridAvailableWidth / Math.max(1, room.width),
+                  gridAvailableHeight / Math.max(1, room.height)
+                )
+              )
+            );
 
             const monster = getMonsterForRoom(index);
 
@@ -306,8 +396,12 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
                   zIndex: 2
                 }}
               >
-                <div className="absolute top-1 left-2 text-[10px] text-slate-400 select-none pointer-events-none">
-                  Room ({room.gridX}, {room.gridY})
+                <div
+                  className="absolute top-2 left-2 text-xs text-slate-200 select-none pointer-events-none whitespace-nowrap overflow-hidden text-ellipsis"
+                  style={{ right: `${ROOM_TITLE_BADGE_GUTTER}px` }}
+                  title={roomTitle}
+                >
+                  {roomTitle}
                 </div>
 
                 {monster && (
@@ -321,7 +415,15 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
                   </div>
                 )}
 
-                <div className="w-full h-full flex items-center justify-center" style={{ padding: `${ROOM_TILE_INNER_PADDING}px` }}>
+                <div
+                  className="w-full h-full flex items-start justify-center"
+                  style={{
+                    paddingLeft: `${ROOM_TILE_INNER_PADDING}px`,
+                    paddingRight: `${ROOM_TILE_INNER_PADDING}px`,
+                    paddingBottom: `${ROOM_TILE_INNER_PADDING}px`,
+                    paddingTop: `${ROOM_TILE_INNER_PADDING + ROOM_TITLE_SAFE_HEIGHT}px`
+                  }}
+                >
                   <Grid
                     room={room}
                     handleSquareClick={(x, y) => handleSquareClick(x, y, index)}
@@ -334,6 +436,8 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
                     roomIndex={index}
                     cellSizePx={cellSizePx}
                     horizontalPairPreviewEnabled={horizontalPairPreviewEnabled}
+                    cunningStepPreviewLength={cunningStepPreviewLength}
+                    spreadOutPreviewEnabled={spreadOutPreviewEnabled}
                   />
                 </div>
               </div>

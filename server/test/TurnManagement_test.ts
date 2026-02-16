@@ -3,12 +3,32 @@ import { ColyseusTestServer } from "@colyseus/testing";
 import { describe, it, before, after, beforeEach } from "mocha";
 import appConfig from "../src/app.config";
 import { DungeonState } from "../src/rooms/schema/DungeonState";
+import { Card } from "../src/rooms/schema/Card";
 import { STARTER_DECK_SIZE } from "../src/rooms/cards/CardRegistry";
+import { MonsterFactory } from "../src/rooms/MonsterFactory";
 import {
   bootSandboxSafe,
   cleanupSandboxSafe,
   shutdownSandboxSafe
 } from "./helpers/colyseusTestUtils";
+
+const makeCombatCard = (id: string) =>
+  new Card(
+    id,
+    "combat_fight_three_diagonal_or_move_three",
+    "Fight",
+    "monster",
+    "centered_monster_3x3",
+    1,
+    1,
+    false,
+    false,
+    false,
+    "counter",
+    0,
+    "red",
+    "Combat"
+  );
 
 describe("Turn Management", () => {
   let colyseus: ColyseusTestServer | undefined;
@@ -168,6 +188,78 @@ describe("Turn Management", () => {
       // Verify player status didn't change
       const player = room.state.players.get(client1.sessionId)!;
       assert.strictEqual(player.turnStatus, "not_started");
+      assert.strictEqual(room.state.currentTurn, 1);
+    });
+
+    it("should discard an unplayable active card when ending the turn", async () => {
+      const room = await colyseus.createRoom("dungeon", {});
+      const client1 = await colyseus.connectTo(room, { name: "Player1" });
+
+      const player = room.state.players.get(client1.sessionId)!;
+      const card = makeCombatCard("unplayable_combat_card");
+      card.isActive = true;
+      player.drawnCards.push(card);
+      player.hasDrawnCard = true;
+      player.turnStatus = "playing_turn";
+      room.state.activeCardPlayers.set(client1.sessionId, card.id);
+
+      let endTurnResult: any = null;
+      client1.onMessage("endTurnResult", (message) => {
+        endTurnResult = message;
+      });
+
+      client1.send("endTurn", {});
+      await room.waitForNextPatch();
+
+      assert(endTurnResult !== null, "Should receive endTurnResult message");
+      assert.strictEqual(endTurnResult.success, true);
+      assert.strictEqual(endTurnResult.discardedActiveCard, true);
+      assert.strictEqual(endTurnResult.message, "Turn ended successfully. Unplayable active card discarded.");
+
+      assert.strictEqual(player.drawnCards.length, 0);
+      assert.strictEqual(player.discardPile.length, 1);
+      assert.strictEqual(player.discardPile[0].id, card.id);
+      assert.strictEqual(player.discardPile[0].isActive, false);
+      assert.strictEqual(room.state.activeCardPlayers.has(client1.sessionId), false);
+      assert.strictEqual(player.turnStatus, "not_started");
+      assert.strictEqual(room.state.currentTurn, 2);
+    });
+
+    it("should still reject endTurn when the active card has legal moves", async () => {
+      const room = await colyseus.createRoom("dungeon", {});
+      const client1 = await colyseus.connectTo(room, { name: "Player1" });
+
+      const player = room.state.players.get(client1.sessionId)!;
+      const card = makeCombatCard("playable_combat_card");
+      card.isActive = true;
+      player.drawnCards.push(card);
+      player.hasDrawnCard = true;
+      player.turnStatus = "playing_turn";
+      room.state.activeCardPlayers.set(client1.sessionId, card.id);
+
+      const ownedMonster = MonsterFactory.createGoblin("owned_monster_for_end_turn");
+      ownedMonster.playerOwnerId = client1.sessionId;
+      ownedMonster.connectedToRoomIndex = -1;
+      room.state.activeMonsters.push(ownedMonster);
+
+      let endTurnResult: any = null;
+      client1.onMessage("endTurnResult", (message) => {
+        endTurnResult = message;
+      });
+
+      client1.send("endTurn", {});
+      await room.waitForNextPatch();
+
+      assert(endTurnResult !== null, "Should receive endTurnResult message");
+      assert.strictEqual(endTurnResult.success, false);
+      assert.strictEqual(endTurnResult.error, "Cannot end turn while a card is active. Confirm or cancel it first.");
+
+      assert.strictEqual(player.drawnCards.length, 1);
+      assert.strictEqual(player.drawnCards[0].id, card.id);
+      assert.strictEqual(player.drawnCards[0].isActive, true);
+      assert.strictEqual(player.discardPile.length, 0);
+      assert.strictEqual(room.state.activeCardPlayers.get(client1.sessionId), card.id);
+      assert.strictEqual(player.turnStatus, "playing_turn");
       assert.strictEqual(room.state.currentTurn, 1);
     });
 

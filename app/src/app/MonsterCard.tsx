@@ -19,9 +19,11 @@ interface MonsterCardProps {
   className?: string;
   selectedSquares?: Array<{ x: number; y: number }>;
   horizontalPairPreviewEnabled?: boolean;
+  cunningStepPreviewLength?: 1 | 2 | 3 | null;
   combatBlastPreviewEnabled?: boolean;
   swipePreviewEnabled?: boolean;
   attackAnimations?: MonsterAttackAnimation[];
+  disableHoverZoom?: boolean;
 }
 
 export default function MonsterCard({
@@ -37,9 +39,11 @@ export default function MonsterCard({
   className = '',
   selectedSquares = [],
   horizontalPairPreviewEnabled = false,
+  cunningStepPreviewLength = null,
   combatBlastPreviewEnabled = false,
   swipePreviewEnabled = false,
-  attackAnimations = []
+  attackAnimations = [],
+  disableHoverZoom = false
 }: MonsterCardProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [hoveredSquare, setHoveredSquare] = useState<{ x: number; y: number } | null>(null);
@@ -50,7 +54,7 @@ export default function MonsterCard({
   const cardPadding = Math.round(12 * sizeScale);
   const minWidth = Math.max(120, Math.round(220 * sizeScale));
   const minHeight = Math.max(170, Math.round(320 * sizeScale));
-  const hoverZoomClasses = isOwned ? 'hover:scale-125 hover:z-50 hover:shadow-2xl' : '';
+  const hoverZoomClasses = isOwned && !disableHoverZoom ? 'hover:scale-125 hover:z-50 hover:shadow-2xl' : '';
   const gridWidth = monster.width * squareSize;
   const gridHeight = monster.height * squareSize;
   const totalSquares = monster.squares.filter((square) => square.filled).length;
@@ -116,6 +120,27 @@ export default function MonsterCard({
 
     return cells;
   }, [combatBlastPreviewEnabled, hoveredSquare, monster.width, monster.height, getSquareAt]);
+
+  const cunningStepPreview = useMemo(() => {
+    if (!cunningStepPreviewLength || !hoveredSquare) {
+      return { cells: [] as Array<{ x: number; y: number }>, invalid: false };
+    }
+
+    const cells: Array<{ x: number; y: number }> = [];
+    let invalid = false;
+
+    for (let offset = 0; offset < cunningStepPreviewLength; offset++) {
+      const x = hoveredSquare.x + offset;
+      const y = hoveredSquare.y;
+      const square = getSquareAt(x, y);
+      if (!square || !square.filled || square.checked) {
+        invalid = true;
+      }
+      cells.push({ x, y });
+    }
+
+    return { cells, invalid };
+  }, [cunningStepPreviewLength, hoveredSquare, getSquareAt]);
 
   const swipePreviewCells = useMemo(() => {
     if (!swipePreviewEnabled || !hoveredSquare) {
@@ -233,7 +258,7 @@ export default function MonsterCard({
   };
 
   const handleSquareClick = (x: number, y: number) => {
-    if (isOwnedByPlayer && canSelect && onSquareClick) {
+    if (canSelect && onSquareClick) {
       if (combatBlastPreviewEnabled || swipePreviewEnabled) {
         onSquareClick(x, y);
         return;
@@ -352,9 +377,9 @@ export default function MonsterCard({
                       ${isChecked ? 'bg-emerald-300 text-stone-900' : ''}
                       ${isSelected ? 'bg-rose-200 text-stone-900' : ''}
                       ${
-                        (combatBlastPreviewEnabled || swipePreviewEnabled) && isOwnedByPlayer && canSelect
+                        (combatBlastPreviewEnabled || swipePreviewEnabled) && canSelect
                           ? 'hover:bg-stone-300/70 cursor-crosshair'
-                          : isFilled && !isChecked && isOwnedByPlayer && canSelect
+                          : isFilled && !isChecked && canSelect
                             ? 'hover:bg-stone-300 cursor-pointer'
                             : ''
                       }
@@ -367,7 +392,12 @@ export default function MonsterCard({
                       transition: 'all 0.2s ease'
                     }}
                     onMouseEnter={() => {
-                      if (horizontalPairPreviewEnabled || combatBlastPreviewEnabled || swipePreviewEnabled) {
+                      if (
+                        horizontalPairPreviewEnabled ||
+                        combatBlastPreviewEnabled ||
+                        swipePreviewEnabled ||
+                        !!cunningStepPreviewLength
+                      ) {
                         setHoveredSquare({ x, y });
                       }
                     }}
@@ -411,6 +441,30 @@ export default function MonsterCard({
                         horizontalPairPreview.invalid
                           ? 'bg-red-500/45 border-red-300'
                           : 'bg-sky-500/45 border-sky-300'
+                      }`}
+                      style={{
+                        left: `${cell.x * squareSize}px`,
+                        top: `${cell.y * squareSize}px`,
+                        width: `${squareSize}px`,
+                        height: `${squareSize}px`,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  ))}
+              </div>
+            )}
+
+            {!!cunningStepPreviewLength && cunningStepPreview.cells.length > 0 && (
+              <div className="pointer-events-none absolute inset-0 z-30">
+                {cunningStepPreview.cells
+                  .filter((cell) => cell.x >= 0 && cell.x < monster.width && cell.y >= 0 && cell.y < monster.height)
+                  .map((cell) => (
+                    <div
+                      key={`monster-cunning-preview-${monster.id}-${cell.x}-${cell.y}`}
+                      className={`absolute border-2 ${
+                        cunningStepPreview.invalid
+                          ? 'bg-red-500/45 border-red-300'
+                          : 'bg-green-500/45 border-green-300'
                       }`}
                       style={{
                         left: `${cell.x * squareSize}px`,

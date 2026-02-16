@@ -3,7 +3,7 @@
 import { MonsterCard as MonsterCardType } from '@/types/MonsterCard';
 import { Player } from '@/types/Player';
 import { DungeonState } from '@/types/DungeonState';
-import { Room } from 'colyseus.js';
+import { Room } from '@colyseus/sdk';
 import MonsterCard from './MonsterCard';
 import { useState } from 'react';
 import { MonsterAttackAnimation } from '@/types/MonsterAttack';
@@ -16,6 +16,7 @@ interface PlayerMonstersProps {
   selectedMonsterSquares?: Array<{ monsterId: string; x: number; y: number }>;
   onMonsterSquareClick?: (monsterId: string, x: number, y: number) => void;
   onMonsterDrop?: () => void;
+  cunningPreviewStepLength?: 1 | 2 | 3 | null;
   attackAnimations?: MonsterAttackAnimation[];
 }
 
@@ -27,6 +28,7 @@ export default function PlayerMonsters({
   selectedMonsterSquares = [],
   onMonsterSquareClick,
   onMonsterDrop,
+  cunningPreviewStepLength = null,
   attackAnimations = []
 }: PlayerMonstersProps) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -37,6 +39,7 @@ export default function PlayerMonsters({
     (
       activeCard.selectionMode === 'squares' ||
       activeCard.selectionMode === 'horizontal_pair_twice' ||
+      activeCard.selectionMode === 'cunning_three_step_different_cards' ||
       activeCard.selectionMode === 'centered_monster_3x3' ||
       activeCard.selectionMode === 'monster_swipe_l'
     ) &&
@@ -129,6 +132,7 @@ export default function PlayerMonsters({
                 .map(pos => ({ x: pos.x, y: pos.y }))}
               onSquareClick={onMonsterSquareClick ? (x, y) => onMonsterSquareClick(monster.id, x, y) : undefined}
               horizontalPairPreviewEnabled={showHorizontalPairPreview}
+              cunningStepPreviewLength={cunningPreviewStepLength}
               combatBlastPreviewEnabled={showCombatBlastPreview}
               swipePreviewEnabled={showSwipePreview}
               attackAnimations={attackAnimations.filter((attack) => attack.monsterId === monster.id)}

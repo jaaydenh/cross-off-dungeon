@@ -2,11 +2,13 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Dungeon = void 0;
 const core_1 = require("@colyseus/core");
+const shared_types_1 = require("@colyseus/shared-types");
 const DungeonState_1 = require("./schema/DungeonState");
 class Dungeon extends core_1.Room {
     constructor() {
         super(...arguments);
         this.maxClients = 4;
+        this.reconnectionWindowSeconds = 90;
     }
     // Room name used by clients when joining (helpful for debugging/logging)
     static { this.ROOM_NAME = "dungeon"; }
@@ -18,6 +20,28 @@ class Dungeon extends core_1.Room {
     }
     toSafeString(value) {
         return typeof value === "string" ? value : "";
+    }
+    normalizePlayerName(value) {
+        if (typeof value !== "string") {
+            return "";
+        }
+        return value.trim().replace(/\s+/g, " ").slice(0, 24);
+    }
+    async updateLobbyMetadata() {
+        const metadata = {
+            roomCode: this.roomId,
+            currentDay: this.state.currentDay,
+            currentTurn: this.state.currentTurn,
+            gameStatus: this.state.gameStatus,
+            playerCount: this.state.players.size,
+            maxPlayers: this.maxClients
+        };
+        try {
+            await this.setMetadata(metadata);
+        }
+        catch (error) {
+            console.error("[Dungeon] Failed to update room metadata:", error);
+        }
     }
     normalizeMonsterAttackPhasePayload(payload) {
         const attacks = (Array.isArray(payload.attacks) ? payload.attacks : []).map((attack) => {
@@ -100,6 +124,7 @@ class Dungeon extends core_1.Room {
     onCreate(options) {
         this.setState(new DungeonState_1.DungeonState());
         this.state.initializeBoard();
+        void this.updateLobbyMetadata();
         this.onMessage("crossSquare", (client, message) => {
             // Mutates state; clients will see changes via state patches.
             // NOTE: Sending crossSquareResult has intermittently triggered msgpackr encoding
@@ -132,12 +157,12 @@ class Dungeon extends core_1.Room {
                 });
                 return;
             }
-            // Prevent ending the turn while a card is still active.
-            if (this.state.activeCardPlayers.has(client.sessionId)) {
+            const endTurnPreparation = this.state.preparePlayerForEndTurn(client.sessionId);
+            if (!endTurnPreparation.success) {
                 this.sendWithFallback(client, "endTurnResult", {
                     success: false,
                     message: null,
-                    error: "Cannot end turn while a card is active. Confirm or cancel it first.",
+                    error: endTurnPreparation.error || "Cannot end turn",
                     turnAdvanced: false,
                     currentTurn: this.state.currentTurn
                 }, {
@@ -149,6 +174,7 @@ class Dungeon extends core_1.Room {
                 });
                 return;
             }
+            const discardedActiveCard = !!endTurnPreparation.discardedActiveCard;
             // Validate that the player can end their turn
             if (!this.state.canPlayerPerformAction(client.sessionId, "endTurn")) {
                 this.sendWithFallback(client, "endTurnResult", {
@@ -176,17 +202,22 @@ class Dungeon extends core_1.Room {
                 const attackPhaseResult = turnAdvanced
                     ? this.state.consumePendingMonsterAttackPhaseResult()
                     : null;
+                void this.updateLobbyMetadata();
                 this.sendWithFallback(client, "endTurnResult", {
                     success: true,
-                    message: "Turn ended successfully",
+                    message: discardedActiveCard
+                        ? "Turn ended successfully. Unplayable active card discarded."
+                        : "Turn ended successfully",
                     error: null,
                     turnAdvanced,
+                    discardedActiveCard,
                     currentTurn: this.state.currentTurn
                 }, {
                     success: true,
                     message: null,
                     error: "Serialization error",
                     turnAdvanced,
+                    discardedActiveCard,
                     currentTurn: this.state.currentTurn
                 });
                 // If turn advanced, notify all clients about the new turn
@@ -255,18 +286,46 @@ class Dungeon extends core_1.Room {
             this.state.crossMonsterSquare(client.sessionId, message.monsterId, message.x, message.y);
         });
     }
-    onJoin(client, options) {
-        this.state.createPlayer(client.sessionId, options.name);
-        console.log(client.sessionId + ' : player: ' + options.name, "joined!");
+    onAuth(client, options) {
+        const playerName = this.normalizePlayerName(options?.name);
+        if (!playerName) {
+            throw new Error("Player name is required");
+        }
+        return { playerName };
+    }
+    onJoin(client, options, auth) {
+        const playerName = this.normalizePlayerName(auth?.playerName ?? options?.name);
+        if (!playerName) {
+            throw new Error("Player name is required");
+        }
+        this.state.createPlayer(client.sessionId, playerName);
+        console.log(client.sessionId + ' : player: ' + playerName, "joined!");
         console.log(this.state.players.size, "players in room");
         // Initialize turn state when the first player joins
         if (this.state.players.size === 1) {
             this.state.initializeTurnState();
             console.log("Turn state initialized for the first player");
+            void this.updateLobbyMetadata();
+            return;
         }
+        void this.updateLobbyMetadata();
     }
-    onLeave(client, consented) {
+    async onLeave(client, code) {
+        const consented = code === shared_types_1.CloseCode.CONSENTED;
+        // Keep accidental refreshes/disconnects reconnectable for a short window.
+        if (!consented) {
+            try {
+                await this.allowReconnection(client, this.reconnectionWindowSeconds);
+                console.log(client.sessionId, "reconnected");
+                void this.updateLobbyMetadata();
+                return;
+            }
+            catch (error) {
+                console.log(client.sessionId, "did not reconnect in time");
+            }
+        }
         this.state.removePlayer(client.sessionId);
+        void this.updateLobbyMetadata();
         console.log(client.sessionId, "left!");
     }
     onDispose() {

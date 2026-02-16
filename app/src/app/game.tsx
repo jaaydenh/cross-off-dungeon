@@ -1,10 +1,8 @@
 'use client';
 // @ts-nocheck
 
-import * as Colyseus from 'colyseus.js';
-
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { Room } from 'colyseus.js';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { Client, Room, getStateCallbacks } from '@colyseus/sdk';
 import { DungeonState } from '@/types/DungeonState';
 import { Player } from '@/types/Player';
 import { Room as DungeonRoom } from '@/types/Room';
@@ -14,10 +12,13 @@ import DrawnCard from './DrawnCard';
 import DiscardPile from './DiscardPile';
 import TurnControls from './TurnControls';
 import CancelButton from './CancelButton';
+import DiscardCardButton from './DiscardCardButton';
 import ConfirmMoveButton from './ConfirmMoveButton';
 import PlayerMonsters from './PlayerMonsters';
 import { MonsterAttackAnimation } from '@/types/MonsterAttack';
 import CardFaceContent from './CardFaceContent';
+import MonsterCard from './MonsterCard';
+import CardLibraryScreen from './CardLibraryScreen';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +36,7 @@ type LobbyRoomInfo = {
   roomId: string;
   clients: number;
   maxClients: number;
+  locked?: boolean;
   metadata?: LobbyRoomMetadata;
 };
 type PersistedReconnection = {
@@ -46,6 +48,7 @@ type PersistedReconnection = {
 const DUNGEON_ROOM_NAME = 'dungeon';
 const DEFAULT_SERVER_URL = 'ws://localhost:2567';
 const RECONNECT_STORAGE_KEY = 'cross-off-dungeon.reconnect';
+const RECONNECT_TOKEN_MAX_AGE_MS = 2 * 60 * 1000;
 
 export default function Game() {
   const [name, setName] = useState('');
@@ -82,7 +85,14 @@ export default function Game() {
   }>>([]);
   const [dayBanner, setDayBanner] = useState<string | null>(null);
   const [gameResultBanner, setGameResultBanner] = useState<string | null>(null);
+  const [openMonsterPopoverFor, setOpenMonsterPopoverFor] = useState<string | null>(null);
+  const [isCardLibraryOpen, setIsCardLibraryOpen] = useState(false);
+  const [cunningActivationBaseline, setCunningActivationBaseline] = useState<{
+    cardId: string;
+    totalCheckedSquares: number;
+  } | null>(null);
   const dayBannerTimeoutRef = useRef<any>(null);
+  const monsterPopoverCloseTimeoutRef = useRef<any>(null);
   const lastAnnouncedDayRef = useRef<number | null>(null);
   const lastGameStatusRef = useRef<string | null>(null);
   const hasGameState = gameState !== null;
@@ -90,13 +100,128 @@ export default function Game() {
   const currentGameStatus = gameState?.gameStatus || null;
 
   const activeCard = currentPlayer?.drawnCards?.find((card) => card.isActive) || null;
+  const cardAllowsMonsterSelection = (card: any): boolean =>
+    card?.selectionTarget === 'monster' ||
+    card?.selectionTarget === 'room_or_monster' ||
+    card?.selectionTarget === 'monster_each';
+  const cardCanTargetAnyOwnedMonster = (card: any): boolean =>
+    card?.selectionTarget === 'monster_each';
+  const canCardTargetMonster = (card: any, monster: any): boolean => {
+    if (!card || !monster || !cardAllowsMonsterSelection(card)) {
+      return false;
+    }
+    if (!monster.playerOwnerId) {
+      return false;
+    }
+    if (cardCanTargetAnyOwnedMonster(card)) {
+      return true;
+    }
+    return monster.playerOwnerId === roomRef.current?.sessionId;
+  };
+  const canSelectMonsterSquares = cardAllowsMonsterSelection(activeCard);
+  const showHorizontalPairPreview = activeCard?.selectionMode === 'horizontal_pair_twice';
+  const showSpreadOutPreview = activeCard?.selectionMode === 'centered_room_3x3';
+  const showCombatBlastPreview = activeCard?.selectionMode === 'centered_monster_3x3';
+  const showSwipePreview = activeCard?.selectionMode === 'monster_swipe_l';
+  const showCunningPreview = activeCard?.selectionMode === 'cunning_three_step_different_cards';
+  const totalCheckedSquares = useMemo(() => {
+    if (!gameState) {
+      return 0;
+    }
+
+    let total = 0;
+
+    for (const room of gameState.rooms || []) {
+      for (const square of room.squares || []) {
+        if (square?.checked) {
+          total += 1;
+        }
+      }
+    }
+
+    for (const monster of gameState.activeMonsters || []) {
+      for (const square of monster.squares || []) {
+        if (square?.filled && square?.checked) {
+          total += 1;
+        }
+      }
+    }
+
+    return total;
+  }, [gameState]);
+  useEffect(() => {
+    if (!showCunningPreview || !activeCard?.id) {
+      setCunningActivationBaseline(null);
+      return;
+    }
+
+    setCunningActivationBaseline((previous) => {
+      if (previous?.cardId === String(activeCard.id)) {
+        return previous;
+      }
+
+      return {
+        cardId: String(activeCard.id),
+        totalCheckedSquares
+      };
+    });
+  }, [showCunningPreview, activeCard?.id, totalCheckedSquares]);
+  const cunningCheckedDelta =
+    showCunningPreview &&
+    activeCard?.id &&
+    cunningActivationBaseline?.cardId === String(activeCard.id)
+      ? Math.max(0, totalCheckedSquares - cunningActivationBaseline.totalCheckedSquares)
+      : 0;
+  const cunningPreviewStepLength: 1 | 2 | 3 | null = !showCunningPreview
+    ? null
+    : cunningCheckedDelta < 1
+      ? 1
+      : cunningCheckedDelta < 3
+        ? 2
+        : cunningCheckedDelta < 6
+          ? 3
+          : null;
+  const monstersByPlayer = (() => {
+    const grouped = new Map<string, any[]>();
+    for (const monster of gameState?.activeMonsters || []) {
+      if (!monster.playerOwnerId) {
+        continue;
+      }
+      const isCompleted =
+        Array.isArray(monster.squares) &&
+        monster.squares.every((square: any) => !square.filled || square.checked);
+      if (isCompleted) {
+        continue;
+      }
+      const ownerMonsters = grouped.get(monster.playerOwnerId) || [];
+      ownerMonsters.push(monster);
+      grouped.set(monster.playerOwnerId, ownerMonsters);
+    }
+    return grouped;
+  })();
   const hasActiveCard = !!activeCard;
   const cancelIsActive = !!currentPlayer && hasActiveCard;
   const mapScrollRef = useRef<HTMLDivElement>(null);
   const playerAreaRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<Room>();
-  const clientRef = useRef<Colyseus.Client | null>(null);
+  const clientRef = useRef<Client | null>(null);
   const reconnectNameRef = useRef('');
+  const openMonsterPopover = useCallback((sessionId: string) => {
+    if (monsterPopoverCloseTimeoutRef.current) {
+      clearTimeout(monsterPopoverCloseTimeoutRef.current);
+      monsterPopoverCloseTimeoutRef.current = null;
+    }
+    setOpenMonsterPopoverFor(sessionId);
+  }, []);
+  const closeMonsterPopoverWithDelay = useCallback(() => {
+    if (monsterPopoverCloseTimeoutRef.current) {
+      clearTimeout(monsterPopoverCloseTimeoutRef.current);
+    }
+    monsterPopoverCloseTimeoutRef.current = setTimeout(() => {
+      setOpenMonsterPopoverFor(null);
+      monsterPopoverCloseTimeoutRef.current = null;
+    }, 320);
+  }, []);
   const isHeroicMoveAndFightCard = (card: any): boolean => card?.type === 'heroic_move_two_and_fight_two';
   const isCombatCard = (card: any): boolean => card?.type === 'combat_fight_three_diagonal_or_move_three';
   const roomCode = roomRef.current?.roomId || '';
@@ -107,7 +232,26 @@ export default function Game() {
       return null;
     }
 
-    const raw = window.localStorage.getItem(RECONNECT_STORAGE_KEY);
+    // Reconnection should be tab-scoped. Keep token in sessionStorage only.
+    let raw = window.sessionStorage.getItem(RECONNECT_STORAGE_KEY);
+
+    // Backward-compatibility migration from older localStorage behavior.
+    // Only allow migration on a same-tab reload/back-forward navigation.
+    const legacyRaw = window.localStorage.getItem(RECONNECT_STORAGE_KEY);
+    if (!raw && legacyRaw) {
+      const navEntry = window.performance?.getEntriesByType?.('navigation')?.[0] as PerformanceNavigationTiming | undefined;
+      const navType = navEntry?.type;
+      const allowLegacyMigration = navType === 'reload' || navType === 'back_forward';
+
+      if (allowLegacyMigration) {
+        raw = legacyRaw;
+        window.sessionStorage.setItem(RECONNECT_STORAGE_KEY, legacyRaw);
+      }
+
+      // Always clear legacy storage to prevent cross-tab auto-reconnect.
+      window.localStorage.removeItem(RECONNECT_STORAGE_KEY);
+    }
+
     if (!raw) {
       return null;
     }
@@ -117,10 +261,15 @@ export default function Game() {
       if (!parsed?.token || typeof parsed.token !== 'string') {
         return null;
       }
+      const savedAt = Number(parsed.savedAt || Date.now());
+      if (!Number.isFinite(savedAt) || (Date.now() - savedAt) > RECONNECT_TOKEN_MAX_AGE_MS) {
+        return null;
+      }
+
       return {
         token: parsed.token,
         name: typeof parsed.name === 'string' ? parsed.name : '',
-        savedAt: Number(parsed.savedAt || Date.now())
+        savedAt
       };
     } catch (error) {
       console.error('failed to parse reconnection data', error);
@@ -138,13 +287,16 @@ export default function Game() {
       name: playerName,
       savedAt: Date.now()
     };
-    window.localStorage.setItem(RECONNECT_STORAGE_KEY, JSON.stringify(payload));
+    window.sessionStorage.setItem(RECONNECT_STORAGE_KEY, JSON.stringify(payload));
+    // Ensure we do not keep cross-tab reconnect artifacts.
+    window.localStorage.removeItem(RECONNECT_STORAGE_KEY);
   }, []);
 
   const clearPersistedReconnection = useCallback(() => {
     if (typeof window === 'undefined') {
       return;
     }
+    window.sessionStorage.removeItem(RECONNECT_STORAGE_KEY);
     window.localStorage.removeItem(RECONNECT_STORAGE_KEY);
   }, []);
 
@@ -156,9 +308,23 @@ export default function Game() {
   }, [hasActiveCard]);
 
   useEffect(() => {
+    if (!inRoom) {
+      setOpenMonsterPopoverFor(null);
+      setIsCardLibraryOpen(false);
+      if (monsterPopoverCloseTimeoutRef.current) {
+        clearTimeout(monsterPopoverCloseTimeoutRef.current);
+        monsterPopoverCloseTimeoutRef.current = null;
+      }
+    }
+  }, [inRoom]);
+
+  useEffect(() => {
     return () => {
       if (dayBannerTimeoutRef.current) {
         clearTimeout(dayBannerTimeoutRef.current);
+      }
+      if (monsterPopoverCloseTimeoutRef.current) {
+        clearTimeout(monsterPopoverCloseTimeoutRef.current);
       }
     };
   }, []);
@@ -193,7 +359,7 @@ export default function Game() {
 
   useEffect(() => {
     const serverUrl = process.env.NEXT_PUBLIC_COLYSEUS_URL || DEFAULT_SERVER_URL;
-    clientRef.current = new Colyseus.Client(serverUrl);
+    clientRef.current = new Client(serverUrl);
   }, []);
 
   useEffect(() => {
@@ -211,12 +377,29 @@ export default function Game() {
       setName((currentName) => currentName || persisted.name);
     }
 
+    let cancelled = false;
+
     void (async () => {
-      const didReconnect = await connectToRoom(() => clientRef.current!.reconnect(persisted.token));
+      // React Strict Mode mounts/unmounts effects twice in development.
+      // Deferring by one microtask prevents duplicate reconnect attempts.
+      await Promise.resolve();
+      if (cancelled) {
+        return;
+      }
+
+      const didReconnect = await connectToRoom(
+        () => clientRef.current!.reconnect(persisted.token),
+        { suppressJoinError: true }
+      );
+
       if (!didReconnect) {
         clearPersistedReconnection();
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
     // We intentionally run this once on mount with persisted data.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clearPersistedReconnection, readPersistedReconnection]);
@@ -227,7 +410,8 @@ export default function Game() {
     }
 
     try {
-      const rooms = await clientRef.current.getAvailableRooms<LobbyRoomMetadata>(DUNGEON_ROOM_NAME);
+      const response = await clientRef.current.http.get<LobbyRoomInfo[]>(`matchmake/${DUNGEON_ROOM_NAME}`);
+      const rooms = Array.isArray(response.data) ? response.data : [];
       setAvailableRooms(rooms.sort((a, b) => {
         const dayA = Number(a.metadata?.currentDay || 1);
         const dayB = Number(b.metadata?.currentDay || 1);
@@ -328,6 +512,73 @@ export default function Game() {
     return false;
   };
 
+  // Remove any pending (unconfirmed) local selections that became invalid on the server.
+  // This keeps the local preview in sync when another player claims those squares first.
+  const prunePendingSelectionsAgainstServerState = useCallback((state: DungeonState) => {
+    if (!state) {
+      return;
+    }
+
+    setSelectedSquares((prev) => {
+      if (!prev.length) {
+        return prev;
+      }
+
+      const next = prev.filter((selection) => {
+        const fallbackRoomIndex = typeof selection.roomIndex === 'number' ? selection.roomIndex : 0;
+        const resolvedRoomIndex = typeof selection.serverRoomIndex === 'number'
+          ? selection.serverRoomIndex
+          : (state.displayedRoomIndices?.[fallbackRoomIndex] ?? fallbackRoomIndex);
+
+        const room = state.rooms?.[resolvedRoomIndex];
+        if (!room) {
+          return false;
+        }
+
+        const square = room.squares?.[selection.y * room.width + selection.x];
+        if (!square) {
+          return false;
+        }
+
+        return !square.wall && !square.checked;
+      });
+
+      if (next.length !== prev.length) {
+        console.log('Removed stale pending room selections after server update');
+      }
+      return next;
+    });
+
+    setSelectedMonsterSquares((prev) => {
+      if (!prev.length) {
+        return prev;
+      }
+
+      const monstersById = new Map<string, any>();
+      for (const monster of (state.activeMonsters || [])) {
+        monstersById.set(String((monster as any).id), monster as any);
+      }
+      const next = prev.filter((selection) => {
+        const monster = monstersById.get(selection.monsterId);
+        if (!monster) {
+          return false;
+        }
+
+        const square = monster.squares?.[selection.y * monster.width + selection.x];
+        if (!square) {
+          return false;
+        }
+
+        return square.filled && !square.checked;
+      });
+
+      if (next.length !== prev.length) {
+        console.log('Removed stale pending monster selections after server update');
+      }
+      return next;
+    });
+  }, []);
+
   // Monster drag handlers
   const handleMonsterDragStart = () => {
     console.log('Game: Monster drag started, setting isMonsterBeingDragged to true');
@@ -419,6 +670,86 @@ export default function Game() {
       return;
     }
 
+    if (activeCard.selectionMode === 'cunning_three_step_different_cards') {
+      if (x < 0 || x >= room.width || y < 0 || y >= room.height) {
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        return;
+      }
+
+      const targetSquare = room.squares[y * room.width + x];
+      if (!targetSquare || targetSquare.wall || targetSquare.checked) {
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        return;
+      }
+
+      if (roomRef.current) {
+        roomRef.current.send('crossSquare', {
+          roomIndex: serverRoomIndex ?? displayRoomIndex,
+          x,
+          y
+        });
+      }
+      return;
+    }
+
+    if (activeCard.selectionMode === 'centered_room_3x3') {
+      if (x < 0 || x >= room.width || y < 0 || y >= room.height) {
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        return;
+      }
+
+      const centerSquare = room.squares[y * room.width + x];
+      if (!centerSquare || centerSquare.wall || centerSquare.checked) {
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        return;
+      }
+
+      const surroundingSquares: Array<{ roomIndex: number; x: number; y: number; serverRoomIndex?: number }> = [];
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const targetX = x + dx;
+          const targetY = y + dy;
+          if (targetX < 0 || targetX >= room.width || targetY < 0 || targetY >= room.height) {
+            continue;
+          }
+
+          const targetSquare = room.squares[targetY * room.width + targetX];
+          if (!targetSquare || targetSquare.wall || targetSquare.checked) {
+            continue;
+          }
+
+          surroundingSquares.push({
+            roomIndex: displayRoomIndex,
+            serverRoomIndex,
+            x: targetX,
+            y: targetY
+          });
+        }
+      }
+
+      const selectedSpreadSquares = [
+        { roomIndex: displayRoomIndex, serverRoomIndex, x, y },
+        ...surroundingSquares.filter((pos) => !(pos.x === x && pos.y === y))
+      ];
+
+      const hasRequiredAdjacency = selectedSpreadSquares.some((pos) =>
+        isAdjacentToEntranceOrCrossedSquare(room, pos.x, pos.y)
+      );
+      if (!hasRequiredAdjacency) {
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        console.log('Invalid Spread Out selection: at least one square must be adjacent to entrance or crossed square');
+        return;
+      }
+
+      setSelectedSquares(selectedSpreadSquares);
+      return;
+    }
+
     // Row-selection mode (cross off all horizontal squares in a row)
     if (activeCard.selectionMode === 'row') {
       if (x < 0 || x >= room.width || y < 0 || y >= room.height) {
@@ -494,10 +825,7 @@ export default function Game() {
       return;
     }
 
-    const allowsMonsterSelection =
-      activeCard.selectionTarget === 'monster' ||
-      activeCard.selectionTarget === 'room_or_monster' ||
-      activeCard.selectionTarget === 'monster_each';
+    const allowsMonsterSelection = cardAllowsMonsterSelection(activeCard);
     if (!allowsMonsterSelection) {
       console.log('Active card does not allow selecting monster squares');
       return;
@@ -526,6 +854,11 @@ export default function Game() {
       return;
     }
 
+    if (!canCardTargetMonster(activeCard, monster)) {
+      console.log('Active card cannot target this monster');
+      return;
+    }
+
     if (activeCard.selectionMode === 'horizontal_pair_twice') {
       const rightX = x + 1;
       const leftSquare = monster.squares[y * monster.width + x];
@@ -540,6 +873,19 @@ export default function Game() {
         rightSquare.checked
       ) {
         console.log('Invalid monster horizontal pair placement');
+        return;
+      }
+
+      if (roomRef.current) {
+        roomRef.current.send('crossMonsterSquare', { monsterId, x, y });
+      }
+      return;
+    }
+
+    if (activeCard.selectionMode === 'cunning_three_step_different_cards') {
+      const square = monster.squares[y * monster.width + x];
+      if (!square || !square.filled || square.checked) {
+        console.log('Invalid Cunning monster step placement');
         return;
       }
 
@@ -754,38 +1100,6 @@ export default function Game() {
     return false;
   };
 
-  // Set up global listener for all state changes
-  useEffect(() => {
-    // Will run once after initial render and whenever inRoom changes
-    const room = roomRef.current;
-    if (room) {
-      // Listen for ANY state changes from the server
-      room.onStateChange((state) => {
-        console.log("Full state update received");
-        // Force a complete re-render when state changes
-        setUpdateCounter(prev => prev + 1);
-
-        // Update game state
-        setGameState(state);
-
-        // Update displayed rooms
-        updateDisplayedRooms(state);
-
-        // Update current player
-        if (state.players && room.sessionId) {
-          const player = state.players.get(room.sessionId);
-          console.log('Updating current player:', player);
-          if (player) {
-            console.log('Player deck length:', player.deck.length);
-            console.log('Player drawnCards length:', player.drawnCards.length);
-            console.log('Player hasDrawnCard:', player.hasDrawnCard);
-          }
-          setCurrentPlayer(player || null);
-        }
-      });
-    }
-  }, [inRoom]); // Only re-run when room connection status changes
-
   // Function to update the displayed rooms based on the state
   const updateDisplayedRooms = (state) => {
     if (!state || !state.rooms || !state.displayedRoomIndices) return;
@@ -814,18 +1128,63 @@ export default function Game() {
   };
 
   const getJoinErrorMessage = (error: any): string => {
+    const message = typeof error?.message === 'string' ? error.message.trim() : '';
+    if (message.toLowerCase().includes('seat reservation expired')) {
+      return 'Reconnection window expired. Rejoin from the lobby.';
+    }
+
     if (typeof error?.message === 'string' && error.message.trim().length > 0) {
       return error.message;
     }
     return 'Unable to join room.';
   };
 
-  async function connectToRoom(joinAction: () => Promise<Room<DungeonRoomState>>): Promise<boolean> {
+  async function connectToRoom(
+    joinAction: () => Promise<Room<DungeonRoomState>>,
+    options?: { suppressJoinError?: boolean }
+  ): Promise<boolean> {
     setIsJoiningRoom(true);
     setLobbyError(null);
 
     try {
       roomRef.current = await joinAction();
+      const joinedRoom = roomRef.current;
+
+      const applyStateUpdate = (state: DungeonState) => {
+        if (!state) {
+          return;
+        }
+
+        console.log("Full state update received");
+        // Force a complete re-render when state changes
+        setUpdateCounter(prev => prev + 1);
+
+        // Update game state
+        setGameState(state);
+
+        // Keep local pending selections aligned with authoritative server state.
+        prunePendingSelectionsAgainstServerState(state);
+
+        // Update displayed rooms
+        updateDisplayedRooms(state);
+
+        // Update current player
+        if (state.players && joinedRoom.sessionId) {
+          const player = state.players.get(joinedRoom.sessionId);
+          console.log('Updating current player:', player);
+          if (player) {
+            console.log('Player deck length:', player.deck.length);
+            console.log('Player drawnCards length:', player.drawnCards.length);
+            console.log('Player hasDrawnCard:', player.hasDrawnCard);
+          }
+          setCurrentPlayer(player || null);
+        }
+      };
+
+      // Register state listener immediately on join to avoid missing initial state on late join.
+      joinedRoom.onStateChange((state) => applyStateUpdate(state as DungeonState));
+      // Apply the latest snapshot immediately (covers the case where initial state arrived before listeners were attached).
+      applyStateUpdate(joinedRoom.state as DungeonState);
 
       setInRoom(true);
       console.log('joined successfully', roomRef);
@@ -844,65 +1203,66 @@ export default function Game() {
       if (playerNameForReconnect) {
         setName(playerNameForReconnect);
       }
-      if (roomRef.current.reconnectionToken) {
-        savePersistedReconnection(roomRef.current.reconnectionToken, playerNameForReconnect);
+      if (joinedRoom.reconnectionToken) {
+        savePersistedReconnection(joinedRoom.reconnectionToken, playerNameForReconnect);
       }
 
-      roomRef.current.state.players.onAdd((player, sessionId) => {
-        console.log(`Player added: ${player.name} (sessionId: ${sessionId})`);
+      const $ = getStateCallbacks(joinedRoom);
+
+      $(joinedRoom.state).players.onAdd((player, sessionId) => {
+        const playerName = player?.name || '(unknown)';
+        console.log(`Player added: ${playerName} (sessionId: ${sessionId})`);
         setInRoom(true);
       });
 
-      roomRef.current.state.rooms.onAdd((room, index) => {
+      $(joinedRoom.state).rooms.onAdd((room, index) => {
         console.log(`Room added at index ${index}, width: ${room.width}, height: ${room.height}`);
 
         // Listen for changes to the current room index
-        roomRef.current.state.listen("currentRoomIndex", (currentIndex) => {
+        $(joinedRoom.state).listen("currentRoomIndex", (currentIndex) => {
           console.log(`Current room index changed to ${currentIndex}`);
-          setCurrentRoom(roomRef.current.state.rooms[currentIndex]);
+          setCurrentRoom(joinedRoom.state.rooms[currentIndex]);
           setUpdateCounter(prev => prev + 1);
 
           // Update displayed rooms when current room changes
-          updateDisplayedRooms(roomRef.current.state);
+          updateDisplayedRooms(joinedRoom.state);
         });
 
         // Set the initial current room
-        if (index === roomRef.current.state.currentRoomIndex) {
+        if (index === joinedRoom.state.currentRoomIndex) {
           setCurrentRoom(room);
         }
 
         // Listen for changes to squares in the room
-        room.squares.onChange((square, squareIndex) => {
+        $(room).squares.onChange((square, squareIndex) => {
           // console.log(`Square changed at index ${squareIndex}`);
         });
       });
 
       // Listen for changes to displayed room indices
-      roomRef.current.state.displayedRoomIndices.onAdd((roomIndex, i) => {
+      $(joinedRoom.state).displayedRoomIndices.onAdd((roomIndex, i) => {
         console.log(`Displayed room index added: ${roomIndex} at position ${i}`);
-        updateDisplayedRooms(roomRef.current.state);
+        updateDisplayedRooms(joinedRoom.state);
       });
 
       // Listen for changes to room positions
-      roomRef.current.state.roomPositionsX.onChange((value, i) => {
+      $(joinedRoom.state).roomPositionsX.onChange((value, i) => {
         console.log(`Room position X changed at index ${i}: ${value}`);
-        updateDisplayedRooms(roomRef.current.state);
+        updateDisplayedRooms(joinedRoom.state);
       });
 
-      roomRef.current.state.roomPositionsY.onChange((value, i) => {
+      $(joinedRoom.state).roomPositionsY.onChange((value, i) => {
         console.log(`Room position Y changed at index ${i}: ${value}`);
-        updateDisplayedRooms(roomRef.current.state);
+        updateDisplayedRooms(joinedRoom.state);
       });
 
-      roomRef.current.state.players.onChange = (
-        player: Player,
-        sessionId: string
-      ) => {
-        console.log(`Player changed: ${player.name} (sessionId: ${sessionId})`);
-      };
+      $(joinedRoom.state).players.onChange((player: Player | undefined, sessionId: string) => {
+        const playerName = player?.name || '(unknown)';
+        console.log(`Player changed: ${playerName} (sessionId: ${sessionId})`);
+      });
 
       // Add message handlers
-      roomRef.current.onMessage('drawCardResult', (message) => {
+      joinedRoom.onMessage('drawCardResult', (message) => {
         console.log('📨 Draw card result received:', message);
         console.log('  - Success:', message.success);
         console.log('  - Message:', message.message);
@@ -919,7 +1279,7 @@ export default function Game() {
       });
 
       // Handle crossSquare results for card-based selection
-      roomRef.current.onMessage('crossSquareResult', (message) => {
+      joinedRoom.onMessage('crossSquareResult', (message) => {
         console.log('Cross square result:', message);
 
         if (message.success && !message.completed) {
@@ -938,7 +1298,7 @@ export default function Game() {
       });
 
       // Handle cancel card action results
-      roomRef.current.onMessage('cancelCardActionResult', (message) => {
+      joinedRoom.onMessage('cancelCardActionResult', (message) => {
         console.log('Cancel card action result:', message);
 
         if (message.success) {
@@ -948,8 +1308,18 @@ export default function Game() {
         }
       });
 
+      // Handle discard card action results
+      joinedRoom.onMessage('discardCardActionResult', (message) => {
+        console.log('Discard card action result:', message);
+
+        if (message.success) {
+          setSelectedSquares([]);
+          setSelectedMonsterSquares([]);
+        }
+      });
+
       // Handle confirm card action results
-      roomRef.current.onMessage('confirmCardActionResult', (message) => {
+      joinedRoom.onMessage('confirmCardActionResult', (message) => {
         console.log('Confirm card action result:', message);
 
         if (message.success && message.completed) {
@@ -960,20 +1330,20 @@ export default function Game() {
       });
 
       // Handle play card results
-      roomRef.current.onMessage('playCardResult', (message) => {
+      joinedRoom.onMessage('playCardResult', (message) => {
         console.log('Play card result:', message);
         // The state will be updated automatically through onStateChange
         // This handler just acknowledges the message to prevent warnings
       });
 
       // Handle turn advanced results
-      roomRef.current.onMessage('turnAdvanced', (message) => {
+      joinedRoom.onMessage('turnAdvanced', (message) => {
         console.log('Turn advanced:', message);
         // The state will be updated automatically through onStateChange
         // This handler just acknowledges the message to prevent warnings
       });
 
-      roomRef.current.onMessage('monsterAttackPhase', (message) => {
+      joinedRoom.onMessage('monsterAttackPhase', (message) => {
         const sessionId = roomRef.current?.sessionId;
         if (!sessionId) {
           return;
@@ -1083,14 +1453,12 @@ export default function Game() {
       // Monster actions are authoritative on the server and reflected via state patches.
       // NOTE: We intentionally do not rely on "*Result" messages here because sending them
       // has intermittently triggered msgpackr RangeErrors in this project.
-
-      roomRef.current.onStateChange.once((state) => {
-        setInitialState(state);
-      });
       return true;
     } catch (error) {
-      console.error('join error', error);
-      setLobbyError(getJoinErrorMessage(error));
+      if (!options?.suppressJoinError) {
+        console.error('join error', error);
+        setLobbyError(getJoinErrorMessage(error));
+      }
       setInRoom(false);
       roomRef.current = undefined;
       return false;
@@ -1186,8 +1554,9 @@ export default function Game() {
       const sessionId = roomRef.current?.sessionId;
       if (!sessionId || !gameState?.activeMonsters) return false;
 
-      const owned = gameState.activeMonsters.filter((m: any) => m.playerOwnerId === sessionId);
-      const eligible = owned.filter((m: any) => !isMonsterCompleted(m));
+      const eligible = gameState.activeMonsters.filter(
+        (m: any) => canCardTargetMonster(activeCard, m) && !isMonsterCompleted(m)
+      );
       if (eligible.length === 0) return false;
 
       const eligibleIds = new Set(eligible.map((m: any) => m.id));
@@ -1232,7 +1601,7 @@ export default function Game() {
         if (!sessionId || !gameState?.activeMonsters) return false;
 
         const eligibleMonsters = gameState.activeMonsters.filter(
-          (m: any) => m.playerOwnerId === sessionId && !isMonsterCompleted(m)
+          (m: any) => canCardTargetMonster(activeCard, m) && !isMonsterCompleted(m)
         );
 
         if (monsterCount === 0) {
@@ -1326,7 +1695,7 @@ export default function Game() {
                     const day = Number(room.metadata?.currentDay || 1);
                     const turn = Number(room.metadata?.currentTurn || 1);
                     const players = Number(room.clients || 0);
-                    const isFull = players >= Number(room.maxClients || 4);
+                    const isFull = players >= Number(room.maxClients || 4) || room.locked === true;
 
                     return (
                       <div key={room.roomId} className="grid grid-cols-1 items-center gap-3 rounded border border-slate-700 bg-slate-800 px-3 py-3 text-sm md:grid-cols-[1fr_140px_120px_120px_auto]">
@@ -1365,15 +1734,30 @@ export default function Game() {
       {inRoom && (
         <div className="flex h-screen w-full">
           {/* Left side panel for game information */}
-          <div className="w-64 flex flex-col bg-slate-800 p-4 overflow-y-auto border-r border-slate-700 h-[calc(100vh-20rem)]" >
+          <div className="w-64 relative z-[120] flex flex-col bg-slate-800 p-4 overflow-visible border-r border-slate-700 h-[calc(100vh-20rem)]" >
             <div className="mb-4 rounded border border-slate-600 bg-slate-700 p-2">
-              <div className="text-xs uppercase tracking-wide text-slate-300">Room Code</div>
-              <div className="font-mono text-lg font-bold text-white">{roomCode}</div>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-300">Room Code</div>
+                  <div className="font-mono text-lg font-bold text-white">{roomCode}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCardLibraryOpen(true)}
+                  className="rounded border border-slate-500 bg-slate-800 px-2 py-1 text-xs font-semibold text-white hover:bg-slate-600"
+                >
+                  ⚙ Settings
+                </button>
+              </div>
             </div>
             <span>
               <h2 className="text-xl font-bold mb-4">Players</h2>
               <ul className="space-y-2">
                 {gameState?.players && Array.from(gameState.players.entries()).map(([sessionId, player]) => {
+                  if (!player) {
+                    return null;
+                  }
+
                   const getStatusColor = (status: string) => {
                     switch (status) {
                       case 'not_started':
@@ -1413,14 +1797,76 @@ export default function Game() {
                     }
                   };
 
+                  const playerMonsters = monstersByPlayer.get(sessionId) || [];
+                  const hasMonsters = playerMonsters.length > 0;
+                  const isMonsterPopoverOpen = openMonsterPopoverFor === sessionId;
+                  const canTargetAnyListedMonster = playerMonsters.some((monster: any) =>
+                    canCardTargetMonster(activeCard, monster)
+                  );
+
                   return (
-                    <li key={sessionId} className="p-2 bg-slate-700 rounded flex justify-between items-center">
+                    <li key={sessionId} className="relative p-2 bg-slate-700 rounded flex justify-between items-center gap-2">
                       <span className="font-medium">{player.name}</span>
-                      <div className="flex items-center gap-1">
-                        <span className="text-sm">{getStatusIcon(player.turnStatus)}</span>
-                        <span className={`status-indicator text-sm font-medium ${getStatusColor(player.turnStatus)}`}>
-                          {formatStatus(player.turnStatus)}
-                        </span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm">{getStatusIcon(player.turnStatus)}</span>
+                          <span className={`status-indicator text-sm font-medium ${getStatusColor(player.turnStatus)}`}>
+                            {formatStatus(player.turnStatus)}
+                          </span>
+                        </div>
+
+                        {hasMonsters && (
+                          <div
+                            className="relative"
+                            onMouseEnter={() => openMonsterPopover(sessionId)}
+                            onMouseLeave={closeMonsterPopoverWithDelay}
+                          >
+                            <div className="inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-full border border-amber-300 bg-amber-500/20 px-2 text-xs font-bold text-amber-100">
+                              <span className="leading-none">👾</span>
+                              <span>{playerMonsters.length}</span>
+                            </div>
+
+                            <div
+                              className={`absolute left-full top-1/2 z-[180] ml-1 w-64 -translate-y-1/2 rounded-lg border border-slate-500 bg-slate-900/95 p-2 shadow-2xl transition-opacity duration-150 ${
+                                isMonsterPopoverOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+                              }`}
+                            >
+                              <div className="mb-2 text-xs font-semibold text-slate-300">
+                                {player.name}&apos;s Monsters ({playerMonsters.length})
+                              </div>
+
+                              <div className="max-h-72 overflow-auto">
+                                <div className="flex min-w-max gap-3 pr-1">
+                                  {playerMonsters.map((monster: any) => (
+                                    <MonsterCard
+                                      key={`player-monster-${sessionId}-${monster.id}`}
+                                      monster={monster}
+                                      isOwnedByPlayer={monster.playerOwnerId === roomRef.current?.sessionId}
+                                      canDrag={false}
+                                      canSelect={canCardTargetMonster(activeCard, monster)}
+                                      selectedSquares={selectedMonsterSquares
+                                        .filter((pos) => pos.monsterId === monster.id)
+                                        .map((pos) => ({ x: pos.x, y: pos.y }))}
+                                      onSquareClick={(x, y) => handleMonsterSquareClick(monster.id, x, y)}
+                                      horizontalPairPreviewEnabled={showHorizontalPairPreview}
+                                      cunningStepPreviewLength={cunningPreviewStepLength}
+                                      combatBlastPreviewEnabled={showCombatBlastPreview}
+                                      swipePreviewEnabled={showSwipePreview}
+                                      disableHoverZoom={true}
+                                      className="monster-owned"
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="mt-2 text-[11px] text-slate-400">
+                                {canTargetAnyListedMonster
+                                  ? 'Click monster squares to target them with your active card.'
+                                  : 'Play a monster-targeting card to click squares here.'}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </li>
                   );
@@ -1437,44 +1883,56 @@ export default function Game() {
           </div>
 
           {/* Main content area for dungeon map */}
-          <div ref={mapScrollRef} className="flex-1 bg-slate-900 overflow-auto relative" >
-            {/* Card Action Buttons - Fixed position at top center */}
-            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 flex gap-4">
-              <ConfirmMoveButton
-                player={currentPlayer}
-                room={roomRef.current}
-                selectedCount={selectedCount}
-                isVisible={hasActiveCard && selectedCount > 0}
-                isReady={isConfirmReady}
-                selectedSquares={selectedSquares}
-                selectedMonsterSquares={selectedMonsterSquares}
-              />
-              <CancelButton
-                player={currentPlayer}
-                room={roomRef.current}
-                isVisible={currentPlayer?.drawnCards.some(card => card.isActive)}
-                onCancel={handleCancelCleanup}
-              />
+          <div className="flex-1 min-h-0 min-w-0 bg-slate-900 flex flex-col">
+            {/* Card Action Buttons - fixed header above room scroll area */}
+            <div className="z-50 shrink-0 flex w-full justify-center px-4 pt-4 pb-2 pointer-events-none">
+              <div className="flex flex-wrap items-center justify-center gap-4 pointer-events-auto">
+                <ConfirmMoveButton
+                  player={currentPlayer}
+                  room={roomRef.current}
+                  selectedCount={selectedCount}
+                  isVisible={hasActiveCard && selectedCount > 0}
+                  isReady={isConfirmReady}
+                  selectedSquares={selectedSquares}
+                  selectedMonsterSquares={selectedMonsterSquares}
+                />
+                <CancelButton
+                  player={currentPlayer}
+                  room={roomRef.current}
+                  isVisible={currentPlayer?.drawnCards.some(card => card.isActive)}
+                  onCancel={handleCancelCleanup}
+                />
+                <DiscardCardButton
+                  player={currentPlayer}
+                  room={roomRef.current}
+                  isVisible={currentPlayer?.drawnCards.some(card => card.isActive)}
+                  onDiscard={handleCancelCleanup}
+                />
+              </div>
             </div>
 
-            {displayedRooms.length > 0 && (
-              <DungeonMap
-                rooms={displayedRooms}
-                handleSquareClick={handleSquareClick}
-                player={currentPlayer}
-                colyseusRoom={roomRef.current}
-                invalidSquareHighlight={invalidSquareHighlight}
-                selectedSquares={selectedSquares}
-                gameState={gameState}
-                onMonsterDragStart={handleMonsterDragStart}
-                onMonsterDragEnd={handleMonsterDragEnd}
-                scrollContainerRef={mapScrollRef}
-                bottomOverlayRef={playerAreaRef}
-                horizontalPairPreviewEnabled={activeCard?.selectionMode === 'horizontal_pair_twice'}
-              />
-            )}
+            <div ref={mapScrollRef} className="flex-1 min-h-0 min-w-0 overflow-auto relative">
+              {displayedRooms.length > 0 && (
+                <DungeonMap
+                  rooms={displayedRooms}
+                  handleSquareClick={handleSquareClick}
+                  player={currentPlayer}
+                  colyseusRoom={roomRef.current}
+                  invalidSquareHighlight={invalidSquareHighlight}
+                  selectedSquares={selectedSquares}
+                  gameState={gameState}
+                  onMonsterDragStart={handleMonsterDragStart}
+                  onMonsterDragEnd={handleMonsterDragEnd}
+                  scrollContainerRef={mapScrollRef}
+                  bottomOverlayRef={playerAreaRef}
+                  horizontalPairPreviewEnabled={showHorizontalPairPreview}
+                  cunningStepPreviewLength={cunningPreviewStepLength}
+                  spreadOutPreviewEnabled={showSpreadOutPreview}
+                />
+              )}
 
-            {/* Monsters are now displayed inside room containers */}
+              {/* Monsters are now displayed inside room containers */}
+            </div>
           </div>
 
           {/* Bottom drawer for player's area */}
@@ -1485,7 +1943,11 @@ export default function Game() {
                   <div className="flex justify-start gap-6 items-center">
                     <CardDeck player={currentPlayer} room={roomRef.current} />
                     <DrawnCard player={currentPlayer} room={roomRef.current} key={updateCounter} />
-                    <DiscardPile player={currentPlayer} room={roomRef.current} />
+                    <DiscardPile
+                      player={currentPlayer}
+                      room={roomRef.current}
+                      onDiscardDrop={handleCancelCleanup}
+                    />
                   </div>
                 </div>
                 {/* Always render PlayerMonsters so it can respond to drag state */}
@@ -1497,6 +1959,7 @@ export default function Game() {
                   onMonsterDrop={() => setIsMonsterBeingDragged(false)}
                   selectedMonsterSquares={selectedMonsterSquares}
                   onMonsterSquareClick={handleMonsterSquareClick}
+                  cunningPreviewStepLength={cunningPreviewStepLength}
                   attackAnimations={monsterAttackAnimations}
                 />
               </div>
@@ -1505,8 +1968,10 @@ export default function Game() {
         </div>
       )}
 
+      <CardLibraryScreen isOpen={inRoom && isCardLibraryOpen} onClose={() => setIsCardLibraryOpen(false)} />
+
       {inRoom && dayBanner && (
-        <div className="fixed inset-0 z-[90] pointer-events-none flex items-center justify-center">
+        <div className="fixed inset-0 z-[200] pointer-events-none flex items-center justify-center">
           <div className="rounded-xl border-4 border-amber-300 bg-slate-950/90 px-12 py-8 text-6xl font-black tracking-wide text-amber-200 shadow-2xl">
             {dayBanner}
           </div>

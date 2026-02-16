@@ -7,11 +7,15 @@ export type CardSelectionMode =
   | "squares"
   | "row"
   | "horizontal_pair_twice"
+  | "centered_room_3x3"
+  | "cunning_three_step_different_cards"
   | "centered_monster_3x3"
   | "monster_swipe_l";
 export const HEROIC_MOVE_AND_FIGHT_CARD_ID = "heroic_move_two_and_fight_two";
 export const COMBAT_CARD_ID = "combat_fight_three_diagonal_or_move_three";
 export const SWIPE_CARD_ID = "swipe_fight_l_overlay";
+export const SPREAD_OUT_CARD_ID = "spread_out_room_overlay";
+export const CUNNING_CARD_ID = "cunning";
 export const STARTER_DECK_SIZE = 10;
 
 export type CardDefinition = {
@@ -110,6 +114,23 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
     }
   },
   {
+    id: CUNNING_CARD_ID,
+    name: "Cunning",
+    description:
+      "Cross 1 square, then 2 horizontal squares, then 3 horizontal squares. Each step must target a different room or monster.",
+    color: "green",
+    defenseSymbol: "empty",
+    selection: {
+      target: "room_or_monster",
+      mode: "cunning_three_step_different_cards",
+      minSelections: 6,
+      maxSelections: 6,
+      connected: false,
+      requireRoomStartAdjacency: false,
+      requireMonsterStartAdjacency: false
+    }
+  },
+  {
     id: HEROIC_MOVE_AND_FIGHT_CARD_ID,
     name: "Heroic Move and Fight",
     description: "Move 2 and fight 2",
@@ -121,6 +142,22 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
       minSelections: 4,
       maxSelections: 4,
       connected: true,
+      requireRoomStartAdjacency: false,
+      requireMonsterStartAdjacency: false
+    }
+  },
+  {
+    id: SPREAD_OUT_CARD_ID,
+    name: "Spread Out",
+    description: "Choose any square in a room. Cross off that square. You may cross off any adjacent squares.",
+    color: "green",
+    defenseSymbol: "empty",
+    selection: {
+      target: "room",
+      mode: "centered_room_3x3",
+      minSelections: 1,
+      maxSelections: 9,
+      connected: false,
       requireRoomStartAdjacency: false,
       requireMonsterStartAdjacency: false
     }

@@ -1,6 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createStarterDeck = exports.createCardFromDefinition = exports.getCardDefinition = exports.CARD_DEFINITIONS = exports.STARTER_DECK_SIZE = exports.SWIPE_CARD_ID = exports.COMBAT_CARD_ID = exports.HEROIC_MOVE_AND_FIGHT_CARD_ID = void 0;
+exports.CARD_DEFINITIONS = exports.STARTER_DECK_SIZE = exports.SWIPE_CARD_ID = exports.COMBAT_CARD_ID = exports.HEROIC_MOVE_AND_FIGHT_CARD_ID = void 0;
+exports.getCardDefinition = getCardDefinition;
+exports.createCardFromDefinition = createCardFromDefinition;
+exports.createStarterDeck = createStarterDeck;
 const Card_1 = require("../schema/Card");
 exports.HEROIC_MOVE_AND_FIGHT_CARD_ID = "heroic_move_two_and_fight_two";
 exports.COMBAT_CARD_ID = "combat_fight_three_diagonal_or_move_three";
@@ -152,12 +155,10 @@ const CARD_DEFINITIONS_BY_ID = new Map(exports.CARD_DEFINITIONS.map((card) => [c
 function getCardDefinition(id) {
     return CARD_DEFINITIONS_BY_ID.get(id);
 }
-exports.getCardDefinition = getCardDefinition;
 function createCardFromDefinition(definition, id) {
     const selection = definition.selection;
     return new Card_1.Card(id, definition.id, definition.description, selection.target, selection.mode, selection.minSelections ?? 1, selection.maxSelections ?? 0, selection.connected ?? false, selection.requireRoomStartAdjacency ?? false, selection.requireMonsterStartAdjacency ?? false, definition.defenseSymbol ?? "empty", definition.drawCardsOnResolve ?? 0, definition.color ?? "clear", definition.name);
 }
-exports.createCardFromDefinition = createCardFromDefinition;
 function createStarterDeck() {
     const cards = [];
     for (let cardIndex = 1; cardIndex <= exports.STARTER_DECK_SIZE; cardIndex++) {
@@ -172,4 +173,3 @@ function createStarterDeck() {
     }
     return cards;
 }
-exports.createStarterDeck = createStarterDeck;

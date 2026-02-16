@@ -11,6 +11,7 @@ const customJestConfig = {
   testEnvironment: 'jsdom',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^@colyseus/schema$': '<rootDir>/node_modules/@colyseus/schema/build/index.cjs',
   },
 }
 

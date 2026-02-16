@@ -1,7 +1,7 @@
 'use client';
 
 import { Player } from '@/types/Player';
-import { Room } from 'colyseus.js';
+import { Room } from '@colyseus/sdk';
 
 interface CancelButtonProps {
   player: Player | null;

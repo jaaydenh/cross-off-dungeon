@@ -2,7 +2,7 @@
 
 import { Player } from '@/types/Player';
 import { DungeonState } from '@/types/DungeonState';
-import { Room } from 'colyseus.js';
+import { Room } from '@colyseus/sdk';
 
 interface TurnControlsProps {
   player: Player | null;
@@ -53,14 +53,13 @@ export default function TurnControls({ player, gameState, room }: TurnControlsPr
             <div className="space-y-2">
               <button
                 onClick={handleEndTurn}
-                disabled={hasActiveCard}
-                className={`turn-button text-white font-bold py-3 px-8 rounded-lg text-xl ${hasActiveCard ? 'opacity-60 cursor-not-allowed' : ''}`}
+                className="turn-button text-white font-bold py-3 px-8 rounded-lg text-xl"
               >
                 END TURN
               </button>
               {hasActiveCard && (
                 <div className="text-yellow-200 font-bold text-sm">
-                  Confirm or cancel your card action first
+                  If this card has no legal targets, END TURN will discard it.
                 </div>
               )}
             </div>

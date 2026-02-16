@@ -1,4 +1,5 @@
 import assert from "assert";
+import { Decoder, Encoder } from "@colyseus/schema";
 import { Room } from "../src/rooms/schema/Room";
 import { DungeonSquare } from "../src/rooms/schema/DungeonSquare";
 
@@ -121,11 +122,13 @@ describe("Room", () => {
       room.gridY = -5;
       
       // Encode the room state
-      const encoded = room.encode();
+      const encoder = new Encoder(room);
+      const encoded = encoder.encodeAll();
       
       // Create a new room and decode
       const newRoom = new Room();
-      newRoom.decode(encoded);
+      const decoder = new Decoder(newRoom);
+      decoder.decode(encoded);
       
       assert.strictEqual(newRoom.gridX, 10);
       assert.strictEqual(newRoom.gridY, -5);
@@ -183,11 +186,13 @@ describe("Room", () => {
         room.exitConnected[1] = false;
         
         // Encode the room state
-        const encoded = room.encode();
+        const encoder = new Encoder(room);
+        const encoded = encoder.encodeAll();
         
         // Create a new room and decode
         const newRoom = new Room();
-        newRoom.decode(encoded);
+        const decoder = new Decoder(newRoom);
+        decoder.decode(encoded);
         
         assert.strictEqual(newRoom.connectedRoomIndices[0], 3);
         assert.strictEqual(newRoom.exitConnected[0], true);
@@ -246,4 +251,3 @@ describe("Room", () => {
     });
   });
 });
-

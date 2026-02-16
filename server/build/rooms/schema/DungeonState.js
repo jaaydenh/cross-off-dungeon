@@ -920,6 +920,41 @@ class DungeonState extends schema_1.Schema {
         }
     }
     /**
+     * Prepare a player for ending their turn by resolving active-card edge cases.
+     * If the active card has no legal starting move, it is auto-discarded.
+     */
+    preparePlayerForEndTurn(sessionId) {
+        const player = this.players.get(sessionId);
+        if (!player) {
+            return { success: false, error: "Player not found" };
+        }
+        const activeCardId = this.activeCardPlayers.get(sessionId);
+        if (!activeCardId) {
+            return { success: true, discardedActiveCard: false };
+        }
+        const activeCard = this.getActiveCard(sessionId);
+        if (!activeCard) {
+            // Defensive cleanup for stale state.
+            this.activeCardPlayers.delete(sessionId);
+            this.clearSelections(sessionId);
+            return { success: true, discardedActiveCard: false };
+        }
+        if (this.canActiveCardStartAnySelection(sessionId, activeCard)) {
+            return {
+                success: false,
+                error: "Cannot end turn while a card is active. Confirm or cancel it first."
+            };
+        }
+        const discarded = this.completeCardAction(sessionId, []);
+        if (!discarded.success) {
+            return {
+                success: false,
+                error: discarded.error || "Failed to discard active card"
+            };
+        }
+        return { success: true, discardedActiveCard: true };
+    }
+    /**
      * Draw a card from the player's deck to their drawn cards
      * @param sessionId Session ID of the player
      * @returns Result object with success status and message
@@ -1011,7 +1046,7 @@ class DungeonState extends schema_1.Schema {
         console.log(`Player ${sessionId} activated card: ${cardId}`);
         // If a card targets "every monster" and the player has no eligible monsters, auto-discard it.
         if (this.cardIsMonsterEach(card)) {
-            const eligibleMonsters = this.getPlayerMonsters(sessionId).filter((m) => !m.isCompleted());
+            const eligibleMonsters = this.getEligibleMonstersForCard(sessionId, card).filter((m) => !m.isCompleted());
             if (eligibleMonsters.length === 0) {
                 const completed = this.completeCardAction(sessionId, []);
                 return { success: completed.success, message: "No eligible monsters. Card discarded." };
@@ -1031,6 +1066,143 @@ class DungeonState extends schema_1.Schema {
             return null;
         return player.drawnCards.find((card) => card.id === activeCardId) || null;
     }
+    canActiveCardStartAnySelection(sessionId, card) {
+        if (card.selectionTarget === "monster_each") {
+            return this.getEligibleMonstersForCard(sessionId, card).some((monster) => !monster.isCompleted());
+        }
+        const canStartRoomSelection = this.cardAllowsRoom(card) && this.canCardStartAnyRoomSelection(card);
+        const canStartMonsterSelection = this.cardAllowsMonster(card) && this.canCardStartAnyMonsterSelection(sessionId, card);
+        if (canStartRoomSelection || canStartMonsterSelection) {
+            return true;
+        }
+        // Unknown targets should not be auto-discarded on end turn.
+        if (!this.cardAllowsRoom(card) && !this.cardAllowsMonster(card)) {
+            return true;
+        }
+        return false;
+    }
+    getRoomIndicesForCardSelection() {
+        const indices = [];
+        const seen = new Set();
+        for (const roomIndex of this.displayedRoomIndices) {
+            if (!Number.isInteger(roomIndex))
+                continue;
+            if (roomIndex < 0 || roomIndex >= this.rooms.length)
+                continue;
+            if (seen.has(roomIndex))
+                continue;
+            seen.add(roomIndex);
+            indices.push(roomIndex);
+        }
+        if (indices.length > 0) {
+            return indices;
+        }
+        for (let roomIndex = 0; roomIndex < this.rooms.length; roomIndex++) {
+            indices.push(roomIndex);
+        }
+        return indices;
+    }
+    canCardStartAnyRoomSelection(card) {
+        const mode = card.selectionMode || "squares";
+        for (const roomIndex of this.getRoomIndicesForCardSelection()) {
+            const room = this.rooms[roomIndex];
+            if (!room)
+                continue;
+            if (mode === "horizontal_pair_twice") {
+                for (let y = 0; y < room.height; y++) {
+                    for (let x = 0; x < room.width - 1; x++) {
+                        const leftSquare = room.getSquare(x, y);
+                        const rightSquare = room.getSquare(x + 1, y);
+                        if (!leftSquare || !rightSquare)
+                            continue;
+                        if (leftSquare.wall || rightSquare.wall)
+                            continue;
+                        if (leftSquare.checked || rightSquare.checked)
+                            continue;
+                        const hasRequiredAdjacency = this.isAdjacentToEntranceOrCrossedSquare(room, x, y) ||
+                            this.isAdjacentToEntranceOrCrossedSquare(room, x + 1, y);
+                        if (hasRequiredAdjacency) {
+                            return true;
+                        }
+                    }
+                }
+                continue;
+            }
+            for (let y = 0; y < room.height; y++) {
+                for (let x = 0; x < room.width; x++) {
+                    const square = room.getSquare(x, y);
+                    if (!square || square.wall || square.checked) {
+                        continue;
+                    }
+                    if (card.requiresRoomStartAdjacency && !this.isValidStartingSquare(room, x, y)) {
+                        continue;
+                    }
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    canCardStartAnyMonsterSelection(sessionId, card) {
+        const monsters = this.getEligibleMonstersForCard(sessionId, card).filter((monster) => !monster.isCompleted());
+        if (monsters.length === 0) {
+            return false;
+        }
+        const mode = card.selectionMode || "squares";
+        switch (mode) {
+            case "horizontal_pair_twice":
+                return monsters.some((monster) => this.monsterHasHorizontalPair(monster));
+            case "monster_swipe_l":
+                return monsters.some((monster) => this.monsterHasValidSwipeAnchor(monster));
+            case "centered_monster_3x3":
+            case "squares":
+            default:
+                return monsters.some((monster) => this.monsterHasAvailableSquare(monster));
+        }
+    }
+    monsterHasAvailableSquare(monster) {
+        for (const square of monster.squares) {
+            if (square.filled && !square.checked) {
+                return true;
+            }
+        }
+        return false;
+    }
+    monsterHasHorizontalPair(monster) {
+        for (let y = 0; y < monster.height; y++) {
+            for (let x = 0; x < monster.width - 1; x++) {
+                const leftSquare = monster.getSquare(x, y);
+                const rightSquare = monster.getSquare(x + 1, y);
+                if (!leftSquare || !rightSquare)
+                    continue;
+                if (!leftSquare.filled || !rightSquare.filled)
+                    continue;
+                if (leftSquare.checked || rightSquare.checked)
+                    continue;
+                return true;
+            }
+        }
+        return false;
+    }
+    monsterHasValidSwipeAnchor(monster) {
+        const requiredOffsets = [
+            { dx: 0, dy: 0 },
+            { dx: 1, dy: 0 },
+            { dx: 0, dy: 1 }
+        ];
+        for (let y = 0; y < monster.height; y++) {
+            for (let x = 0; x < monster.width; x++) {
+                const isAnchorValid = requiredOffsets.every(({ dx, dy }) => {
+                    const square = monster.getSquare(x + dx, y + dy);
+                    return !!square && square.filled && !square.checked;
+                });
+                if (isAnchorValid) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
     cardAllowsRoom(card) {
         return card.selectionTarget === "room" || card.selectionTarget === "room_or_monster";
     }
@@ -1041,6 +1213,21 @@ class DungeonState extends schema_1.Schema {
     }
     cardIsMonsterEach(card) {
         return card.selectionTarget === "monster_each";
+    }
+    cardCanTargetAnyOwnedMonster(card) {
+        return card?.selectionTarget === "monster_each";
+    }
+    canPlayerTargetMonster(sessionId, monster, card) {
+        if (!monster.playerOwnerId) {
+            return false;
+        }
+        if (this.cardCanTargetAnyOwnedMonster(card)) {
+            return true;
+        }
+        return monster.playerOwnerId === sessionId;
+    }
+    getEligibleMonstersForCard(sessionId, card) {
+        return this.activeMonsters.filter((monster) => this.canPlayerTargetMonster(sessionId, monster, card));
     }
     isHeroicMoveAndFightCard(card) {
         return card?.type === CardRegistry_1.HEROIC_MOVE_AND_FIGHT_CARD_ID;
@@ -1404,8 +1591,8 @@ class DungeonState extends schema_1.Schema {
                 const monster = this.activeMonsters.find((m) => m.id === sel.monsterId);
                 if (!monster)
                     continue;
-                // Ownership should have been validated at selection time, but re-check defensively.
-                if (monster.playerOwnerId !== sessionId)
+                // Targeting should have been validated at selection time, but re-check defensively.
+                if (!this.canPlayerTargetMonster(sessionId, monster, card))
                     continue;
                 const square = monster.getSquare(sel.x, sel.y);
                 if (!square)
@@ -1591,9 +1778,9 @@ class DungeonState extends schema_1.Schema {
                         this.clearSelections(sessionId);
                         return { success: false, error: "Monster not found" };
                     }
-                    if (monster.playerOwnerId !== sessionId) {
+                    if (!this.canPlayerTargetMonster(sessionId, monster, card)) {
                         this.clearSelections(sessionId);
-                        return { success: false, error: "You don't own this monster" };
+                        return { success: false, error: "This card cannot target that monster" };
                     }
                     const res = this.selectMonsterSquareForCard(sessionId, monster, x, y);
                     if (!res.success) {
@@ -1616,7 +1803,7 @@ class DungeonState extends schema_1.Schema {
             if (roomSelections.length > 0) {
                 return { success: false, error: "This card requires selecting monster squares" };
             }
-            const eligibleMonsters = this.getPlayerMonsters(sessionId).filter((m) => !m.isCompleted());
+            const eligibleMonsters = this.getEligibleMonstersForCard(sessionId, card).filter((m) => !m.isCompleted());
             if (eligibleMonsters.length === 0) {
                 // Keep behavior consistent with playCard() auto-discard in case the state changed mid-turn.
                 return this.completeCardAction(sessionId, []);
@@ -1627,14 +1814,14 @@ class DungeonState extends schema_1.Schema {
                 list.push(sel);
                 byMonster.set(sel.monsterId, list);
             }
-            // Disallow selecting squares from monsters the player doesn't own.
+            // Disallow selecting squares from monsters this card cannot target.
             for (const monsterId of byMonster.keys()) {
                 const monster = this.activeMonsters.find((m) => m.id === monsterId);
                 if (!monster) {
                     return { success: false, error: "Monster not found" };
                 }
-                if (monster.playerOwnerId !== sessionId) {
-                    return { success: false, error: "You don't own this monster" };
+                if (!this.canPlayerTargetMonster(sessionId, monster, card)) {
+                    return { success: false, error: "This card cannot target that monster" };
                 }
             }
             const maxPerMonster = card.maxSelections || 2;
@@ -1660,7 +1847,7 @@ class DungeonState extends schema_1.Schema {
             if (roomSelections.some((s) => s.roomIndex !== roomIndex)) {
                 return { success: false, error: "Move 2 must stay within a single room" };
             }
-            const eligibleMonsters = this.getPlayerMonsters(sessionId).filter((m) => !m.isCompleted());
+            const eligibleMonsters = this.getEligibleMonstersForCard(sessionId, card).filter((m) => !m.isCompleted());
             const hasEligibleMonster = eligibleMonsters.length > 0;
             if (monsterSelections.length === 0) {
                 if (hasEligibleMonster) {
@@ -1808,6 +1995,9 @@ class DungeonState extends schema_1.Schema {
         }
         if (!this.cardAllowsMonster(card)) {
             return { success: false, error: "Active card does not allow monster selection", invalidSquare: true };
+        }
+        if (!this.canPlayerTargetMonster(sessionId, monster, card)) {
+            return { success: false, error: "This card cannot target that monster", invalidSquare: true };
         }
         const selectionMode = card.selectionMode || "squares";
         if (selectionMode !== "squares" &&
@@ -2054,7 +2244,7 @@ class DungeonState extends schema_1.Schema {
         };
     }
     /**
-     * Cross off a square on a monster card owned by the player
+     * Cross off a square on a targetable monster card
      * @param sessionId Session ID of the player
      * @param monsterId ID of the monster
      * @param x X coordinate of the square
@@ -2074,10 +2264,6 @@ class DungeonState extends schema_1.Schema {
         if (!monster) {
             return { success: false, error: "Monster not found" };
         }
-        // Check if player owns the monster
-        if (monster.playerOwnerId !== sessionId) {
-            return { success: false, error: "You don't own this monster" };
-        }
         // Check if player has an active card
         const activeCardId = this.activeCardPlayers.get(sessionId);
         if (!activeCardId) {
@@ -2086,6 +2272,9 @@ class DungeonState extends schema_1.Schema {
         const activeCard = this.getActiveCard(sessionId);
         if (!activeCard) {
             return { success: false, error: "No active card for player" };
+        }
+        if (!this.canPlayerTargetMonster(sessionId, monster, activeCard)) {
+            return { success: false, error: "This card cannot target that monster" };
         }
         // Do not allow mixing monster + room selections in a single card action.
         const existing = this.parseSelections(this.selectedSquares.get(sessionId) || "");

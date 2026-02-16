@@ -2,7 +2,7 @@
 
 import { Player } from '@/types/Player';
 import { Card } from '@/types/Card';
-import { Room } from 'colyseus.js';
+import { Room } from '@colyseus/sdk';
 import { useState, useEffect } from 'react';
 import CardFaceContent from './CardFaceContent';
 
@@ -15,6 +15,7 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
   const [drawnCard, setDrawnCard] = useState<Card | null>(null);
   const [isNewCard, setIsNewCard] = useState(false);
   const [lastCardId, setLastCardId] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     if (player) {
@@ -44,9 +45,34 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
   }, [player, lastCardId]);
 
   const handleCardClick = () => {
+    if (isDragging) {
+      return;
+    }
+
     if (room && drawnCard && !drawnCard.isActive) {
       room.send('playCard', { cardId: drawnCard.id });
     }
+  };
+
+  const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!drawnCard?.isActive) {
+      event.preventDefault();
+      return;
+    }
+
+    setIsDragging(true);
+    event.dataTransfer.setData(
+      'application/json',
+      JSON.stringify({
+        type: 'active_card_discard',
+        cardId: drawnCard.id
+      })
+    );
+    event.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
   };
 
   const cardTitle = (card: Card): string => {
@@ -74,11 +100,15 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
         className={`
           relative w-[121px] h-[176px] bg-white border-2 rounded-lg card-zoom
           ${drawnCard.isActive
-            ? 'border-yellow-400 bg-yellow-100 shadow-lg shadow-yellow-400/50 cursor-not-allowed'
+            ? 'border-yellow-400 bg-yellow-100 shadow-lg shadow-yellow-400/50 cursor-grab active:cursor-grabbing'
             : 'border-gray-300 cursor-pointer hover:border-blue-400'
           }
+          ${isDragging ? 'opacity-75 scale-95' : ''}
         `}
         onClick={handleCardClick}
+        draggable={drawnCard.isActive}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         title={cardTitle(drawnCard)}
       >
         {/* Card content */}
@@ -101,7 +131,7 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
       {/* Card status text */}
       <div className="text-center text-sm text-gray-300">
         {drawnCard.isActive ? (
-          <p className="text-yellow-400">Card Active</p>
+          <p className="text-yellow-400">Card Active (drag to discard)</p>
         ) : (
           <p className="text-blue-400">Click to play</p>
         )}

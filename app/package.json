@@ -11,7 +11,8 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "colyseus.js": "^0.15.20",
+    "@colyseus/schema": "^4.0.12",
+    "@colyseus/sdk": "^0.17.33",
     "next": "14.2.3",
     "react": "^18",
     "react-dom": "^18"

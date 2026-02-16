@@ -1,7 +1,7 @@
 'use client';
 
 import { Player } from '@/types/Player';
-import { Room } from 'colyseus.js';
+import { Room } from '@colyseus/sdk';
 import { useState, useEffect } from 'react';
 
 interface CardDeckProps {

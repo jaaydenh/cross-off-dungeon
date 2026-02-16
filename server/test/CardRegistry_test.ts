@@ -69,6 +69,36 @@ describe("Card Registry", () => {
     assert.strictEqual(definition.selection.connected, true);
   });
 
+  it("should configure Cunning as a green staged card across different targets", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "cunning");
+    assert(definition, "Cunning card definition should exist");
+
+    assert.strictEqual(definition.name, "Cunning");
+    assert.strictEqual(definition.color, "green");
+    assert.strictEqual(definition.defenseSymbol, "empty");
+    assert.strictEqual(definition.selection.target, "room_or_monster");
+    assert.strictEqual(definition.selection.mode, "cunning_three_step_different_cards");
+    assert.strictEqual(definition.selection.minSelections, 6);
+    assert.strictEqual(definition.selection.maxSelections, 6);
+    assert.strictEqual(definition.selection.connected, false);
+  });
+
+  it("should create Cunning cards with green color and staged mode", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "cunning");
+    assert(definition, "Cunning card definition should exist");
+
+    const created = createCardFromDefinition(definition, "test_cunning");
+
+    assert.strictEqual(created.type, "cunning");
+    assert.strictEqual(created.name, "Cunning");
+    assert.strictEqual(created.color, "green");
+    assert.strictEqual(created.defenseSymbol, "empty");
+    assert.strictEqual(created.selectionTarget, "room_or_monster");
+    assert.strictEqual(created.selectionMode, "cunning_three_step_different_cards");
+    assert.strictEqual(created.minSelections, 6);
+    assert.strictEqual(created.maxSelections, 6);
+  });
+
   it("should create Heroic Move and Fight cards with counter defense symbol", () => {
     const definition = CARD_DEFINITIONS.find((card) => card.id === "heroic_move_two_and_fight_two");
     assert(definition, "Heroic Move and Fight card definition should exist");
@@ -82,6 +112,39 @@ describe("Card Registry", () => {
     assert.strictEqual(created.maxSelections, 4);
     assert.strictEqual(created.requiresConnected, true);
     assert.strictEqual(created.selectionTarget, "room_or_monster");
+  });
+
+  it("should configure Spread Out as a green room-only centered 3x3 card", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "spread_out_room_overlay");
+    assert(definition, "Spread Out card definition should exist");
+
+    assert.strictEqual(definition.name, "Spread Out");
+    assert.strictEqual(
+      definition.description,
+      "Choose any square in a room. Cross off that square. You may cross off any adjacent squares."
+    );
+    assert.strictEqual(definition.color, "green");
+    assert.strictEqual(definition.defenseSymbol, "empty");
+    assert.strictEqual(definition.selection.target, "room");
+    assert.strictEqual(definition.selection.mode, "centered_room_3x3");
+    assert.strictEqual(definition.selection.minSelections, 1);
+    assert.strictEqual(definition.selection.maxSelections, 9);
+  });
+
+  it("should create Spread Out cards with green color and room-only centered mode", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "spread_out_room_overlay");
+    assert(definition, "Spread Out card definition should exist");
+
+    const created = createCardFromDefinition(definition, "test_spread_out");
+
+    assert.strictEqual(created.type, "spread_out_room_overlay");
+    assert.strictEqual(created.name, "Spread Out");
+    assert.strictEqual(created.color, "green");
+    assert.strictEqual(created.defenseSymbol, "empty");
+    assert.strictEqual(created.selectionTarget, "room");
+    assert.strictEqual(created.selectionMode, "centered_room_3x3");
+    assert.strictEqual(created.minSelections, 1);
+    assert.strictEqual(created.maxSelections, 9);
   });
 
   it("should configure Combat as a red monster-only 3x3 centered blast card", () => {

@@ -1,4 +1,5 @@
 import { Room, Client } from "@colyseus/core";
+import { CloseCode } from "@colyseus/shared-types";
 import { DungeonState, type MonsterAttackPhaseResult } from "./schema/DungeonState";
 
 type DungeonLobbyMetadata = {
@@ -10,7 +11,7 @@ type DungeonLobbyMetadata = {
   maxPlayers: number;
 };
 
-export class Dungeon extends Room<DungeonState> {
+export class Dungeon extends Room<{ state: DungeonState }> {
   maxClients = 4;
   private readonly reconnectionWindowSeconds = 90;
 
@@ -217,15 +218,15 @@ export class Dungeon extends Room<DungeonState> {
         return;
       }
 
-      // Prevent ending the turn while a card is still active.
-      if (this.state.activeCardPlayers.has(client.sessionId)) {
+      const endTurnPreparation = this.state.preparePlayerForEndTurn(client.sessionId);
+      if (!endTurnPreparation.success) {
         this.sendWithFallback(
           client,
           "endTurnResult",
           {
             success: false,
             message: null,
-            error: "Cannot end turn while a card is active. Confirm or cancel it first.",
+            error: endTurnPreparation.error || "Cannot end turn",
             turnAdvanced: false,
             currentTurn: this.state.currentTurn
           },
@@ -239,6 +240,8 @@ export class Dungeon extends Room<DungeonState> {
         );
         return;
       }
+
+      const discardedActiveCard = !!endTurnPreparation.discardedActiveCard;
 
       // Validate that the player can end their turn
       if (!this.state.canPlayerPerformAction(client.sessionId, "endTurn")) {
@@ -282,9 +285,12 @@ export class Dungeon extends Room<DungeonState> {
           "endTurnResult",
           {
             success: true,
-            message: "Turn ended successfully",
+            message: discardedActiveCard
+              ? "Turn ended successfully. Unplayable active card discarded."
+              : "Turn ended successfully",
             error: null,
             turnAdvanced,
+            discardedActiveCard,
             currentTurn: this.state.currentTurn
           },
           {
@@ -292,6 +298,7 @@ export class Dungeon extends Room<DungeonState> {
             message: null,
             error: "Serialization error",
             turnAdvanced,
+            discardedActiveCard,
             currentTurn: this.state.currentTurn
           }
         );
@@ -358,6 +365,11 @@ export class Dungeon extends Room<DungeonState> {
       client.send("cancelCardActionResult", result);
     });
 
+    this.onMessage("discardCardAction", (client, message) => {
+      const result = this.state.discardCardAction(client.sessionId);
+      client.send("discardCardActionResult", result);
+    });
+
     this.onMessage("confirmCardAction", (client, message) => {
       // Mutates state; clients will see updates via state patches.
       // NOTE: Sending confirmCardActionResult has intermittently triggered msgpackr encoding
@@ -417,7 +429,9 @@ export class Dungeon extends Room<DungeonState> {
     void this.updateLobbyMetadata();
   }
 
-  async onLeave(client: Client, consented: boolean) {
+  async onLeave(client: Client, code?: number) {
+    const consented = code === CloseCode.CONSENTED;
+
     // Keep accidental refreshes/disconnects reconnectable for a short window.
     if (!consented) {
       try {

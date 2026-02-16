@@ -2,18 +2,20 @@
 
 import { Player } from '@/types/Player';
 import { Card } from '@/types/Card';
-import { Room } from 'colyseus.js';
+import { Room, getStateCallbacks } from '@colyseus/sdk';
 import { useState, useEffect } from 'react';
 import CardFaceContent from './CardFaceContent';
 
 interface DiscardPileProps {
   player: Player | null;
   room: Room | undefined;
+  onDiscardDrop?: () => void;
 }
 
-export default function DiscardPile({ player, room }: DiscardPileProps) {
+export default function DiscardPile({ player, room, onDiscardDrop }: DiscardPileProps) {
   const [discardCount, setDiscardCount] = useState(0);
   const [topCard, setTopCard] = useState<Card | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const cardTitle = (card: Card): string => {
     const name = (card.name || '').trim() || 'Heroic';
@@ -31,6 +33,12 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
       } else {
         setTopCard(null);
       }
+
+      if (!room) {
+        return;
+      }
+
+      const $ = getStateCallbacks(room);
 
       // Listen for changes to the discard pile
       const onDiscardPileAdd = (card: Card, index: number) => {
@@ -50,8 +58,8 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
       };
 
       // Set up listeners - these return cleanup functions
-      const removeAddListener = player.discardPile.onAdd(onDiscardPileAdd);
-      const removeRemoveListener = player.discardPile.onRemove(onDiscardPileRemove);
+      const removeAddListener = $(player).discardPile.onAdd(onDiscardPileAdd);
+      const removeRemoveListener = $(player).discardPile.onRemove(onDiscardPileRemove);
 
       // Cleanup function to remove listeners
       return () => {
@@ -59,7 +67,7 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
         removeRemoveListener();
       };
     }
-  }, [player]);
+  }, [player, room]);
 
   if (!player) {
     return (
@@ -68,6 +76,44 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
       </div>
     );
   }
+
+  const hasActiveCard = player.drawnCards.some((card) => card.isActive);
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!hasActiveCard) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(false);
+
+    if (!room || !hasActiveCard) {
+      return;
+    }
+
+    try {
+      const data = JSON.parse(event.dataTransfer.getData('application/json') || '{}');
+      if (data.type === 'active_card_discard') {
+        room.send('discardCardAction', {});
+        onDiscardDrop?.();
+      }
+    } catch (error) {
+      console.error('Error handling discard drop:', error);
+    }
+  };
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -81,7 +127,11 @@ export default function DiscardPile({ player, room }: DiscardPileProps) {
             ? 'bg-gray-700 border-gray-600 opacity-50'
             : 'bg-white border-gray-300 card-zoom'
           }
+          ${isDragOver ? 'ring-2 ring-amber-400 border-amber-400' : ''}
         `}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         title={topCard ? cardTitle(topCard) : undefined}
       >
         {topCard ? (

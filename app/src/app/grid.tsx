@@ -10,6 +10,8 @@ interface GridProps {
   roomIndex: number;
   cellSizePx?: number;
   horizontalPairPreviewEnabled?: boolean;
+  cunningStepPreviewLength?: 1 | 2 | 3 | null;
+  spreadOutPreviewEnabled?: boolean;
 }
 
 interface ExitHighlightInfo {
@@ -26,7 +28,9 @@ const Grid: FC<GridProps> = ({
   selectedSquares,
   roomIndex,
   cellSizePx = 42,
-  horizontalPairPreviewEnabled = false
+  horizontalPairPreviewEnabled = false,
+  cunningStepPreviewLength = null,
+  spreadOutPreviewEnabled = false
 }) => {
   const [hoveredExit, setHoveredExit] = useState<number | null>(null);
   const [hoveredSquare, setHoveredSquare] = useState<{ x: number; y: number } | null>(null);
@@ -143,6 +147,68 @@ const Grid: FC<GridProps> = ({
   const previewOverlayCells = previewCells.cells.filter(
     (pos) => pos.x >= 0 && pos.x < room.width && pos.y >= 0 && pos.y < room.height
   );
+  const cunningPreview = (() => {
+    if (!cunningStepPreviewLength || !hoveredSquare) {
+      return { cells: [] as Array<{ x: number; y: number }>, invalid: false };
+    }
+
+    const cells: Array<{ x: number; y: number }> = [];
+    let invalid = false;
+
+    for (let offset = 0; offset < cunningStepPreviewLength; offset++) {
+      const x = hoveredSquare.x + offset;
+      const y = hoveredSquare.y;
+      const square = getSquareAt(x, y);
+      if (!square || square.wall || square.checked) {
+        invalid = true;
+      }
+      cells.push({ x, y });
+    }
+
+    return { cells, invalid };
+  })();
+  const cunningPreviewOverlayCells = cunningPreview.cells.filter(
+    (pos) => pos.x >= 0 && pos.x < room.width && pos.y >= 0 && pos.y < room.height
+  );
+  const spreadOutPreviewCells = (() => {
+    if (!spreadOutPreviewEnabled || !hoveredSquare) {
+      return [] as Array<{
+        x: number;
+        y: number;
+        inBounds: boolean;
+        valid: boolean;
+        isCenter: boolean;
+      }>;
+    }
+
+    const cells: Array<{
+      x: number;
+      y: number;
+      inBounds: boolean;
+      valid: boolean;
+      isCenter: boolean;
+    }> = [];
+
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = hoveredSquare.x + dx;
+        const y = hoveredSquare.y + dy;
+        const inBounds = x >= 0 && x < room.width && y >= 0 && y < room.height;
+        const square = getSquareAt(x, y);
+        const valid = !!square && !square.wall && !square.checked;
+
+        cells.push({
+          x,
+          y,
+          inBounds,
+          valid,
+          isCenter: dx === 0 && dy === 0
+        });
+      }
+    }
+
+    return cells;
+  })();
 
   // Check if a square is adjacent to any exit
   const getSquareAdjacentToExitInfo = useCallback((x: number, y: number) => {
@@ -205,11 +271,15 @@ const Grid: FC<GridProps> = ({
               square={square}
               onClick={handleSquareClick}
               onHover={
-                horizontalPairPreviewEnabled
+                horizontalPairPreviewEnabled || spreadOutPreviewEnabled || !!cunningStepPreviewLength
                   ? (hoverX, hoverY) => setHoveredSquare({ x: hoverX, y: hoverY })
                   : undefined
               }
-              onHoverEnd={horizontalPairPreviewEnabled ? () => setHoveredSquare(null) : undefined}
+              onHoverEnd={
+                horizontalPairPreviewEnabled || spreadOutPreviewEnabled || !!cunningStepPreviewLength
+                  ? () => setHoveredSquare(null)
+                  : undefined
+              }
               sizePx={cellSizePx}
               exitInfo={exitInfo}
               isAdjacentToExit={adjacentInfo.isAdjacentToExit}
@@ -257,6 +327,54 @@ const Grid: FC<GridProps> = ({
               }}
             />
           ))}
+        </div>
+      )}
+      {!!cunningStepPreviewLength && cunningPreviewOverlayCells.length > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-30">
+          {cunningPreviewOverlayCells.map((cell) => (
+            <div
+              key={`cunning-preview-${cell.x}-${cell.y}`}
+              className={`absolute border-2 ${
+                cunningPreview.invalid
+                  ? 'bg-red-500/45 border-red-300'
+                  : 'bg-green-500/45 border-green-300'
+              }`}
+              style={{
+                left: `${cell.x * cellSizePx}px`,
+                top: `${cell.y * cellSizePx}px`,
+                width: `${cellSizePx}px`,
+                height: `${cellSizePx}px`,
+                boxSizing: 'border-box'
+              }}
+            />
+          ))}
+        </div>
+      )}
+      {spreadOutPreviewEnabled && spreadOutPreviewCells.length > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-30">
+          {spreadOutPreviewCells
+            .filter((cell) => cell.inBounds)
+            .map((cell) => (
+              <div
+                key={`spread-out-preview-${cell.x}-${cell.y}`}
+                className={`absolute border ${
+                  cell.isCenter
+                    ? cell.valid
+                      ? 'bg-green-600/55 border-green-300'
+                      : 'bg-red-500/35 border-dashed border-red-300/80'
+                    : cell.valid
+                      ? 'bg-green-300/45 border-dashed border-green-400'
+                      : 'bg-stone-500/10 border-dashed border-stone-400/60'
+                }`}
+                style={{
+                  left: `${cell.x * cellSizePx}px`,
+                  top: `${cell.y * cellSizePx}px`,
+                  width: `${cellSizePx}px`,
+                  height: `${cellSizePx}px`,
+                  boxSizing: 'border-box'
+                }}
+              />
+            ))}
         </div>
       )}
     </div>

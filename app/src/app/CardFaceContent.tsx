@@ -5,6 +5,8 @@ import CardFaceText from './CardFaceText';
 const DOUBLE_SWEEP_CARD_TYPE = 'cross_two_horizontal_then_two_horizontal';
 const COMBAT_CARD_TYPE = 'combat_fight_three_diagonal_or_move_three';
 const SWIPE_CARD_TYPE = 'swipe_fight_l_overlay';
+const CUNNING_CARD_TYPE = 'cunning';
+const SPREAD_OUT_CARD_TYPE = 'spread_out_room_overlay';
 
 type CardFaceContentProps = {
   type: string;
@@ -79,6 +81,57 @@ function SwipeVisual() {
   );
 }
 
+function CunningVisual() {
+  const blockClass = 'h-5 w-5 border border-green-700 bg-green-400/80';
+
+  return (
+    <div className="h-full w-full flex flex-col items-center justify-between px-2 py-2 text-black">
+      <div className="flex flex-col items-center gap-1">
+        <div className={blockClass} />
+        <div className="text-[10px] font-semibold leading-none">then</div>
+        <div className="flex">
+          <div className={blockClass} />
+          <div className={blockClass} />
+        </div>
+        <div className="text-[10px] font-semibold leading-none">then</div>
+        <div className="flex">
+          <div className={blockClass} />
+          <div className={blockClass} />
+          <div className={blockClass} />
+        </div>
+      </div>
+      <div className="text-center text-[8px] italic leading-tight text-gray-700">
+        Each step must be on a different card
+      </div>
+    </div>
+  );
+}
+
+function SpreadOutVisual() {
+  const cellClass = 'h-5 w-5 border border-dashed border-green-500 bg-green-200/60';
+
+  return (
+    <div className="h-full w-full flex flex-col items-center justify-between px-2 py-2 text-black">
+      <div className="grid grid-cols-3 gap-0 mt-1">
+        {[0, 1, 2].map((row) =>
+          [0, 1, 2].map((col) => {
+            const isCenter = row === 1 && col === 1;
+            return (
+              <div
+                key={`spread-out-cell-${row}-${col}`}
+                className={`${cellClass} ${isCenter ? 'bg-green-500/75 border-green-600' : ''}`}
+              />
+            );
+          })
+        )}
+      </div>
+      <div className="text-center text-[8px] italic leading-tight text-gray-700">
+        Center required. Adjacent squares optional.
+      </div>
+    </div>
+  );
+}
+
 const getCardColorTheme = (color: string): {
   fallbackTitle: string;
   headerClasses: string;
@@ -117,6 +170,8 @@ export default function CardFaceContent({
   const isDoubleSweep = type === DOUBLE_SWEEP_CARD_TYPE;
   const isCombatBlast = type === COMBAT_CARD_TYPE;
   const isSwipe = type === SWIPE_CARD_TYPE;
+  const isCunning = type === CUNNING_CARD_TYPE;
+  const isSpreadOut = type === SPREAD_OUT_CARD_TYPE;
   const hasDefenseAbility = defenseSymbol === 'block' || defenseSymbol === 'counter';
   const defenseIcon = defenseSymbol === 'block' ? '🛡️' : '⚔️';
   const defenseLabel = defenseSymbol === 'block' ? 'Block' : 'Counter Attack';
@@ -135,6 +190,10 @@ export default function CardFaceContent({
           <CombatBlastVisual />
         ) : isSwipe ? (
           <SwipeVisual />
+        ) : isCunning ? (
+          <CunningVisual />
+        ) : isSpreadOut ? (
+          <SpreadOutVisual />
         ) : (
           <CardFaceText text={description} className="text-black" maxFontPx={11} minFontPx={7} />
         )}
