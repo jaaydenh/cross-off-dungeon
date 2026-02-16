@@ -78,6 +78,30 @@ describe("Monster Attack Phase", () => {
     assert.strictEqual(player.discardPile.length, discardBefore);
   });
 
+  it("should return the defense card to deck when symbol is dodge", () => {
+    const state = createSinglePlayerState();
+    const player = state.players.get("player_1")!;
+    const monster = state.activeMonsters[0];
+
+    const claim = state.claimMonster("player_1", monster.id);
+    assert.strictEqual(claim.success, true);
+
+    player.deck[0].defenseSymbol = "dodge";
+    const deckBefore = player.deck.length;
+    const discardBefore = player.discardPile.length;
+
+    completeSinglePlayerTurn(state, "player_1");
+
+    const attackPhase = state.consumePendingMonsterAttackPhaseResult();
+    assert(attackPhase);
+    assert.strictEqual(attackPhase.totalAttacks, 1);
+    assert.strictEqual(attackPhase.attacks[0].outcome, "returned_to_deck");
+    assert.strictEqual(attackPhase.attacks[0].card?.defenseSymbol, "dodge");
+
+    assert.strictEqual(player.deck.length, deckBefore);
+    assert.strictEqual(player.discardPile.length, discardBefore);
+  });
+
   it("should counter-attack one random monster square and return card when symbol is counter", () => {
     const state = createSinglePlayerState();
     const player = state.players.get("player_1")!;

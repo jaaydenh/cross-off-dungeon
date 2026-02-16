@@ -22,6 +22,7 @@ export class Player extends Schema {
   @type([Card]) discardPile = new ArraySchema<Card>();
   @type("string") turnStatus: "not_started" | "playing_turn" | "turn_complete" = "not_started";
   @type("boolean") hasDrawnCard: boolean = false;
+  @type("number") xp: number = 0;
 
   private initializeDeck(): void {
     const cards: Card[] = createStarterDeck();

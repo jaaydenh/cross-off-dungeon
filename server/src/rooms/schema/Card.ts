@@ -1,6 +1,6 @@
 import { Schema, type } from "@colyseus/schema";
 
-export type CardDefenseSymbol = "empty" | "block" | "counter";
+export type CardDefenseSymbol = "empty" | "block" | "counter" | "dodge";
 export type CardColor = "clear" | "red" | "blue" | "green";
 
 export class Card extends Schema {
@@ -49,7 +49,7 @@ export class Card extends Schema {
   @type("boolean") requiresConnected: boolean = false;
   @type("boolean") requiresRoomStartAdjacency: boolean = false;
   @type("boolean") requiresMonsterStartAdjacency: boolean = false;
-  @type("string") defenseSymbol: CardDefenseSymbol = "empty"; // empty, block, counter
+  @type("string") defenseSymbol: CardDefenseSymbol = "empty"; // empty, block, counter, dodge
   @type("number") drawCardsOnResolve: number = 0;
   @type("string") color: CardColor = "clear";
   @type("boolean") isActive: boolean = false;

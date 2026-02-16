@@ -1,4 +1,4 @@
-export type CardDefenseSymbol = 'empty' | 'block' | 'counter';
+export type CardDefenseSymbol = 'empty' | 'block' | 'counter' | 'dodge';
 
 export type MonsterAttackOutcome =
   | 'discarded'
@@ -15,6 +15,25 @@ export type MonsterAttackCardSnapshot = {
   color: 'clear' | 'red' | 'blue' | 'green';
 };
 
+export type MonsterAttackMotionPath = {
+  anchorX: number;
+  anchorY: number;
+  stackOrder: number;
+  fromDx: number;
+  fromDy: number;
+  midDx: number;
+  midDy: number;
+  startScale: number;
+  midScale: number;
+  endScale: number;
+  startScaleX?: number;
+  startScaleY?: number;
+  midScaleX?: number;
+  midScaleY?: number;
+  endScaleX?: number;
+  endScaleY?: number;
+};
+
 export type MonsterAttackAnimation = {
   id: string;
   monsterId: string;
@@ -23,4 +42,5 @@ export type MonsterAttackAnimation = {
   outcome: MonsterAttackOutcome;
   card?: MonsterAttackCardSnapshot;
   counterSquare?: { x: number; y: number } | null;
+  motionPath?: MonsterAttackMotionPath;
 };

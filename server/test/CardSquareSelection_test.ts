@@ -433,6 +433,85 @@ describe("Card-Based Square Selection System", () => {
       assert.strictEqual(confirm.completed, true, "Should complete card action");
       assert.strictEqual(monster.getSquare(2, 2)?.checked, true, "Selected monster square should be crossed");
     });
+
+    it("should award XP when a monster is completed", async () => {
+      const room = await colyseus.createRoom("dungeon", {});
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
+
+      const seededPlayer = room.state.players.get(client.sessionId)!;
+      seededPlayer.deck.clear();
+      seededPlayer.deck.push(makeMonsterAnywhereCard("card_test_monster_xp"));
+
+      const monster = new MonsterCard("monster_test_xp", "goblin", 3, 2, 1);
+      for (let y = 0; y < monster.height; y++) {
+        for (let x = 0; x < monster.width; x++) {
+          monster.setSquareFilled(x, y, true);
+        }
+      }
+      monster.playerOwnerId = client.sessionId;
+      monster.connectedToRoomIndex = -1;
+
+      for (let y = 0; y < monster.height; y++) {
+        for (let x = 0; x < monster.width; x++) {
+          if (x === 2 && y === 1) {
+            continue;
+          }
+          const square = monster.getSquare(x, y);
+          if (square) {
+            square.checked = true;
+          }
+        }
+      }
+
+      room.state.activeMonsters.push(monster);
+
+      room.send(client, "drawCard", {});
+      await room.waitForNextPatch();
+
+      const player = room.state.players.get(client.sessionId)!;
+      const xpBefore = player.xp;
+      const cardId = player.drawnCards[0].id;
+
+      room.send(client, "playCard", { cardId });
+      await room.waitForNextPatch();
+
+      const selection = room.state.crossMonsterSquare(client.sessionId, monster.id, 2, 1);
+      assert.strictEqual(selection.success, true, "Should select the final monster square");
+
+      const confirm = room.state.confirmCardAction(client.sessionId);
+      assert.strictEqual(confirm.success, true, "Should confirm monster completion");
+      assert.strictEqual(monster.isCompleted(), true, "Monster should be completed");
+      assert.strictEqual(player.xp, xpBefore + 2, "Completing a 6-square monster should award 2 XP");
+    });
+
+    it("should only allow debug monster completion when debug mode is enabled", async () => {
+      const room = await colyseus.createRoom("dungeon", {});
+      const client = await colyseus.connectTo(room, { name: "TestPlayer" });
+
+      const player = room.state.players.get(client.sessionId)!;
+
+      const monster = new MonsterCard("monster_debug_complete", "rat", 2, 2, 1);
+      for (let y = 0; y < monster.height; y++) {
+        for (let x = 0; x < monster.width; x++) {
+          monster.setSquareFilled(x, y, true);
+        }
+      }
+      monster.playerOwnerId = client.sessionId;
+      monster.connectedToRoomIndex = -1;
+      room.state.activeMonsters.push(monster);
+
+      const denied = room.state.debugCompleteMonster(client.sessionId, monster.id);
+      assert.strictEqual(denied.success, false, "Debug completion should fail when debug mode is disabled");
+      assert.strictEqual(monster.isCompleted(), false, "Monster should remain incomplete");
+
+      room.state.setDebugMode(true);
+      const xpBefore = player.xp;
+      const completed = room.state.debugCompleteMonster(client.sessionId, monster.id);
+
+      assert.strictEqual(completed.success, true, "Debug completion should succeed when debug mode is enabled");
+      assert.strictEqual(monster.isCompleted(), true, "Monster should be fully completed");
+      assert.strictEqual(player.xp, xpBefore + 1, "Completing a 4-square monster should award 1 XP");
+    });
   });
 
   describe("Card Action Completion", () => {

@@ -6,6 +6,8 @@ import { CARD_LIBRARY_ENTRIES } from './cardLibraryData';
 
 type CardLibraryScreenProps = {
   isOpen: boolean;
+  debugMode: boolean;
+  onToggleDebugMode: () => void;
   onClose: () => void;
 };
 
@@ -26,7 +28,12 @@ const formatSelectionCount = (minSelections: number, maxSelections: number): str
   return `${minSelections}-${maxSelections}`;
 };
 
-export default function CardLibraryScreen({ isOpen, onClose }: CardLibraryScreenProps) {
+export default function CardLibraryScreen({
+  isOpen,
+  debugMode,
+  onToggleDebugMode,
+  onClose
+}: CardLibraryScreenProps) {
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -63,6 +70,28 @@ export default function CardLibraryScreen({ isOpen, onClose }: CardLibraryScreen
           >
             Close
           </button>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-slate-700 bg-slate-900 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-100">Debug Mode</div>
+              <p className="text-xs text-slate-300">
+                Enables debug monster controls (instant complete).
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onToggleDebugMode}
+              className={`rounded px-3 py-2 text-xs font-bold uppercase tracking-wide ${
+                debugMode
+                  ? 'bg-rose-600 text-white hover:bg-rose-500'
+                  : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
+              }`}
+            >
+              {debugMode ? 'Disable Debug' : 'Enable Debug'}
+            </button>
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-6 pr-1">

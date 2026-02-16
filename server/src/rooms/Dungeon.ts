@@ -71,15 +71,17 @@ export class Dungeon extends Room<{ state: DungeonState }> {
         type: string;
         name: string;
         description: string;
-        defenseSymbol: "empty" | "block" | "counter";
+        defenseSymbol: "empty" | "block" | "counter" | "dodge";
         color: "clear" | "red" | "blue" | "green";
       } | null;
       counterSquare: { x: number; y: number } | null;
     }>;
   } {
     const attacks = (Array.isArray(payload.attacks) ? payload.attacks : []).map((attack) => {
-      const cardDefenseSymbol: "empty" | "block" | "counter" =
-        attack.card?.defenseSymbol === "block" || attack.card?.defenseSymbol === "counter"
+      const cardDefenseSymbol: "empty" | "block" | "counter" | "dodge" =
+        attack.card?.defenseSymbol === "block" ||
+        attack.card?.defenseSymbol === "counter" ||
+        attack.card?.defenseSymbol === "dodge"
           ? attack.card.defenseSymbol
           : "empty";
 
@@ -88,7 +90,7 @@ export class Dungeon extends Room<{ state: DungeonState }> {
         type: string;
         name: string;
         description: string;
-        defenseSymbol: "empty" | "block" | "counter";
+        defenseSymbol: "empty" | "block" | "counter" | "dodge";
         color: "clear" | "red" | "blue" | "green";
       } | null = attack.card
         ? {
@@ -375,6 +377,14 @@ export class Dungeon extends Room<{ state: DungeonState }> {
       // NOTE: Sending confirmCardActionResult has intermittently triggered msgpackr encoding
       // RangeErrors in this project, so we intentionally do not respond here.
       this.state.confirmCardAction(client.sessionId, message);
+    });
+
+    this.onMessage("setDebugMode", (client, message) => {
+      this.state.setDebugMode(!!message?.enabled);
+    });
+
+    this.onMessage("debugCompleteMonster", (client, message) => {
+      this.state.debugCompleteMonster(client.sessionId, message?.monsterId);
     });
 
     // Monster-related message handlers

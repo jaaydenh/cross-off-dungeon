@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CARD_DEFINITIONS = exports.STARTER_DECK_SIZE = exports.SWIPE_CARD_ID = exports.COMBAT_CARD_ID = exports.HEROIC_MOVE_AND_FIGHT_CARD_ID = void 0;
+exports.CARD_DEFINITIONS = exports.STARTER_DECK_SIZE = exports.QUICK_STEP_CARD_ID = exports.CUNNING_CARD_ID = exports.SPREAD_OUT_CARD_ID = exports.SWIPE_CARD_ID = exports.COMBAT_CARD_ID = exports.HEROIC_MOVE_AND_FIGHT_CARD_ID = void 0;
 exports.getCardDefinition = getCardDefinition;
 exports.createCardFromDefinition = createCardFromDefinition;
 exports.createStarterDeck = createStarterDeck;
@@ -8,6 +8,9 @@ const Card_1 = require("../schema/Card");
 exports.HEROIC_MOVE_AND_FIGHT_CARD_ID = "heroic_move_two_and_fight_two";
 exports.COMBAT_CARD_ID = "combat_fight_three_diagonal_or_move_three";
 exports.SWIPE_CARD_ID = "swipe_fight_l_overlay";
+exports.SPREAD_OUT_CARD_ID = "spread_out_room_overlay";
+exports.CUNNING_CARD_ID = "cunning";
+exports.QUICK_STEP_CARD_ID = "quick_step";
 exports.STARTER_DECK_SIZE = 10;
 exports.CARD_DEFINITIONS = [
     {
@@ -87,6 +90,22 @@ exports.CARD_DEFINITIONS = [
         }
     },
     {
+        id: exports.CUNNING_CARD_ID,
+        name: "Cunning",
+        description: "Cross 1 square, then 2 horizontal squares, then 3 horizontal squares. Each step must target a different room or monster.",
+        color: "green",
+        defenseSymbol: "empty",
+        selection: {
+            target: "room_or_monster",
+            mode: "cunning_three_step_different_cards",
+            minSelections: 6,
+            maxSelections: 6,
+            connected: false,
+            requireRoomStartAdjacency: false,
+            requireMonsterStartAdjacency: false
+        }
+    },
+    {
         id: exports.HEROIC_MOVE_AND_FIGHT_CARD_ID,
         name: "Heroic Move and Fight",
         description: "Move 2 and fight 2",
@@ -98,6 +117,22 @@ exports.CARD_DEFINITIONS = [
             minSelections: 4,
             maxSelections: 4,
             connected: true,
+            requireRoomStartAdjacency: false,
+            requireMonsterStartAdjacency: false
+        }
+    },
+    {
+        id: exports.SPREAD_OUT_CARD_ID,
+        name: "Spread Out",
+        description: "Choose any square in a room. Cross off that square. You may cross off any adjacent squares.",
+        color: "green",
+        defenseSymbol: "empty",
+        selection: {
+            target: "room",
+            mode: "centered_room_3x3",
+            minSelections: 1,
+            maxSelections: 9,
+            connected: false,
             requireRoomStartAdjacency: false,
             requireMonsterStartAdjacency: false
         }
@@ -146,6 +181,22 @@ exports.CARD_DEFINITIONS = [
             mode: "squares",
             minSelections: 2,
             maxSelections: 2,
+            connected: true,
+            requireRoomStartAdjacency: true
+        }
+    },
+    {
+        id: exports.QUICK_STEP_CARD_ID,
+        name: "Quick Step",
+        description: "Move 1 then draw another card",
+        color: "green",
+        defenseSymbol: "dodge",
+        drawCardsOnResolve: 1,
+        selection: {
+            target: "room",
+            mode: "squares",
+            minSelections: 1,
+            maxSelections: 1,
             connected: true,
             requireRoomStartAdjacency: true
         }

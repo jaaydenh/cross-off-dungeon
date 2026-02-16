@@ -16,7 +16,7 @@ class Card extends schema_1.Schema {
         this.requiresConnected = false;
         this.requiresRoomStartAdjacency = false;
         this.requiresMonsterStartAdjacency = false;
-        this.defenseSymbol = "empty"; // empty, block, counter
+        this.defenseSymbol = "empty"; // empty, block, counter, dodge
         this.drawCardsOnResolve = 0;
         this.color = "clear";
         this.isActive = false;

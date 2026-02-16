@@ -2,7 +2,8 @@
 
 import { MonsterCard as MonsterCardType } from '@/types/MonsterCard';
 import { MonsterSquare } from '@/types/MonsterSquare';
-import { useCallback, useMemo, useState } from 'react';
+import { CSSProperties, useCallback, useMemo, useState } from 'react';
+import Image from 'next/image';
 import CardFaceContent from './CardFaceContent';
 import { MonsterAttackAnimation } from '@/types/MonsterAttack';
 
@@ -24,7 +25,17 @@ interface MonsterCardProps {
   swipePreviewEnabled?: boolean;
   attackAnimations?: MonsterAttackAnimation[];
   disableHoverZoom?: boolean;
+  completionFxPhase?: 'skull' | 'fade' | null;
+  debugModeEnabled?: boolean;
+  onDebugComplete?: (monsterId: string) => void;
 }
+
+const ATTACK_CARD_WIDTH_PX = 121;
+const ATTACK_CARD_BASE_TOP_OFFSET_PX = -128;
+const ATTACK_CARD_STACK_OFFSET_PX = 10;
+const ATTACK_STAGGER_MS = 340;
+const ATTACK_OUTCOME_DELAY_MS = 520;
+const ATTACK_END_SCALE_RATIO = 0.8;
 
 export default function MonsterCard({
   monster,
@@ -43,7 +54,10 @@ export default function MonsterCard({
   combatBlastPreviewEnabled = false,
   swipePreviewEnabled = false,
   attackAnimations = [],
-  disableHoverZoom = false
+  disableHoverZoom = false,
+  completionFxPhase = null,
+  debugModeEnabled = false,
+  onDebugComplete
 }: MonsterCardProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [hoveredSquare, setHoveredSquare] = useState<{ x: number; y: number } | null>(null);
@@ -60,6 +74,13 @@ export default function MonsterCard({
   const totalSquares = monster.squares.filter((square) => square.filled).length;
   const crossedSquares = monster.squares.filter((square) => square.filled && square.checked).length;
   const experienceValue = Math.max(1, Math.ceil(totalSquares / 5));
+  const isCompletionAnimating = completionFxPhase === 'skull' || completionFxPhase === 'fade';
+  const completionCardClass =
+    completionFxPhase === 'fade'
+      ? 'monster-card-completion-fade'
+      : completionFxPhase === 'skull'
+        ? 'monster-card-completion-skull'
+        : '';
 
   const isSelectedSquare = (x: number, y: number): boolean =>
     selectedSquares.some((p) => p.x === x && p.y === y);
@@ -232,7 +253,7 @@ export default function MonsterCard({
       case 'discarded':
         return 'Lost';
       case 'returned_to_deck':
-        return 'Blocked';
+        return attack.card?.defenseSymbol === 'dodge' ? 'Dodged' : 'Blocked';
       case 'counter_attack':
         return 'Counter!';
       case 'no_card_available':
@@ -258,6 +279,10 @@ export default function MonsterCard({
   };
 
   const handleSquareClick = (x: number, y: number) => {
+    if (isCompletionAnimating) {
+      return;
+    }
+
     if (canSelect && onSquareClick) {
       if (combatBlastPreviewEnabled || swipePreviewEnabled) {
         onSquareClick(x, y);
@@ -301,13 +326,45 @@ export default function MonsterCard({
     }
   };
 
+  const handleDebugCompleteClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!debugModeEnabled || !onDebugComplete) {
+      return;
+    }
+    onDebugComplete(monster.id);
+  };
+
+  const getAttackCardStyle = (attack: MonsterAttackAnimation): CSSProperties => {
+    const attackNumber = attack.attackNumber || 1;
+    const animationDelayMs = Math.max(0, attackNumber - 1) * ATTACK_STAGGER_MS;
+    const motionPath = attack.motionPath;
+    const fallbackScale = 121 / ATTACK_CARD_WIDTH_PX;
+    const fallbackEndScale = fallbackScale * ATTACK_END_SCALE_RATIO;
+
+    return {
+      animationDelay: `${animationDelayMs}ms`,
+      ['--attack-from-dx' as any]: `${motionPath?.fromDx ?? -220}px`,
+      ['--attack-from-dy' as any]: `${motionPath?.fromDy ?? 120}px`,
+      ['--attack-mid-dx' as any]: `${motionPath?.midDx ?? -16}px`,
+      ['--attack-mid-dy' as any]: `${motionPath?.midDy ?? 10}px`,
+      ['--attack-start-scale' as any]: `${motionPath?.startScale ?? fallbackScale}`,
+      ['--attack-mid-scale' as any]: `${motionPath?.midScale ?? fallbackEndScale * 1.02}`,
+      ['--attack-end-scale' as any]: `${motionPath?.endScale ?? fallbackEndScale}`
+    };
+  };
+
+  const getAttackOutcomeStyle = (attackNumber: number): CSSProperties => ({
+    animationDelay: `${Math.max(0, attackNumber - 1) * ATTACK_STAGGER_MS + ATTACK_OUTCOME_DELAY_MS}ms`
+  });
+
   return (
     <div
       className={`monster-card relative flex flex-col rounded-lg border-2 border-stone-500 bg-stone-200 text-black transition-all duration-200 transform-gpu ${hoverZoomClasses} ${
         canDrag ? 'cursor-grab hover:shadow-lg' : ''
       } ${
         isDragging ? 'rotate-3 shadow-2xl shadow-blue-500/50 scale-105 z-50' : ''
-      } ${className}`}
+      } ${completionCardClass} ${isCompletionAnimating ? 'pointer-events-none' : ''} ${className}`}
       data-monster-card-id={monster.id}
       style={{
         padding: `${cardPadding}px`,
@@ -322,10 +379,38 @@ export default function MonsterCard({
             }
           : {})
       }}
-      draggable={canDrag}
+      draggable={canDrag && !isCompletionAnimating}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
+      {debugModeEnabled && (
+        <button
+          type="button"
+          onClick={handleDebugCompleteClick}
+          className="absolute right-1 top-1 z-[85] rounded border border-rose-300 bg-rose-700/95 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-white hover:bg-rose-600"
+          title="Debug: instantly complete this monster"
+        >
+          Debug Complete
+        </button>
+      )}
+
+      {isCompletionAnimating && (
+        <div
+          className={`pointer-events-none absolute inset-0 z-[70] flex items-center justify-center ${
+            completionFxPhase === 'fade' ? 'monster-completion-overlay-fade' : 'monster-completion-overlay'
+          }`}
+        >
+          <Image
+            src="/skull.svg"
+            alt="Monster defeated"
+            className={`h-20 w-20 ${completionFxPhase === 'fade' ? 'monster-completion-skull-fade' : 'monster-completion-skull-pop'}`}
+            width={80}
+            height={80}
+            draggable={false}
+          />
+        </div>
+      )}
+
       <div className={`border-b border-stone-500 pb-1 ${isInRoom ? 'mb-1' : 'mb-2'}`}>
         <div className="flex items-center justify-between gap-2">
           <div className="h-6 w-2 rounded-sm bg-red-600" />
@@ -539,46 +624,49 @@ export default function MonsterCard({
 
       {attackAnimations.length > 0 && (
         <div className="pointer-events-none absolute left-1/2 top-0 z-50 -translate-x-1/2">
-          {attackAnimations.map((attack, index) => (
-            <div
-              key={attack.id}
-              className="absolute left-1/2 -translate-x-1/2"
-              style={{
-                top: `${-114 - index * 10}px`
-              }}
-            >
-              {attack.card ? (
-                <div
-                  className="monster-attack-card-fly relative h-24 w-16 rounded border-2 border-gray-300 bg-white shadow-lg"
-                  style={{ animationDelay: `${Math.max(0, attack.attackNumber - 1) * 280}ms` }}
-                  title={`${(attack.card.name || '').trim() || 'Heroic'}: ${attack.card.description}`}
-                >
-                  <CardFaceContent
-                    type={attack.card.type}
-                    name={attack.card.name}
-                    description={attack.card.description}
-                    defenseSymbol={attack.card.defenseSymbol}
-                    color={attack.card.color}
-                  />
-                </div>
-              ) : (
-                <div
-                  className="monster-attack-card-fly flex h-24 w-16 items-center justify-center rounded border-2 border-gray-500 bg-slate-800 text-[10px] font-semibold text-gray-200 shadow-lg"
-                  style={{ animationDelay: `${Math.max(0, attack.attackNumber - 1) * 280}ms` }}
-                >
-                  No card
-                </div>
-              )}
+          {attackAnimations.map((attack, index) => {
+            const stackOrder = attack.motionPath?.stackOrder ?? index;
+            return (
               <div
-                className={`monster-attack-outcome-pop mt-1 rounded px-2 py-1 text-center text-[10px] font-semibold shadow ${getAttackOutcomeClass(
-                  attack
-                )}`}
-                style={{ animationDelay: `${Math.max(0, attack.attackNumber - 1) * 280 + 420}ms` }}
+                key={attack.id}
+                className="absolute left-1/2 -translate-x-1/2"
+                style={{
+                  top: `${ATTACK_CARD_BASE_TOP_OFFSET_PX - stackOrder * ATTACK_CARD_STACK_OFFSET_PX}px`
+                }}
               >
-                {getAttackOutcomeLabel(attack)}
+                {attack.card ? (
+                  <div
+                    className="monster-attack-card-fly relative w-[121px] h-[176px] rounded-lg border-2 border-gray-300 bg-white"
+                    style={getAttackCardStyle(attack)}
+                    title={`${(attack.card.name || '').trim() || 'Heroic'}: ${attack.card.description}`}
+                  >
+                    <CardFaceContent
+                      type={attack.card.type}
+                      name={attack.card.name}
+                      description={attack.card.description}
+                      defenseSymbol={attack.card.defenseSymbol}
+                      color={attack.card.color}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className="monster-attack-card-fly flex w-[121px] h-[176px] items-center justify-center rounded-lg border-2 border-gray-500 bg-slate-800 text-[10px] font-semibold text-gray-200"
+                    style={getAttackCardStyle(attack)}
+                  >
+                    No card
+                  </div>
+                )}
+                <div
+                  className={`monster-attack-outcome-pop mt-1 rounded px-2 py-1 text-center text-[10px] font-semibold shadow ${getAttackOutcomeClass(
+                    attack
+                  )}`}
+                  style={getAttackOutcomeStyle(attack.attackNumber)}
+                >
+                  {getAttackOutcomeLabel(attack)}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

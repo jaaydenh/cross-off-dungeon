@@ -28,6 +28,7 @@ export class DungeonState extends Schema {
     @type("number") public currentDay!: number;
     @type("number") public maxDays!: number;
     @type("string") public gameStatus!: string;
+    @type("boolean") public debugMode!: boolean;
     @type("number") public roomDeckSize!: number;
     @type("number") public roomsDrawn!: number;
     @type("number") public bossRoomDrawIndex!: number;

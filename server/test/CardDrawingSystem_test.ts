@@ -258,9 +258,13 @@ describe("Card Drawing System", () => {
         "cross_two_connected_each_monster",
         "cross_row_room",
         "cross_two_horizontal_then_two_horizontal",
+        "cunning",
         "heroic_move_two_and_fight_two",
+        "spread_out_room_overlay",
         "combat_fight_three_diagonal_or_move_three",
-        "reposition"
+        "swipe_fight_l_overlay",
+        "reposition",
+        "quick_step"
       ]);
       assert(expectedTypes.has(drawnCard.type), `Unexpected type: ${drawnCard.type}`);
       assert.strictEqual(typeof drawnCard.description, "string");

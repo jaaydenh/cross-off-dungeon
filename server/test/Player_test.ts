@@ -31,6 +31,7 @@ describe("Player Schema Extensions", () => {
       assert.strictEqual(player.discardPile.length, 0);
       assert.strictEqual(player.turnStatus, "not_started");
       assert.strictEqual(player.hasDrawnCard, false);
+      assert.strictEqual(player.xp, 0);
     });
 
     it("should initialize deck with expected starter cards", () => {

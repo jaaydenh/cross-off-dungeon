@@ -16,6 +16,7 @@ export const COMBAT_CARD_ID = "combat_fight_three_diagonal_or_move_three";
 export const SWIPE_CARD_ID = "swipe_fight_l_overlay";
 export const SPREAD_OUT_CARD_ID = "spread_out_room_overlay";
 export const CUNNING_CARD_ID = "cunning";
+export const QUICK_STEP_CARD_ID = "quick_step";
 export const STARTER_DECK_SIZE = 10;
 
 export type CardDefinition = {
@@ -206,6 +207,22 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
       mode: "squares",
       minSelections: 2,
       maxSelections: 2,
+      connected: true,
+      requireRoomStartAdjacency: true
+    }
+  },
+  {
+    id: QUICK_STEP_CARD_ID,
+    name: "Quick Step",
+    description: "Move 1 then draw another card",
+    color: "green",
+    defenseSymbol: "dodge",
+    drawCardsOnResolve: 1,
+    selection: {
+      target: "room",
+      mode: "squares",
+      minSelections: 1,
+      maxSelections: 1,
       connected: true,
       requireRoomStartAdjacency: true
     }

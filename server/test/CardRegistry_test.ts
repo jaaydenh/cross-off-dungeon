@@ -54,6 +54,42 @@ describe("Card Registry", () => {
     assert.strictEqual(created.drawCardsOnResolve, 1);
   });
 
+  it("should configure Quick Step as a green room-only single move with dodge and a bonus draw", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "quick_step");
+    assert(definition, "Quick Step card definition should exist");
+
+    assert.strictEqual(definition.name, "Quick Step");
+    assert.strictEqual(definition.description, "Move 1 then draw another card");
+    assert.strictEqual(definition.color, "green");
+    assert.strictEqual(definition.defenseSymbol, "dodge");
+    assert.strictEqual(definition.drawCardsOnResolve, 1);
+    assert.strictEqual(definition.selection.target, "room");
+    assert.strictEqual(definition.selection.mode, "squares");
+    assert.strictEqual(definition.selection.minSelections, 1);
+    assert.strictEqual(definition.selection.maxSelections, 1);
+    assert.strictEqual(definition.selection.connected, true);
+    assert.strictEqual(definition.selection.requireRoomStartAdjacency, true);
+  });
+
+  it("should create Quick Step cards with dodge defense symbol and one bonus draw", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "quick_step");
+    assert(definition, "Quick Step card definition should exist");
+
+    const created = createCardFromDefinition(definition, "test_quick_step");
+
+    assert.strictEqual(created.type, "quick_step");
+    assert.strictEqual(created.name, "Quick Step");
+    assert.strictEqual(created.color, "green");
+    assert.strictEqual(created.defenseSymbol, "dodge");
+    assert.strictEqual(created.selectionTarget, "room");
+    assert.strictEqual(created.selectionMode, "squares");
+    assert.strictEqual(created.minSelections, 1);
+    assert.strictEqual(created.maxSelections, 1);
+    assert.strictEqual(created.requiresConnected, true);
+    assert.strictEqual(created.requiresRoomStartAdjacency, true);
+    assert.strictEqual(created.drawCardsOnResolve, 1);
+  });
+
   it("should configure Heroic Move and Fight as a counter card that requires 2 room + 2 monster squares", () => {
     const definition = CARD_DEFINITIONS.find((card) => card.id === "heroic_move_two_and_fight_two");
     assert(definition, "Heroic Move and Fight card definition should exist");

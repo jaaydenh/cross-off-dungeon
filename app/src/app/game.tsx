@@ -48,7 +48,79 @@ type PersistedReconnection = {
 const DUNGEON_ROOM_NAME = 'dungeon';
 const DEFAULT_SERVER_URL = 'ws://localhost:2567';
 const RECONNECT_STORAGE_KEY = 'cross-off-dungeon.reconnect';
-const RECONNECT_TOKEN_MAX_AGE_MS = 2 * 60 * 1000;
+const SERVER_RECONNECT_WINDOW_SECONDS = 90;
+const RECONNECT_TOKEN_MAX_AGE_MS = SERVER_RECONNECT_WINDOW_SECONDS * 1000;
+const RESUME_RETRY_DELAYS_MS = [0, 600, 1500, 3000];
+const ATTACK_CARD_WIDTH_PX = 121;
+const ATTACK_CARD_HEIGHT_PX = 176;
+const ATTACK_MONSTER_VERTICAL_OFFSET_PX = 36;
+const ATTACK_MIN_VIEWPORT_TOP_PX = 12;
+const ATTACK_CARD_STACK_OFFSET_PX = 10;
+const ATTACK_STAGGER_MS = 340;
+const ATTACK_OUTCOME_DELAY_MS = 520;
+const ATTACK_RETURN_DELAY_MS = 1020;
+const ATTACK_RETURN_CLEANUP_BUFFER_MS = 1400;
+const ATTACK_END_SCALE_RATIO = 0.8;
+const ATTACK_PHASE_CLEANUP_BASE_MS = 2600;
+const ATTACK_PHASE_CLEANUP_STEP_MS = 380;
+const MONSTER_COMPLETION_SKULL_MS = 760;
+const MONSTER_COMPLETION_FADE_MS = 620;
+const MONSTER_COMPLETION_HIDE_BUFFER_MS = 80;
+const XP_FLY_ANIMATION_MS = 1100;
+const XP_FLY_CLEANUP_BUFFER_MS = 220;
+const XP_BADGE_PULSE_MS = 900;
+
+type MonsterCompletionFxPhase = 'skull' | 'fade';
+type XpFlyAnimation = {
+  id: string;
+  xp: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  ownerSessionId: string;
+};
+
+const isMonsterCardCompleted = (monster: any): boolean => {
+  if (!monster?.squares) return false;
+  return monster.squares.every((square: any) => !square?.filled || square?.checked);
+};
+
+const getMonsterExperienceValue = (monster: any): number => {
+  if (!monster?.squares) return 1;
+  const filledSquares = monster.squares.filter((square: any) => !!square?.filled).length;
+  return Math.max(1, Math.ceil(filledSquares / 5));
+};
+
+const getAttackOutcomeLabel = (attack: MonsterAttackAnimation): string => {
+  switch (attack.outcome) {
+    case 'discarded':
+      return 'Lost';
+    case 'returned_to_deck':
+      return attack.card?.defenseSymbol === 'dodge' ? 'Dodged' : 'Blocked';
+    case 'counter_attack':
+      return 'Counter!';
+    case 'no_card_available':
+      return 'No card';
+    default:
+      return 'Resolved';
+  }
+};
+
+const getAttackOutcomeClass = (attack: MonsterAttackAnimation): string => {
+  switch (attack.outcome) {
+    case 'discarded':
+      return 'bg-red-700 text-white';
+    case 'returned_to_deck':
+      return 'bg-blue-700 text-white';
+    case 'counter_attack':
+      return 'bg-emerald-700 text-white';
+    case 'no_card_available':
+      return 'bg-gray-700 text-white';
+    default:
+      return 'bg-slate-700 text-white';
+  }
+};
 
 export default function Game() {
   const [name, setName] = useState('');
@@ -81,23 +153,48 @@ export default function Game() {
     toX: number;
     toY: number;
     delayMs: number;
+    startScale: number;
+    endScale: number;
+    startScaleX?: number;
+    startScaleY?: number;
+    endScaleX?: number;
+    endScaleY?: number;
     card: { type: string; name: string; description: string; defenseSymbol: string; color: string };
   }>>([]);
   const [dayBanner, setDayBanner] = useState<string | null>(null);
   const [gameResultBanner, setGameResultBanner] = useState<string | null>(null);
+  const [persistedReconnection, setPersistedReconnection] = useState<PersistedReconnection | null>(null);
+  const [resumeTimeRemainingMs, setResumeTimeRemainingMs] = useState(0);
+  const [isResumingSession, setIsResumingSession] = useState(false);
+  const [resumeAttempt, setResumeAttempt] = useState(0);
+  const [resumeStatus, setResumeStatus] = useState<string | null>(null);
+  const [isConnectionReconnecting, setIsConnectionReconnecting] = useState(false);
+  const [connectionStatusMessage, setConnectionStatusMessage] = useState<string | null>(null);
   const [openMonsterPopoverFor, setOpenMonsterPopoverFor] = useState<string | null>(null);
   const [isCardLibraryOpen, setIsCardLibraryOpen] = useState(false);
+  const [monsterCompletionFxById, setMonsterCompletionFxById] = useState<Record<string, MonsterCompletionFxPhase>>({});
+  const [hiddenCompletedMonsterIds, setHiddenCompletedMonsterIds] = useState<string[]>([]);
+  const [xpFlyAnimations, setXpFlyAnimations] = useState<XpFlyAnimation[]>([]);
+  const [xpPulseByPlayerId, setXpPulseByPlayerId] = useState<Record<string, true>>({});
   const [cunningActivationBaseline, setCunningActivationBaseline] = useState<{
     cardId: string;
     totalCheckedSquares: number;
   } | null>(null);
   const dayBannerTimeoutRef = useRef<any>(null);
   const monsterPopoverCloseTimeoutRef = useRef<any>(null);
+  const monsterCompletionSnapshotRef = useRef<
+    Map<string, { completed: boolean; ownerSessionId: string; xpValue: number }>
+  >(new Map());
+  const hasSeededMonsterCompletionSnapshotRef = useRef(false);
+  const monsterCompletionTimeoutsRef = useRef<Map<string, { toFade: any; toHide: any }>>(new Map());
+  const xpFlyTimeoutsRef = useRef<Map<string, any>>(new Map());
+  const xpPulseTimeoutsRef = useRef<Map<string, any>>(new Map());
   const lastAnnouncedDayRef = useRef<number | null>(null);
   const lastGameStatusRef = useRef<string | null>(null);
   const hasGameState = gameState !== null;
   const currentDay = Number(gameState?.currentDay || 1);
   const currentGameStatus = gameState?.gameStatus || null;
+  const isDebugModeEnabled = !!gameState?.debugMode;
 
   const activeCard = currentPlayer?.drawnCards?.find((card) => card.isActive) || null;
   const cardAllowsMonsterSelection = (card: any): boolean =>
@@ -181,16 +278,240 @@ export default function Game() {
         : cunningCheckedDelta < 6
           ? 3
           : null;
+
+  const clearMonsterCompletionTimeouts = useCallback(() => {
+    for (const timeoutPair of monsterCompletionTimeoutsRef.current.values()) {
+      clearTimeout(timeoutPair.toFade);
+      clearTimeout(timeoutPair.toHide);
+    }
+    monsterCompletionTimeoutsRef.current.clear();
+  }, []);
+
+  const clearXpAnimationTimeouts = useCallback(() => {
+    for (const timeoutId of xpFlyTimeoutsRef.current.values()) {
+      clearTimeout(timeoutId);
+    }
+    xpFlyTimeoutsRef.current.clear();
+
+    for (const timeoutId of xpPulseTimeoutsRef.current.values()) {
+      clearTimeout(timeoutId);
+    }
+    xpPulseTimeoutsRef.current.clear();
+  }, []);
+
+  const resetMonsterCompletionUi = useCallback(() => {
+    clearMonsterCompletionTimeouts();
+    clearXpAnimationTimeouts();
+    monsterCompletionSnapshotRef.current.clear();
+    hasSeededMonsterCompletionSnapshotRef.current = false;
+    setMonsterCompletionFxById({});
+    setHiddenCompletedMonsterIds([]);
+    setXpFlyAnimations([]);
+    setXpPulseByPlayerId({});
+  }, [clearMonsterCompletionTimeouts, clearXpAnimationTimeouts]);
+
+  const pulsePlayerXpBadge = useCallback((ownerSessionId: string) => {
+    if (!ownerSessionId) {
+      return;
+    }
+
+    const priorTimeout = xpPulseTimeoutsRef.current.get(ownerSessionId);
+    if (priorTimeout) {
+      clearTimeout(priorTimeout);
+    }
+
+    setXpPulseByPlayerId((previous) => ({ ...previous, [ownerSessionId]: true }));
+
+    const timeoutId = setTimeout(() => {
+      setXpPulseByPlayerId((previous) => {
+        if (!previous[ownerSessionId]) {
+          return previous;
+        }
+        const next = { ...previous };
+        delete next[ownerSessionId];
+        return next;
+      });
+      xpPulseTimeoutsRef.current.delete(ownerSessionId);
+    }, XP_BADGE_PULSE_MS);
+
+    xpPulseTimeoutsRef.current.set(ownerSessionId, timeoutId);
+  }, []);
+
+  const createXpFlyAnimation = useCallback(
+    (monsterId: string, ownerSessionId: string, xp: number) => {
+      if (typeof window === 'undefined' || xp <= 0) {
+        pulsePlayerXpBadge(ownerSessionId);
+        return;
+      }
+
+      const escape = (window as any).CSS?.escape;
+      const escapedMonsterId = escape ? escape(monsterId) : monsterId.replace(/"/g, '\\"');
+      const escapedOwnerSessionId = escape ? escape(ownerSessionId) : ownerSessionId.replace(/"/g, '\\"');
+
+      const sourceEl = document.querySelector(`[data-monster-card-id="${escapedMonsterId}"]`) as HTMLElement | null;
+      const targetEl = document.querySelector(
+        `[data-player-xp-badge-id="${escapedOwnerSessionId}"]`
+      ) as HTMLElement | null;
+
+      if (!sourceEl || !targetEl) {
+        pulsePlayerXpBadge(ownerSessionId);
+        return;
+      }
+
+      const sourceRect = sourceEl.getBoundingClientRect();
+      const targetRect = targetEl.getBoundingClientRect();
+      const id = `xp-${monsterId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      setXpFlyAnimations((previous) => [
+        ...previous,
+        {
+          id,
+          xp,
+          ownerSessionId,
+          fromX: sourceRect.left + sourceRect.width / 2,
+          fromY: sourceRect.top + sourceRect.height / 2,
+          toX: targetRect.left + targetRect.width / 2,
+          toY: targetRect.top + targetRect.height / 2
+        }
+      ]);
+
+      const timeoutId = setTimeout(() => {
+        setXpFlyAnimations((previous) => previous.filter((anim) => anim.id !== id));
+        xpFlyTimeoutsRef.current.delete(id);
+        pulsePlayerXpBadge(ownerSessionId);
+      }, XP_FLY_ANIMATION_MS + XP_FLY_CLEANUP_BUFFER_MS);
+
+      xpFlyTimeoutsRef.current.set(id, timeoutId);
+    },
+    [pulsePlayerXpBadge]
+  );
+
+  const triggerMonsterCompletionAnimation = useCallback(
+    (monsterId: string, ownerSessionId: string, xpValue: number) => {
+      if (!monsterId || !ownerSessionId) {
+        return;
+      }
+
+      setHiddenCompletedMonsterIds((previous) => previous.filter((id) => id !== monsterId));
+      setMonsterCompletionFxById((previous) => ({ ...previous, [monsterId]: 'skull' }));
+
+      const existingTimeouts = monsterCompletionTimeoutsRef.current.get(monsterId);
+      if (existingTimeouts) {
+        clearTimeout(existingTimeouts.toFade);
+        clearTimeout(existingTimeouts.toHide);
+      }
+
+      const toFade = setTimeout(() => {
+        setMonsterCompletionFxById((previous) => {
+          if (!previous[monsterId]) {
+            return previous;
+          }
+          return { ...previous, [monsterId]: 'fade' };
+        });
+      }, MONSTER_COMPLETION_SKULL_MS);
+
+      const toHide = setTimeout(() => {
+        setMonsterCompletionFxById((previous) => {
+          if (!previous[monsterId]) {
+            return previous;
+          }
+          const next = { ...previous };
+          delete next[monsterId];
+          return next;
+        });
+        setHiddenCompletedMonsterIds((previous) =>
+          previous.includes(monsterId) ? previous : [...previous, monsterId]
+        );
+        monsterCompletionTimeoutsRef.current.delete(monsterId);
+      }, MONSTER_COMPLETION_SKULL_MS + MONSTER_COMPLETION_FADE_MS + MONSTER_COMPLETION_HIDE_BUFFER_MS);
+
+      monsterCompletionTimeoutsRef.current.set(monsterId, { toFade, toHide });
+
+      setTimeout(() => {
+        createXpFlyAnimation(monsterId, ownerSessionId, xpValue);
+      }, 0);
+    },
+    [createXpFlyAnimation]
+  );
+
+  const processMonsterCompletionTransitions = useCallback(
+    (state: DungeonState) => {
+      if (!state) {
+        return;
+      }
+
+      const previousSnapshot = monsterCompletionSnapshotRef.current;
+      const nextSnapshot = new Map<string, { completed: boolean; ownerSessionId: string; xpValue: number }>();
+      const newlyCompleted: Array<{ monsterId: string; ownerSessionId: string; xpValue: number }> = [];
+      const initiallyCompletedOwnedMonsterIds: string[] = [];
+
+      for (const monster of state.activeMonsters || []) {
+        const monsterId = String(monster?.id || '');
+        if (!monsterId) {
+          continue;
+        }
+
+        const ownerSessionId = String(monster?.playerOwnerId || '');
+        const completed = isMonsterCardCompleted(monster);
+        const xpValue = getMonsterExperienceValue(monster);
+        const previous = previousSnapshot.get(monsterId);
+
+        if (completed && ownerSessionId) {
+          if (!hasSeededMonsterCompletionSnapshotRef.current) {
+            initiallyCompletedOwnedMonsterIds.push(monsterId);
+          } else if (!previous || !previous.completed) {
+            newlyCompleted.push({ monsterId, ownerSessionId, xpValue });
+          }
+        }
+
+        nextSnapshot.set(monsterId, { completed, ownerSessionId, xpValue });
+      }
+
+      monsterCompletionSnapshotRef.current = nextSnapshot;
+
+      if (!hasSeededMonsterCompletionSnapshotRef.current) {
+        hasSeededMonsterCompletionSnapshotRef.current = true;
+        if (initiallyCompletedOwnedMonsterIds.length > 0) {
+          setHiddenCompletedMonsterIds((previous) => {
+            const merged = new Set(previous);
+            for (const monsterId of initiallyCompletedOwnedMonsterIds) {
+              merged.add(monsterId);
+            }
+            return Array.from(merged);
+          });
+        }
+        return;
+      }
+
+      for (const completion of newlyCompleted) {
+        triggerMonsterCompletionAnimation(
+          completion.monsterId,
+          completion.ownerSessionId,
+          completion.xpValue
+        );
+      }
+    },
+    [triggerMonsterCompletionAnimation]
+  );
+
+  const hiddenCompletedMonsterIdSet = useMemo(
+    () => new Set(hiddenCompletedMonsterIds),
+    [hiddenCompletedMonsterIds]
+  );
+
   const monstersByPlayer = (() => {
     const grouped = new Map<string, any[]>();
     for (const monster of gameState?.activeMonsters || []) {
       if (!monster.playerOwnerId) {
         continue;
       }
-      const isCompleted =
-        Array.isArray(monster.squares) &&
-        monster.squares.every((square: any) => !square.filled || square.checked);
-      if (isCompleted) {
+      const monsterId = String(monster.id);
+      if (hiddenCompletedMonsterIdSet.has(monsterId)) {
+        continue;
+      }
+      const isCompleted = isMonsterCardCompleted(monster);
+      const hasCompletionFx = !!monsterCompletionFxById[monsterId];
+      if (isCompleted && !hasCompletionFx) {
         continue;
       }
       const ownerMonsters = grouped.get(monster.playerOwnerId) || [];
@@ -206,6 +527,7 @@ export default function Game() {
   const roomRef = useRef<Room>();
   const clientRef = useRef<Client | null>(null);
   const reconnectNameRef = useRef('');
+  const resumeAttemptInFlightRef = useRef(false);
   const openMonsterPopover = useCallback((sessionId: string) => {
     if (monsterPopoverCloseTimeoutRef.current) {
       clearTimeout(monsterPopoverCloseTimeoutRef.current);
@@ -222,36 +544,43 @@ export default function Game() {
       monsterPopoverCloseTimeoutRef.current = null;
     }, 320);
   }, []);
+  const handleToggleDebugMode = useCallback(() => {
+    if (!roomRef.current) {
+      return;
+    }
+    roomRef.current.send('setDebugMode', { enabled: !isDebugModeEnabled });
+  }, [isDebugModeEnabled]);
+  const handleDebugCompleteMonster = useCallback(
+    (monsterId: string) => {
+      if (!roomRef.current || !isDebugModeEnabled || !monsterId) {
+        return;
+      }
+      roomRef.current.send('debugCompleteMonster', { monsterId });
+    },
+    [isDebugModeEnabled]
+  );
   const isHeroicMoveAndFightCard = (card: any): boolean => card?.type === 'heroic_move_two_and_fight_two';
   const isCombatCard = (card: any): boolean => card?.type === 'combat_fight_three_diagonal_or_move_three';
   const roomCode = roomRef.current?.roomId || '';
   const normalizedName = name.trim().replace(/\s+/g, ' ').slice(0, 24);
-  const canJoinLobbyActions = normalizedName.length > 0 && !isJoiningRoom;
+  const canJoinLobbyActions = normalizedName.length > 0 && !isJoiningRoom && !isResumingSession;
+  const resumeSecondsRemaining = Math.max(0, Math.ceil(resumeTimeRemainingMs / 1000));
+  const canResumeSavedSession =
+    !!persistedReconnection && resumeSecondsRemaining > 0 && !isJoiningRoom && !isResumingSession;
+
+  useEffect(() => {
+    return () => {
+      clearMonsterCompletionTimeouts();
+      clearXpAnimationTimeouts();
+    };
+  }, [clearMonsterCompletionTimeouts, clearXpAnimationTimeouts]);
+
   const readPersistedReconnection = useCallback((): PersistedReconnection | null => {
     if (typeof window === 'undefined') {
       return null;
     }
 
-    // Reconnection should be tab-scoped. Keep token in sessionStorage only.
-    let raw = window.sessionStorage.getItem(RECONNECT_STORAGE_KEY);
-
-    // Backward-compatibility migration from older localStorage behavior.
-    // Only allow migration on a same-tab reload/back-forward navigation.
-    const legacyRaw = window.localStorage.getItem(RECONNECT_STORAGE_KEY);
-    if (!raw && legacyRaw) {
-      const navEntry = window.performance?.getEntriesByType?.('navigation')?.[0] as PerformanceNavigationTiming | undefined;
-      const navType = navEntry?.type;
-      const allowLegacyMigration = navType === 'reload' || navType === 'back_forward';
-
-      if (allowLegacyMigration) {
-        raw = legacyRaw;
-        window.sessionStorage.setItem(RECONNECT_STORAGE_KEY, legacyRaw);
-      }
-
-      // Always clear legacy storage to prevent cross-tab auto-reconnect.
-      window.localStorage.removeItem(RECONNECT_STORAGE_KEY);
-    }
-
+    const raw = window.sessionStorage.getItem(RECONNECT_STORAGE_KEY);
     if (!raw) {
       return null;
     }
@@ -259,10 +588,12 @@ export default function Game() {
     try {
       const parsed = JSON.parse(raw) as PersistedReconnection;
       if (!parsed?.token || typeof parsed.token !== 'string') {
+        window.sessionStorage.removeItem(RECONNECT_STORAGE_KEY);
         return null;
       }
       const savedAt = Number(parsed.savedAt || Date.now());
       if (!Number.isFinite(savedAt) || (Date.now() - savedAt) > RECONNECT_TOKEN_MAX_AGE_MS) {
+        window.sessionStorage.removeItem(RECONNECT_STORAGE_KEY);
         return null;
       }
 
@@ -273,6 +604,7 @@ export default function Game() {
       };
     } catch (error) {
       console.error('failed to parse reconnection data', error);
+      window.sessionStorage.removeItem(RECONNECT_STORAGE_KEY);
       return null;
     }
   }, []);
@@ -288,8 +620,8 @@ export default function Game() {
       savedAt: Date.now()
     };
     window.sessionStorage.setItem(RECONNECT_STORAGE_KEY, JSON.stringify(payload));
-    // Ensure we do not keep cross-tab reconnect artifacts.
-    window.localStorage.removeItem(RECONNECT_STORAGE_KEY);
+    setPersistedReconnection(payload);
+    setResumeTimeRemainingMs(Math.max(0, payload.savedAt + RECONNECT_TOKEN_MAX_AGE_MS - Date.now()));
   }, []);
 
   const clearPersistedReconnection = useCallback(() => {
@@ -297,8 +629,16 @@ export default function Game() {
       return;
     }
     window.sessionStorage.removeItem(RECONNECT_STORAGE_KEY);
-    window.localStorage.removeItem(RECONNECT_STORAGE_KEY);
+    setPersistedReconnection(null);
+    setResumeTimeRemainingMs(0);
+    setResumeAttempt(0);
   }, []);
+
+  const dismissResumeSession = useCallback(() => {
+    clearPersistedReconnection();
+    setResumeStatus(null);
+    setLobbyError(null);
+  }, [clearPersistedReconnection]);
 
   useEffect(() => {
     if (!hasActiveCard) {
@@ -311,12 +651,13 @@ export default function Game() {
     if (!inRoom) {
       setOpenMonsterPopoverFor(null);
       setIsCardLibraryOpen(false);
+      resetMonsterCompletionUi();
       if (monsterPopoverCloseTimeoutRef.current) {
         clearTimeout(monsterPopoverCloseTimeoutRef.current);
         monsterPopoverCloseTimeoutRef.current = null;
       }
     }
-  }, [inRoom]);
+  }, [inRoom, resetMonsterCompletionUi]);
 
   useEffect(() => {
     return () => {
@@ -369,9 +710,12 @@ export default function Game() {
 
     const persisted = readPersistedReconnection();
     if (!persisted) {
+      setPersistedReconnection(null);
       return;
     }
 
+    setPersistedReconnection(persisted);
+    setResumeTimeRemainingMs(Math.max(0, persisted.savedAt + RECONNECT_TOKEN_MAX_AGE_MS - Date.now()));
     reconnectNameRef.current = persisted.name || '';
     if (persisted.name) {
       setName((currentName) => currentName || persisted.name);
@@ -387,14 +731,7 @@ export default function Game() {
         return;
       }
 
-      const didReconnect = await connectToRoom(
-        () => clientRef.current!.reconnect(persisted.token),
-        { suppressJoinError: true }
-      );
-
-      if (!didReconnect) {
-        clearPersistedReconnection();
-      }
+      await attemptPersistedReconnection(persisted);
     })();
 
     return () => {
@@ -402,10 +739,34 @@ export default function Game() {
     };
     // We intentionally run this once on mount with persisted data.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clearPersistedReconnection, readPersistedReconnection]);
+  }, [readPersistedReconnection]);
+
+  useEffect(() => {
+    if (inRoom || !persistedReconnection) {
+      setResumeTimeRemainingMs(0);
+      return;
+    }
+
+    const updateRemaining = () => {
+      const remaining = Math.max(
+        0,
+        persistedReconnection.savedAt + RECONNECT_TOKEN_MAX_AGE_MS - Date.now()
+      );
+      setResumeTimeRemainingMs(remaining);
+
+      if (remaining <= 0) {
+        clearPersistedReconnection();
+        setResumeStatus('Saved session expired. Rejoin from the lobby.');
+      }
+    };
+
+    updateRemaining();
+    const timer = setInterval(updateRemaining, 1000);
+    return () => clearInterval(timer);
+  }, [clearPersistedReconnection, inRoom, persistedReconnection]);
 
   const refreshLobbyRooms = useCallback(async () => {
-    if (inRoom || !clientRef.current) {
+    if (inRoom || isResumingSession || !clientRef.current) {
       return;
     }
 
@@ -428,7 +789,7 @@ export default function Game() {
       console.error('failed to fetch rooms', error);
       setLobbyError('Unable to load game list. Is the server running?');
     }
-  }, [inRoom]);
+  }, [inRoom, isResumingSession]);
 
   useEffect(() => {
     if (inRoom) {
@@ -1139,6 +1500,97 @@ export default function Game() {
     return 'Unable to join room.';
   };
 
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function attemptPersistedReconnection(
+    candidateOverride?: PersistedReconnection,
+    options?: { fromUser?: boolean }
+  ): Promise<boolean> {
+    if (!clientRef.current || inRoom || resumeAttemptInFlightRef.current) {
+      return false;
+    }
+
+    const candidate = candidateOverride || readPersistedReconnection();
+    if (!candidate) {
+      if (options?.fromUser) {
+        setLobbyError('Saved session expired. Rejoin from the lobby.');
+      }
+      setResumeStatus('Saved session expired. Rejoin from the lobby.');
+      clearPersistedReconnection();
+      return false;
+    }
+
+    reconnectNameRef.current = candidate.name || reconnectNameRef.current;
+    if (candidate.name) {
+      setName((currentName) => currentName || candidate.name);
+    }
+
+    setPersistedReconnection(candidate);
+    setResumeTimeRemainingMs(Math.max(0, candidate.savedAt + RECONNECT_TOKEN_MAX_AGE_MS - Date.now()));
+    setResumeStatus('Attempting to resume your previous session...');
+    setResumeAttempt(0);
+    setIsResumingSession(true);
+    resumeAttemptInFlightRef.current = true;
+
+    try {
+      for (let i = 0; i < RESUME_RETRY_DELAYS_MS.length; i++) {
+        const attempt = i + 1;
+        const delayMs = RESUME_RETRY_DELAYS_MS[i];
+
+        if (delayMs > 0) {
+          await wait(delayMs);
+        }
+
+        const persisted = readPersistedReconnection();
+        if (!persisted) {
+          setResumeStatus('Saved session expired. Rejoin from the lobby.');
+          clearPersistedReconnection();
+          return false;
+        }
+
+        setResumeAttempt(attempt);
+        setResumeStatus(`Resuming session (attempt ${attempt}/${RESUME_RETRY_DELAYS_MS.length})...`);
+
+        const didReconnect = await connectToRoom(
+          () => clientRef.current!.reconnect(persisted.token),
+          { suppressJoinError: true }
+        );
+
+        if (didReconnect) {
+          setResumeAttempt(0);
+          setResumeStatus(null);
+          return true;
+        }
+      }
+
+      const failureMessage = 'Could not reconnect automatically. Try Resume Session again before it expires.';
+      setResumeStatus(failureMessage);
+      if (options?.fromUser) {
+        setLobbyError(failureMessage);
+      }
+      return false;
+    } finally {
+      setIsResumingSession(false);
+      resumeAttemptInFlightRef.current = false;
+    }
+  }
+
+  async function resumeSavedSession() {
+    if (isJoiningRoom || isResumingSession) {
+      return;
+    }
+
+    const persisted = readPersistedReconnection();
+    if (!persisted) {
+      setResumeStatus('Saved session expired. Rejoin from the lobby.');
+      setLobbyError('Saved session expired. Rejoin from the lobby.');
+      clearPersistedReconnection();
+      return;
+    }
+
+    await attemptPersistedReconnection(persisted, { fromUser: true });
+  }
+
   async function connectToRoom(
     joinAction: () => Promise<Room<DungeonRoomState>>,
     options?: { suppressJoinError?: boolean }
@@ -1149,11 +1601,77 @@ export default function Game() {
     try {
       roomRef.current = await joinAction();
       const joinedRoom = roomRef.current;
+      if (!joinedRoom) {
+        throw new Error('Unable to establish room connection.');
+      }
+
+      joinedRoom.reconnection.minUptime = 0;
+      joinedRoom.reconnection.maxRetries = 20;
+      joinedRoom.reconnection.delay = 150;
+      joinedRoom.reconnection.minDelay = 150;
+      joinedRoom.reconnection.maxDelay = 4000;
+      joinedRoom.reconnection.maxEnqueuedMessages = 64;
+
+      joinedRoom.onDrop((code, reason) => {
+        console.warn(`Connection dropped (${code})`, reason || '');
+        setIsConnectionReconnecting(true);
+        setConnectionStatusMessage('Connection lost. Reconnecting...');
+      });
+
+      joinedRoom.onReconnect(() => {
+        setIsConnectionReconnecting(false);
+        setConnectionStatusMessage('Connection restored.');
+        setTimeout(() => {
+          setConnectionStatusMessage((current) =>
+            current === 'Connection restored.' ? null : current
+          );
+        }, 2200);
+
+        const playerNameForReconnect = reconnectNameRef.current || normalizedName || '';
+        if (joinedRoom.reconnectionToken) {
+          savePersistedReconnection(joinedRoom.reconnectionToken, playerNameForReconnect);
+        }
+      });
+
+      joinedRoom.onLeave((code, reason) => {
+        console.warn(`Room left (${code})`, reason || '');
+        setInRoom(false);
+        setIsConnectionReconnecting(false);
+        setConnectionStatusMessage(null);
+        setCurrentPlayer(null);
+        setCurrentRoom(null);
+        setDisplayedRooms([]);
+        setGameState(null);
+        setSelectedSquares([]);
+        setSelectedMonsterSquares([]);
+        setMonsterAttackAnimations([]);
+        setDeckReturnAnimations([]);
+        setOpenMonsterPopoverFor(null);
+        setIsCardLibraryOpen(false);
+        resetMonsterCompletionUi();
+        roomRef.current = undefined;
+
+        const persisted = readPersistedReconnection();
+        setPersistedReconnection(persisted);
+        if (persisted) {
+          setResumeStatus('Connection ended. Use Resume Session to recover your seat.');
+          setLobbyError('Connection ended. Try Resume Session before the timer expires.');
+        } else {
+          setResumeStatus(null);
+          setLobbyError(
+            typeof reason === 'string' && reason.trim().length > 0
+              ? reason
+              : 'Connection ended. Rejoin from the lobby.'
+          );
+        }
+      });
 
       const applyStateUpdate = (state: DungeonState) => {
         if (!state) {
           return;
         }
+
+        processMonsterCompletionTransitions(state);
 
         console.log("Full state update received");
         // Force a complete re-render when state changes
@@ -1181,6 +1699,8 @@ export default function Game() {
         }
       };
 
+      resetMonsterCompletionUi();
+
       // Register state listener immediately on join to avoid missing initial state on late join.
       joinedRoom.onStateChange((state) => applyStateUpdate(state as DungeonState));
       // Apply the latest snapshot immediately (covers the case where initial state arrived before listeners were attached).
@@ -1198,6 +1718,11 @@ export default function Game() {
       lastGameStatusRef.current = null;
       setDayBanner(null);
       setGameResultBanner(null);
+      setResumeStatus(null);
+      setResumeAttempt(0);
+      setIsResumingSession(false);
+      setIsConnectionReconnecting(false);
+      setConnectionStatusMessage(null);
 
       const playerNameForReconnect = reconnectNameRef.current || normalizedName || '';
       if (playerNameForReconnect) {
@@ -1355,21 +1880,93 @@ export default function Game() {
           return;
         }
 
+        const playerAreaEl = playerAreaRef.current;
+        const deckCardEl =
+          (playerAreaEl?.querySelector('[data-player-deck-card="true"]') as HTMLElement | null) ||
+          (document.querySelector('[data-player-deck-card="true"]') as HTMLElement | null);
+        const deckRect = deckCardEl?.getBoundingClientRect() || null;
+        const deckX = deckRect ? deckRect.left : 0;
+        const deckY = deckRect ? deckRect.top : 0;
+        const deckScaleX = deckRect ? deckRect.width / ATTACK_CARD_WIDTH_PX : 121 / ATTACK_CARD_WIDTH_PX;
+        const deckScaleY = deckRect ? deckRect.height / ATTACK_CARD_HEIGHT_PX : 176 / ATTACK_CARD_HEIGHT_PX;
+        const deckScale = deckScaleX;
+        const perMonsterStackOrders = new Map<string, number>();
+        const monsterRectCache = new Map<string, DOMRect | null>();
+        const getMonsterRect = (monsterId: string): DOMRect | null => {
+          if (monsterRectCache.has(monsterId)) {
+            return monsterRectCache.get(monsterId) || null;
+          }
+          const escape = (window as any).CSS?.escape;
+          const escapedMonsterId = escape ? escape(monsterId) : monsterId.replace(/"/g, '\\"');
+          const monsterSelector = `[data-monster-card-id="${escapedMonsterId}"]`;
+          const monsterEl =
+            (playerAreaEl?.querySelector(monsterSelector) as HTMLElement | null) ||
+            (document.querySelector(monsterSelector) as HTMLElement | null);
+          const monsterRect = monsterEl?.getBoundingClientRect() || null;
+          monsterRectCache.set(monsterId, monsterRect);
+          return monsterRect;
+        };
+
         const createdAt = Date.now();
         const nextAnimations: MonsterAttackAnimation[] = relevantAttacks.map((attack: any, index: number) => {
+          const monsterId = String(attack.monsterId || '');
           const defenseSymbol =
-            attack?.card?.defenseSymbol === 'block' || attack?.card?.defenseSymbol === 'counter'
+            attack?.card?.defenseSymbol === 'block' ||
+            attack?.card?.defenseSymbol === 'counter' ||
+            attack?.card?.defenseSymbol === 'dodge'
               ? attack.card.defenseSymbol
               : 'empty';
           const color =
             attack?.card?.color === 'red' || attack?.card?.color === 'blue' || attack?.card?.color === 'green'
               ? attack.card.color
               : 'clear';
+          const stackOrder = perMonsterStackOrders.get(monsterId) || 0;
+          perMonsterStackOrders.set(monsterId, stackOrder + 1);
+          const attackNumber = Math.max(1, Number(attack.attackNumber || 1));
+
+          const monsterRect = getMonsterRect(monsterId);
+          const motionPath =
+            deckRect && monsterRect
+              ? (() => {
+                  const anchorX = monsterRect.left + monsterRect.width / 2 - ATTACK_CARD_WIDTH_PX / 2;
+                  const anchorY = Math.max(
+                    ATTACK_MIN_VIEWPORT_TOP_PX,
+                    monsterRect.top - ATTACK_MONSTER_VERTICAL_OFFSET_PX - stackOrder * ATTACK_CARD_STACK_OFFSET_PX
+                  );
+                  const fromDx = deckX - anchorX;
+                  const fromDy = deckY - anchorY;
+                  const startScale = deckScale;
+                  const endScale = startScale * ATTACK_END_SCALE_RATIO;
+                  const startScaleX = deckScaleX;
+                  const startScaleY = deckScaleY;
+                  const endScaleX = startScaleX * ATTACK_END_SCALE_RATIO;
+                  const endScaleY = startScaleY * ATTACK_END_SCALE_RATIO;
+
+                  return {
+                    anchorX,
+                    anchorY,
+                    stackOrder,
+                    fromDx,
+                    fromDy,
+                    midDx: fromDx * 0.1,
+                    midDy: fromDy * 0.1,
+                    startScale,
+                    midScale: endScale * 1.02,
+                    endScale,
+                    startScaleX,
+                    startScaleY,
+                    midScaleX: endScaleX * 1.02,
+                    midScaleY: endScaleY * 1.02,
+                    endScaleX,
+                    endScaleY
+                  };
+                })()
+              : undefined;
 
           return {
-            id: `${attack.monsterId}-${attack.attackNumber || 1}-${createdAt}-${index}`,
-            monsterId: attack.monsterId,
-            attackNumber: Math.max(1, Number(attack.attackNumber || 1)),
+            id: `${monsterId}-${attackNumber}-${createdAt}-${index}`,
+            monsterId,
+            attackNumber,
             monsterAttack: Math.max(1, Number(attack.monsterAttack || 1)),
             outcome: attack.outcome || 'discarded',
             counterSquare: attack.counterSquare || null,
@@ -1382,19 +1979,15 @@ export default function Game() {
                   defenseSymbol,
                   color
                 }
-              : undefined
+              : undefined,
+            motionPath
           };
         });
 
         const idsToRemove = new Set(nextAnimations.map((attack) => attack.id));
         setMonsterAttackAnimations((prev) => [...prev, ...nextAnimations]);
 
-        const deckCardEl = document.querySelector('[data-player-deck-card="true"]') as HTMLElement | null;
-        if (deckCardEl) {
-          const deckRect = deckCardEl.getBoundingClientRect();
-          const toX = deckRect.left + deckRect.width / 2 - 32;
-          const toY = deckRect.top + deckRect.height / 2 - 48;
-
+        if (deckRect) {
           const returnAnimations = nextAnimations
             .filter(
               (attack) =>
@@ -1402,23 +1995,43 @@ export default function Game() {
                 !!attack.card
             )
             .flatMap((attack) => {
-              const escape = (window as any).CSS?.escape;
-              const escapedMonsterId = escape ? escape(attack.monsterId) : attack.monsterId.replace(/"/g, '\\"');
-              const monsterEl = document.querySelector(`[data-monster-card-id="${escapedMonsterId}"]`) as HTMLElement | null;
-              if (!monsterEl || !attack.card) return [];
+              if (!attack.card) return [];
 
-              const monsterRect = monsterEl.getBoundingClientRect();
-              const fromX = monsterRect.left + monsterRect.width / 2 - 32;
-              const fromY = monsterRect.top - 108;
-              const delayMs = Math.max(0, (attack.attackNumber || 1) - 1) * 280 + 860;
+              const fallbackMonsterRect = getMonsterRect(attack.monsterId);
+              const fromX =
+                attack.motionPath?.anchorX ??
+                (fallbackMonsterRect
+                  ? fallbackMonsterRect.left + fallbackMonsterRect.width / 2 - ATTACK_CARD_WIDTH_PX / 2
+                  : deckX);
+              const fromY =
+                attack.motionPath?.anchorY ??
+                (fallbackMonsterRect
+                  ? Math.max(
+                      ATTACK_MIN_VIEWPORT_TOP_PX,
+                      fallbackMonsterRect.top - ATTACK_MONSTER_VERTICAL_OFFSET_PX
+                    )
+                  : deckY);
+              const startScale = attack.motionPath?.endScale ?? deckScale * ATTACK_END_SCALE_RATIO;
+              const endScale = attack.motionPath?.startScale ?? deckScale;
+              const startScaleX = attack.motionPath?.endScaleX ?? deckScaleX * ATTACK_END_SCALE_RATIO;
+              const startScaleY = attack.motionPath?.endScaleY ?? deckScaleY * ATTACK_END_SCALE_RATIO;
+              const endScaleX = attack.motionPath?.startScaleX ?? deckScaleX;
+              const endScaleY = attack.motionPath?.startScaleY ?? deckScaleY;
+              const delayMs = Math.max(0, (attack.attackNumber || 1) - 1) * ATTACK_STAGGER_MS + ATTACK_RETURN_DELAY_MS;
 
               return [{
                 id: `${attack.id}-return`,
                 fromX,
                 fromY,
-                toX,
-                toY,
+                toX: deckX,
+                toY: deckY,
                 delayMs,
+                startScale,
+                endScale,
+                startScaleX,
+                startScaleY,
+                endScaleX,
+                endScaleY,
                 card: {
                   type: attack.card.type,
                   name: attack.card.name || '',
@@ -1436,7 +2049,7 @@ export default function Game() {
             const maxDelay = returnAnimations.reduce((max, anim) => Math.max(max, anim.delayMs), 0);
             setTimeout(() => {
               setDeckReturnAnimations((prev) => prev.filter((anim) => !returnIds.has(anim.id)));
-            }, maxDelay + 1200);
+            }, maxDelay + ATTACK_RETURN_CLEANUP_BUFFER_MS);
           }
         }
 
@@ -1444,7 +2057,7 @@ export default function Game() {
           (max, attack) => Math.max(max, attack.attackNumber || 1),
           1
         );
-        const animationDurationMs = 2200 + maxAttackNumber * 320;
+        const animationDurationMs = ATTACK_PHASE_CLEANUP_BASE_MS + maxAttackNumber * ATTACK_PHASE_CLEANUP_STEP_MS;
         setTimeout(() => {
           setMonsterAttackAnimations((prev) => prev.filter((attack) => !idsToRemove.has(attack.id)));
         }, animationDurationMs);
@@ -1455,6 +2068,8 @@ export default function Game() {
       // has intermittently triggered msgpackr RangeErrors in this project.
       return true;
     } catch (error) {
+      setIsConnectionReconnecting(false);
+      setConnectionStatusMessage(null);
       if (!options?.suppressJoinError) {
         console.error('join error', error);
         setLobbyError(getJoinErrorMessage(error));
@@ -1475,6 +2090,7 @@ export default function Game() {
       return;
     }
 
+    setResumeStatus(null);
     setName(normalizedName);
     reconnectNameRef.current = normalizedName;
     await connectToRoom(() => clientRef.current!.create(DUNGEON_ROOM_NAME, { name: normalizedName }));
@@ -1494,6 +2110,7 @@ export default function Game() {
       return;
     }
 
+    setResumeStatus(null);
     setName(normalizedName);
     reconnectNameRef.current = normalizedName;
     await connectToRoom(() => clientRef.current!.joinById(requestedRoomCode, { name: normalizedName }));
@@ -1507,6 +2124,7 @@ export default function Game() {
       return;
     }
 
+    setResumeStatus(null);
     setName(normalizedName);
     reconnectNameRef.current = normalizedName;
     await connectToRoom(() => clientRef.current!.joinById(roomId, { name: normalizedName }));
@@ -1532,11 +2150,6 @@ export default function Game() {
 
   const selectedCount = (selectedSquares?.length || 0) + (selectedMonsterSquares?.length || 0);
 
-  const isMonsterCompleted = (monster: any): boolean => {
-    if (!monster?.squares) return false;
-    return monster.squares.every((s: any) => !s.filled || s.checked);
-  };
-
   const getMonsterRemainingSquares = (monster: any): number => {
     if (!monster?.squares) return 0;
     return monster.squares.filter((s: any) => s.filled && !s.checked).length;
@@ -1555,7 +2168,7 @@ export default function Game() {
       if (!sessionId || !gameState?.activeMonsters) return false;
 
       const eligible = gameState.activeMonsters.filter(
-        (m: any) => canCardTargetMonster(activeCard, m) && !isMonsterCompleted(m)
+        (m: any) => canCardTargetMonster(activeCard, m) && !isMonsterCardCompleted(m)
       );
       if (eligible.length === 0) return false;
 
@@ -1601,7 +2214,7 @@ export default function Game() {
         if (!sessionId || !gameState?.activeMonsters) return false;
 
         const eligibleMonsters = gameState.activeMonsters.filter(
-          (m: any) => canCardTargetMonster(activeCard, m) && !isMonsterCompleted(m)
+          (m: any) => canCardTargetMonster(activeCard, m) && !isMonsterCardCompleted(m)
         );
 
         if (monsterCount === 0) {
@@ -1669,6 +2282,49 @@ export default function Game() {
                   {isJoiningRoom ? 'Joining...' : 'Join By Code'}
                 </button>
               </div>
+              {persistedReconnection && (
+                <div className="mt-4 rounded-lg border border-amber-500/60 bg-amber-950/30 p-3">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-amber-300">
+                        Resume Session
+                      </div>
+                      <p className="text-sm text-amber-100">
+                        {persistedReconnection.name
+                          ? `Resume ${persistedReconnection.name}'s previous seat.`
+                          : 'Resume your previous seat.'}{' '}
+                        {resumeSecondsRemaining > 0
+                          ? `Expires in ${resumeSecondsRemaining}s.`
+                          : 'Session token expired.'}
+                      </p>
+                      {resumeStatus && (
+                        <p className="mt-1 text-xs text-amber-200">
+                          {resumeStatus}
+                          {isResumingSession && resumeAttempt > 0
+                            ? ` (${resumeAttempt}/${RESUME_RETRY_DELAYS_MS.length})`
+                            : ''}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => void resumeSavedSession()}
+                        disabled={!canResumeSavedSession}
+                        className="rounded bg-amber-500 px-3 py-2 text-sm font-semibold text-slate-900 enabled:hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isResumingSession ? 'Resuming...' : 'Resume Session'}
+                      </button>
+                      <button
+                        onClick={dismissResumeSession}
+                        disabled={isResumingSession}
+                        className="rounded border border-amber-300/70 px-3 py-2 text-sm font-semibold text-amber-100 enabled:hover:bg-amber-900/30 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {lobbyError && (
                 <p className="mt-3 text-sm font-medium text-rose-300">{lobbyError}</p>
               )}
@@ -1679,7 +2335,7 @@ export default function Game() {
                 <h2 className="text-xl font-bold">Available Games</h2>
                 <button
                   onClick={() => void refreshLobbyRooms()}
-                  disabled={isJoiningRoom}
+                  disabled={isJoiningRoom || isResumingSession}
                   className="rounded border border-slate-500 px-3 py-1 text-sm font-medium text-slate-100 enabled:hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Refresh
@@ -1803,11 +2459,27 @@ export default function Game() {
                   const canTargetAnyListedMonster = playerMonsters.some((monster: any) =>
                     canCardTargetMonster(activeCard, monster)
                   );
+                  const playerXp = Math.max(0, Number((player as any).xp || 0));
+                  const isXpPulseActive = !!xpPulseByPlayerId[sessionId];
 
                   return (
-                    <li key={sessionId} className="relative p-2 bg-slate-700 rounded flex justify-between items-center gap-2">
+                    <li
+                      key={sessionId}
+                      data-player-row-id={sessionId}
+                      className="relative p-2 bg-slate-700 rounded flex justify-between items-center gap-2"
+                    >
                       <span className="font-medium">{player.name}</span>
                       <div className="flex items-center gap-2">
+                        <div
+                          data-player-xp-badge-id={sessionId}
+                          className={`inline-flex items-center gap-1 rounded-full border border-emerald-300/80 bg-emerald-500/20 px-2 py-1 text-[11px] font-black text-emerald-100 ${
+                            isXpPulseActive ? 'player-xp-badge-gain' : ''
+                          }`}
+                        >
+                          <span className="uppercase tracking-wide">XP</span>
+                          <span>{playerXp}</span>
+                        </div>
+
                         <div className="flex items-center gap-1">
                           <span className="text-sm">{getStatusIcon(player.turnStatus)}</span>
                           <span className={`status-indicator text-sm font-medium ${getStatusColor(player.turnStatus)}`}>
@@ -1852,6 +2524,9 @@ export default function Game() {
                                       cunningStepPreviewLength={cunningPreviewStepLength}
                                       combatBlastPreviewEnabled={showCombatBlastPreview}
                                       swipePreviewEnabled={showSwipePreview}
+                                      completionFxPhase={monsterCompletionFxById[String(monster.id)] || null}
+                                      debugModeEnabled={isDebugModeEnabled}
+                                      onDebugComplete={handleDebugCompleteMonster}
                                       disableHoverZoom={true}
                                       className="monster-owned"
                                     />
@@ -1960,7 +2635,10 @@ export default function Game() {
                   selectedMonsterSquares={selectedMonsterSquares}
                   onMonsterSquareClick={handleMonsterSquareClick}
                   cunningPreviewStepLength={cunningPreviewStepLength}
-                  attackAnimations={monsterAttackAnimations}
+                  completionFxByMonsterId={monsterCompletionFxById}
+                  hiddenCompletedMonsterIds={hiddenCompletedMonsterIds}
+                  debugModeEnabled={isDebugModeEnabled}
+                  onDebugCompleteMonster={handleDebugCompleteMonster}
                 />
               </div>
             </div>
@@ -1968,7 +2646,28 @@ export default function Game() {
         </div>
       )}
 
-      <CardLibraryScreen isOpen={inRoom && isCardLibraryOpen} onClose={() => setIsCardLibraryOpen(false)} />
+      {inRoom && (isConnectionReconnecting || connectionStatusMessage) && (
+        <div className="fixed left-1/2 top-4 z-[210] -translate-x-1/2">
+          <div
+            className={`rounded-lg border px-4 py-2 text-sm font-semibold shadow-xl ${
+              isConnectionReconnecting
+                ? 'border-amber-300 bg-amber-100 text-amber-950'
+                : 'border-emerald-300 bg-emerald-100 text-emerald-950'
+            }`}
+          >
+            {isConnectionReconnecting
+              ? (connectionStatusMessage || 'Connection lost. Reconnecting...')
+              : connectionStatusMessage}
+          </div>
+        </div>
+      )}
+
+      <CardLibraryScreen
+        isOpen={inRoom && isCardLibraryOpen}
+        debugMode={isDebugModeEnabled}
+        onToggleDebugMode={handleToggleDebugMode}
+        onClose={() => setIsCardLibraryOpen(false)}
+      />
 
       {inRoom && dayBanner && (
         <div className="fixed inset-0 z-[200] pointer-events-none flex items-center justify-center">
@@ -1992,16 +2691,118 @@ export default function Game() {
         </div>
       )}
 
+      {xpFlyAnimations.map((anim) => (
+        <div
+          key={anim.id}
+          className="xp-fly-animation fixed z-[205] pointer-events-none rounded-full border border-emerald-200/70 bg-emerald-600 px-2 py-1 text-xs font-black text-white shadow-lg"
+          style={{
+            left: `${anim.fromX}px`,
+            top: `${anim.fromY}px`,
+            ['--xp-dx' as any]: `${anim.toX - anim.fromX}px`,
+            ['--xp-dy' as any]: `${anim.toY - anim.fromY}px`,
+            ['--xp-fly-duration' as any]: `${XP_FLY_ANIMATION_MS}ms`
+          }}
+        >
+          +{anim.xp} XP
+        </div>
+      ))}
+
+      {monsterAttackAnimations
+        .filter((attack) => !!attack.motionPath)
+        .map((attack) => {
+          const path = attack.motionPath!;
+          const animationDelayMs = Math.max(0, (attack.attackNumber || 1) - 1) * ATTACK_STAGGER_MS;
+          const outcomeDelayMs = animationDelayMs + ATTACK_OUTCOME_DELAY_MS;
+
+          return (
+            <div
+              key={attack.id}
+              className="fixed z-[180] pointer-events-none"
+              style={{
+                left: `${path.anchorX}px`,
+                top: `${path.anchorY}px`
+              }}
+            >
+              {attack.card ? (
+                <div
+                  className="monster-attack-card-fly relative w-[121px] h-[176px] rounded-lg border-2 border-gray-300 bg-white"
+                  style={{
+                    animationDelay: `${animationDelayMs}ms`,
+                    ['--attack-from-dx' as any]: `${path.fromDx}px`,
+                    ['--attack-from-dy' as any]: `${path.fromDy}px`,
+                    ['--attack-mid-dx' as any]: `${path.midDx}px`,
+                    ['--attack-mid-dy' as any]: `${path.midDy}px`,
+                    ['--attack-start-scale' as any]: `${path.startScale}`,
+                    ['--attack-mid-scale' as any]: `${path.midScale}`,
+                    ['--attack-end-scale' as any]: `${path.endScale}`,
+                    ['--attack-start-scale-x' as any]: `${path.startScaleX ?? path.startScale}`,
+                    ['--attack-start-scale-y' as any]: `${path.startScaleY ?? path.startScale}`,
+                    ['--attack-mid-scale-x' as any]: `${path.midScaleX ?? path.midScale}`,
+                    ['--attack-mid-scale-y' as any]: `${path.midScaleY ?? path.midScale}`,
+                    ['--attack-end-scale-x' as any]: `${path.endScaleX ?? path.endScale}`,
+                    ['--attack-end-scale-y' as any]: `${path.endScaleY ?? path.endScale}`
+                  }}
+                  title={`${(attack.card.name || '').trim() || 'Heroic'}: ${attack.card.description}`}
+                >
+                  <CardFaceContent
+                    type={attack.card.type}
+                    name={attack.card.name}
+                    description={attack.card.description}
+                    defenseSymbol={attack.card.defenseSymbol}
+                    color={attack.card.color}
+                  />
+                </div>
+              ) : (
+                <div
+                  className="monster-attack-card-fly flex w-[121px] h-[176px] items-center justify-center rounded-lg border-2 border-gray-500 bg-slate-800 text-[10px] font-semibold text-gray-200"
+                  style={{
+                    animationDelay: `${animationDelayMs}ms`,
+                    ['--attack-from-dx' as any]: `${path.fromDx}px`,
+                    ['--attack-from-dy' as any]: `${path.fromDy}px`,
+                    ['--attack-mid-dx' as any]: `${path.midDx}px`,
+                    ['--attack-mid-dy' as any]: `${path.midDy}px`,
+                    ['--attack-start-scale' as any]: `${path.startScale}`,
+                    ['--attack-mid-scale' as any]: `${path.midScale}`,
+                    ['--attack-end-scale' as any]: `${path.endScale}`,
+                    ['--attack-start-scale-x' as any]: `${path.startScaleX ?? path.startScale}`,
+                    ['--attack-start-scale-y' as any]: `${path.startScaleY ?? path.startScale}`,
+                    ['--attack-mid-scale-x' as any]: `${path.midScaleX ?? path.midScale}`,
+                    ['--attack-mid-scale-y' as any]: `${path.midScaleY ?? path.midScale}`,
+                    ['--attack-end-scale-x' as any]: `${path.endScaleX ?? path.endScale}`,
+                    ['--attack-end-scale-y' as any]: `${path.endScaleY ?? path.endScale}`
+                  }}
+                >
+                  No card
+                </div>
+              )}
+              <div
+                className={`monster-attack-outcome-pop mt-1 rounded px-2 py-1 text-center text-[10px] font-semibold shadow ${getAttackOutcomeClass(
+                  attack
+                )}`}
+                style={{ animationDelay: `${outcomeDelayMs}ms` }}
+              >
+                {getAttackOutcomeLabel(attack)}
+              </div>
+            </div>
+          );
+        })}
+
       {deckReturnAnimations.map((anim) => (
         <div
           key={anim.id}
-          className="monster-attack-return-card fixed z-[80] pointer-events-none w-16 h-24 rounded border-2 border-gray-300 bg-white shadow-xl"
+          className="monster-attack-return-card fixed z-[180] pointer-events-none w-[121px] h-[176px] rounded-lg border-2 border-gray-300 bg-white"
           style={{
             left: `${anim.fromX}px`,
             top: `${anim.fromY}px`,
             animationDelay: `${anim.delayMs}ms`,
             ['--return-dx' as any]: `${anim.toX - anim.fromX}px`,
-            ['--return-dy' as any]: `${anim.toY - anim.fromY}px`
+            ['--return-dy' as any]: `${anim.toY - anim.fromY}px`,
+            ['--return-start-scale' as any]: `${anim.startScale}`,
+            ['--return-end-scale' as any]: `${anim.endScale}`,
+            ['--return-start-scale-x' as any]: `${anim.startScaleX ?? anim.startScale}`,
+            ['--return-start-scale-y' as any]: `${anim.startScaleY ?? anim.startScale}`,
+            ['--return-end-scale-x' as any]: `${anim.endScaleX ?? anim.endScale}`,
+            ['--return-end-scale-y' as any]: `${anim.endScaleY ?? anim.endScale}`
           }}
           title={`${(anim.card.name || '').trim() || 'Heroic'}: ${anim.card.description}`}
         >

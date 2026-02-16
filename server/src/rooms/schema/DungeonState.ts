@@ -21,7 +21,7 @@ type MonsterAttackCardSnapshot = {
   type: string;
   name: string;
   description: string;
-  defenseSymbol: "empty" | "block" | "counter";
+  defenseSymbol: "empty" | "block" | "counter" | "dodge";
   color: CardColor;
 };
 
@@ -75,6 +75,7 @@ export class DungeonState extends Schema {
   @type("number") currentDay = 1;
   @type("number") maxDays = 3;
   @type("string") gameStatus: GameStatus = "in_progress";
+  @type("boolean") debugMode = false;
 
   // Room deck properties
   @type("number") roomDeckSize = 10;
@@ -947,7 +948,11 @@ export class DungeonState extends Schema {
           continue;
         }
 
-        const defenseSymbol = (defenseCard.defenseSymbol || "empty") as "empty" | "block" | "counter";
+        const defenseSymbol = (defenseCard.defenseSymbol || "empty") as
+          | "empty"
+          | "block"
+          | "counter"
+          | "dodge";
         const cardColor = (defenseCard.color || "clear") as CardColor;
         const cardSnapshot: MonsterAttackCardSnapshot = {
           id: defenseCard.id,
@@ -958,8 +963,8 @@ export class DungeonState extends Schema {
           color: cardColor
         };
 
-        if (defenseSymbol === "block") {
-          // Block returns the card to the player's deck.
+        if (defenseSymbol === "block" || defenseSymbol === "dodge") {
+          // Block/Dodge returns the card to the player's deck.
           player.deck.push(defenseCard);
           attacks.push({
             playerSessionId,
@@ -2318,6 +2323,14 @@ export class DungeonState extends Schema {
   }
 
   /**
+   * Experience awarded for completing a monster card.
+   * Formula matches the UI badge: 1 XP per 5 filled monster squares (rounded up, minimum 1).
+   */
+  private getMonsterExperienceValue(monster: MonsterCard): number {
+    return Math.max(1, Math.ceil(monster.getTotalSquares() / 5));
+  }
+
+  /**
    * Complete the card action by crossing all selected squares and moving card to discard pile
    */
   private completeCardAction(
@@ -2362,12 +2375,18 @@ export class DungeonState extends Schema {
 
         if (!square.filled) continue;
 
+        const wasCompletedBeforeCross = monster.isCompleted();
+
         square.checked = true;
         console.log(`Crossed square ${sel.x},${sel.y} on monster ${monster.name} for player ${sessionId}`);
 
         const completed = monster.isCompleted();
-        if (completed) {
-          console.log(`Player ${sessionId} completed monster ${monster.name}!`);
+        if (completed && !wasCompletedBeforeCross) {
+          const gainedXp = this.getMonsterExperienceValue(monster);
+          player.xp += gainedXp;
+          console.log(
+            `Player ${sessionId} completed monster ${monster.name}! +${gainedXp} XP (total: ${player.xp})`
+          );
         }
       }
     }
@@ -3256,6 +3275,64 @@ export class DungeonState extends Schema {
     }
 
     return this.selectMonsterSquareForCard(sessionId, monster, x, y);
+  }
+
+  setDebugMode(enabled: boolean): { success: boolean; debugMode: boolean } {
+    this.debugMode = !!enabled;
+    console.log(`Debug mode ${this.debugMode ? "enabled" : "disabled"}`);
+    return { success: true, debugMode: this.debugMode };
+  }
+
+  debugCompleteMonster(sessionId: string, monsterId: string): {
+    success: boolean;
+    message?: string;
+    error?: string;
+    xpAwarded?: number;
+  } {
+    if (!this.debugMode) {
+      return { success: false, error: "Debug mode is disabled" };
+    }
+
+    const actor = this.players.get(sessionId);
+    if (!actor) {
+      return { success: false, error: "Player not found" };
+    }
+
+    const monster = this.activeMonsters.find((m) => m.id === monsterId);
+    if (!monster) {
+      return { success: false, error: "Monster not found" };
+    }
+
+    const wasCompleted = monster.isCompleted();
+
+    for (const square of monster.squares) {
+      if (square.filled) {
+        square.checked = true;
+      }
+    }
+
+    let xpAwarded = 0;
+    if (!wasCompleted && monster.playerOwnerId) {
+      const owner = this.players.get(monster.playerOwnerId);
+      if (owner) {
+        xpAwarded = this.getMonsterExperienceValue(monster);
+        owner.xp += xpAwarded;
+      }
+    }
+
+    this.checkAndHandleBossDefeat();
+
+    console.log(
+      `Debug complete monster ${monster.id} by ${sessionId}${xpAwarded > 0 ? ` (+${xpAwarded} XP)` : ""}`
+    );
+
+    return {
+      success: true,
+      message: wasCompleted
+        ? `${monster.name} was already complete.`
+        : `Completed ${monster.name}${xpAwarded > 0 ? ` (+${xpAwarded} XP)` : ""}.`,
+      xpAwarded
+    };
   }
 
   /**

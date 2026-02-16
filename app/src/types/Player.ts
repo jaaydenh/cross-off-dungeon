@@ -15,4 +15,5 @@ export class Player extends Schema {
     @type([ Card ]) public discardPile: ArraySchema<Card> = new ArraySchema<Card>();
     @type("string") public turnStatus!: string;
     @type("boolean") public hasDrawnCard!: boolean;
+    @type("number") public xp!: number;
 }

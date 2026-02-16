@@ -45,7 +45,9 @@ class Dungeon extends core_1.Room {
     }
     normalizeMonsterAttackPhasePayload(payload) {
         const attacks = (Array.isArray(payload.attacks) ? payload.attacks : []).map((attack) => {
-            const cardDefenseSymbol = attack.card?.defenseSymbol === "block" || attack.card?.defenseSymbol === "counter"
+            const cardDefenseSymbol = attack.card?.defenseSymbol === "block" ||
+                attack.card?.defenseSymbol === "counter" ||
+                attack.card?.defenseSymbol === "dodge"
                 ? attack.card.defenseSymbol
                 : "empty";
             const card = attack.card
@@ -266,11 +268,21 @@ class Dungeon extends core_1.Room {
             const result = this.state.cancelCardAction(client.sessionId);
             client.send("cancelCardActionResult", result);
         });
+        this.onMessage("discardCardAction", (client, message) => {
+            const result = this.state.discardCardAction(client.sessionId);
+            client.send("discardCardActionResult", result);
+        });
         this.onMessage("confirmCardAction", (client, message) => {
             // Mutates state; clients will see updates via state patches.
             // NOTE: Sending confirmCardActionResult has intermittently triggered msgpackr encoding
             // RangeErrors in this project, so we intentionally do not respond here.
             this.state.confirmCardAction(client.sessionId, message);
+        });
+        this.onMessage("setDebugMode", (client, message) => {
+            this.state.setDebugMode(!!message?.enabled);
+        });
+        this.onMessage("debugCompleteMonster", (client, message) => {
+            this.state.debugCompleteMonster(client.sessionId, message?.monsterId);
         });
         // Monster-related message handlers
         this.onMessage("claimMonster", (client, message) => {

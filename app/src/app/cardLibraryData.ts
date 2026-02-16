@@ -3,7 +3,7 @@ export type CardLibraryEntry = {
   name: string;
   description: string;
   color: 'clear' | 'red' | 'blue' | 'green';
-  defenseSymbol: 'empty' | 'block' | 'counter';
+  defenseSymbol: 'empty' | 'block' | 'counter' | 'dodge';
   selectionTarget: 'room' | 'monster' | 'room_or_monster' | 'monster_each';
   selectionMode:
     | 'squares'
@@ -151,6 +151,19 @@ export const CARD_LIBRARY_ENTRIES: CardLibraryEntry[] = [
     selectionMode: 'squares',
     minSelections: 2,
     maxSelections: 2,
+    requiresConnected: true,
+    drawCardsOnResolve: 1
+  },
+  {
+    type: 'quick_step',
+    name: 'Quick Step',
+    description: 'Move 1 then draw another card',
+    color: 'green',
+    defenseSymbol: 'dodge',
+    selectionTarget: 'room',
+    selectionMode: 'squares',
+    minSelections: 1,
+    maxSelections: 1,
     requiresConnected: true,
     drawCardsOnResolve: 1
   }

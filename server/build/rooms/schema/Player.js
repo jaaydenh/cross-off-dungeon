@@ -18,6 +18,7 @@ class Player extends schema_1.Schema {
         this.discardPile = new schema_1.ArraySchema();
         this.turnStatus = "not_started";
         this.hasDrawnCard = false;
+        this.xp = 0;
         this.name = name;
         this.deck = new schema_1.ArraySchema();
         this.drawnCards = new schema_1.ArraySchema();
@@ -52,3 +53,6 @@ __decorate([
 __decorate([
     (0, schema_1.type)("boolean")
 ], Player.prototype, "hasDrawnCard", void 0);
+__decorate([
+    (0, schema_1.type)("number")
+], Player.prototype, "xp", void 0);

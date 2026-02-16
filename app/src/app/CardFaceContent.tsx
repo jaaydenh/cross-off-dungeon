@@ -7,6 +7,7 @@ const COMBAT_CARD_TYPE = 'combat_fight_three_diagonal_or_move_three';
 const SWIPE_CARD_TYPE = 'swipe_fight_l_overlay';
 const CUNNING_CARD_TYPE = 'cunning';
 const SPREAD_OUT_CARD_TYPE = 'spread_out_room_overlay';
+const QUICK_STEP_CARD_TYPE = 'quick_step';
 
 type CardFaceContentProps = {
   type: string;
@@ -132,6 +133,23 @@ function SpreadOutVisual() {
   );
 }
 
+function QuickStepVisual() {
+  const cellClass = 'h-5 w-5 border border-green-700 bg-green-400/80';
+
+  return (
+    <div className="h-full w-full flex flex-col items-center justify-center gap-2 text-black">
+      <div className="rounded-full border border-gray-500 bg-white px-3 py-0.5 text-[10px] font-semibold leading-none">
+        Move
+      </div>
+      <div className={cellClass} />
+      <div className="text-[10px] font-semibold leading-none italic">then</div>
+      <div className="flex h-7 w-5 items-center justify-center rounded border border-gray-500 bg-gray-300 text-base leading-none text-gray-700">
+        +
+      </div>
+    </div>
+  );
+}
+
 const getCardColorTheme = (color: string): {
   fallbackTitle: string;
   headerClasses: string;
@@ -172,9 +190,13 @@ export default function CardFaceContent({
   const isSwipe = type === SWIPE_CARD_TYPE;
   const isCunning = type === CUNNING_CARD_TYPE;
   const isSpreadOut = type === SPREAD_OUT_CARD_TYPE;
-  const hasDefenseAbility = defenseSymbol === 'block' || defenseSymbol === 'counter';
-  const defenseIcon = defenseSymbol === 'block' ? '🛡️' : '⚔️';
-  const defenseLabel = defenseSymbol === 'block' ? 'Block' : 'Counter Attack';
+  const isQuickStep = type === QUICK_STEP_CARD_TYPE;
+  const hasDefenseAbility =
+    defenseSymbol === 'block' || defenseSymbol === 'counter' || defenseSymbol === 'dodge';
+  const defenseIcon =
+    defenseSymbol === 'block' ? '🛡️' : defenseSymbol === 'counter' ? '⚔️' : '💨';
+  const defenseLabel =
+    defenseSymbol === 'block' ? 'Block' : defenseSymbol === 'counter' ? 'Counter Attack' : 'Dodge';
   const theme = getCardColorTheme(color);
   const titleText = (name || '').trim().length > 0 ? name : theme.fallbackTitle;
 
@@ -194,6 +216,8 @@ export default function CardFaceContent({
           <CunningVisual />
         ) : isSpreadOut ? (
           <SpreadOutVisual />
+        ) : isQuickStep ? (
+          <QuickStepVisual />
         ) : (
           <CardFaceText text={description} className="text-black" maxFontPx={11} minFontPx={7} />
         )}

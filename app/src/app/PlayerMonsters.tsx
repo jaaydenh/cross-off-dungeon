@@ -5,7 +5,7 @@ import { Player } from '@/types/Player';
 import { DungeonState } from '@/types/DungeonState';
 import { Room } from '@colyseus/sdk';
 import MonsterCard from './MonsterCard';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { MonsterAttackAnimation } from '@/types/MonsterAttack';
 
 interface PlayerMonstersProps {
@@ -18,6 +18,10 @@ interface PlayerMonstersProps {
   onMonsterDrop?: () => void;
   cunningPreviewStepLength?: 1 | 2 | 3 | null;
   attackAnimations?: MonsterAttackAnimation[];
+  completionFxByMonsterId?: Record<string, 'skull' | 'fade'>;
+  hiddenCompletedMonsterIds?: string[];
+  debugModeEnabled?: boolean;
+  onDebugCompleteMonster?: (monsterId: string) => void;
 }
 
 export default function PlayerMonsters({
@@ -29,9 +33,20 @@ export default function PlayerMonsters({
   onMonsterSquareClick,
   onMonsterDrop,
   cunningPreviewStepLength = null,
-  attackAnimations = []
+  attackAnimations = [],
+  completionFxByMonsterId = {},
+  hiddenCompletedMonsterIds = [],
+  debugModeEnabled = false,
+  onDebugCompleteMonster
 }: PlayerMonstersProps) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const hiddenCompletedMonsterIdSet = useMemo(
+    () => new Set(hiddenCompletedMonsterIds),
+    [hiddenCompletedMonsterIds]
+  );
+
+  const isMonsterCompleted = (monster: MonsterCardType): boolean =>
+    Array.isArray(monster.squares) && monster.squares.every((square) => !square.filled || square.checked);
 
   const activeCard = currentPlayer?.drawnCards?.find((card) => card.isActive);
   const canSelectMonsterSquares =
@@ -53,9 +68,22 @@ export default function PlayerMonsters({
   const getPlayerMonsters = (): MonsterCardType[] => {
     if (!gameState?.activeMonsters || !currentPlayer) return [];
     
-    return gameState.activeMonsters.filter(monster => 
-      monster.playerOwnerId === colyseusRoom?.sessionId
-    );
+    return gameState.activeMonsters.filter((monster) => {
+      if (monster.playerOwnerId !== colyseusRoom?.sessionId) {
+        return false;
+      }
+
+      const monsterId = String(monster.id);
+      if (hiddenCompletedMonsterIdSet.has(monsterId)) {
+        return false;
+      }
+
+      if (isMonsterCompleted(monster) && !completionFxByMonsterId[monsterId]) {
+        return false;
+      }
+
+      return true;
+    });
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -136,6 +164,9 @@ export default function PlayerMonsters({
               combatBlastPreviewEnabled={showCombatBlastPreview}
               swipePreviewEnabled={showSwipePreview}
               attackAnimations={attackAnimations.filter((attack) => attack.monsterId === monster.id)}
+              completionFxPhase={completionFxByMonsterId[String(monster.id)] || null}
+              debugModeEnabled={debugModeEnabled}
+              onDebugComplete={onDebugCompleteMonster}
               className="monster-owned"
             />
           ))}
