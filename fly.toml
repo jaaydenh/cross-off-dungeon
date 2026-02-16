@@ -1,4 +1,4 @@
-app = "cross-off-dungeon-server"
+app = "cross-off-dungeon"
 primary_region = "ord"
 
 [build]

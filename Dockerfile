@@ -23,6 +23,7 @@ ENV NODE_ENV=production
 COPY --from=build /app/server/package*.json ./
 COPY --from=build /app/server/node_modules ./node_modules
 COPY --from=build /app/server/build ./build
+COPY --from=build /app/server/src ./src
 
 EXPOSE 2567
 
