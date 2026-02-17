@@ -42,6 +42,7 @@ describe("Room Template Generation", () => {
     assert.ok(room.entranceY >= 0 && room.entranceY < room.height);
     assert.strictEqual(room.getSquare(room.entranceX, room.entranceY)?.wall, false);
     assert.strictEqual(room.getSquare(room.entranceX, room.entranceY)?.entrance, true);
+    assert.strictEqual(room.getSquare(room.entranceX, room.entranceY)?.checked, true);
 
     for (let i = 0; i < room.exitX.length; i++) {
       const exitX = room.exitX[i];
@@ -69,4 +70,3 @@ describe("Room Template Generation", () => {
     assert.strictEqual(room.squares.length, 24);
   });
 });
-

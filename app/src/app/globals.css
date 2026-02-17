@@ -39,6 +39,22 @@ body {
     background-image: none;
   }
 
+  .room-tile-fade-in {
+    animation: room-tile-fade-in 2s linear both;
+    will-change: opacity, transform;
+  }
+
+  @keyframes room-tile-fade-in {
+    0% {
+      opacity: 0;
+      transform: translateY(8px) scale(0.985);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
   /* Glow effect for undrawn deck */
   .deck-glow {
     animation: deck-glow 2s ease-in-out infinite alternate;

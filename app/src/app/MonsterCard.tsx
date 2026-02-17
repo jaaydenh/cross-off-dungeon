@@ -671,12 +671,6 @@ export default function MonsterCard({
       )}
 
       <div className="mt-1 flex min-h-[18px] items-center gap-2">
-        {canDrag && (
-          <div className="text-xs font-medium text-blue-600">
-            Drag to claim
-          </div>
-        )}
-
         {isCompleted() && (
           <div className="rounded bg-green-600 px-2 py-1 text-xs text-white">
             ✓ Completed!

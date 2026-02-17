@@ -51,13 +51,13 @@ exports.CARD_DEFINITIONS = [
     {
         id: "cross_two_connected_each_monster",
         name: "Every Monster",
-        description: "Cross off 2 connected squares on every monster",
+        description: "Cross off up to 2 connected squares on every monster",
         color: "clear",
         defenseSymbol: "counter",
         selection: {
             target: "monster_each",
             mode: "squares",
-            minSelections: 2,
+            minSelections: 1,
             maxSelections: 2,
             connected: true,
             requireMonsterStartAdjacency: true

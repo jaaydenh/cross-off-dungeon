@@ -31,9 +31,10 @@ const ROOM_TILE_SIZE = 320;
 const HALLWAY_LENGTH = 28;
 const HALLWAY_THICKNESS = 24;
 const BASE_CONTENT_PADDING = 200;
-const ROOM_TILE_INNER_PADDING = 12;
+const ROOM_GRID_MIN_MARGIN = 20;
 const ROOM_TITLE_SAFE_HEIGHT = 28;
 const ROOM_TITLE_BADGE_GUTTER = 88;
+const ROOM_HOVER_Z_INDEX = 40;
 const PENCIL_ROOM_TEXTURE =
   'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2728%27 height=%2728%27 viewBox=%270 0 28 28%27%3E%3Cg fill=%27%23000000%27 fill-opacity=%270.14%27%3E%3Ccircle cx=%274%27 cy=%276%27 r=%270.7%27/%3E%3Ccircle cx=%2713%27 cy=%275%27 r=%270.6%27/%3E%3Ccircle cx=%2722%27 cy=%279%27 r=%270.65%27/%3E%3Ccircle cx=%278%27 cy=%2717%27 r=%270.6%27/%3E%3Ccircle cx=%2718%27 cy=%2715%27 r=%270.7%27/%3E%3Ccircle cx=%2725%27 cy=%2722%27 r=%270.55%27/%3E%3Ccircle cx=%2710%27 cy=%2724%27 r=%270.65%27/%3E%3C/g%3E%3C/svg%3E")';
 
@@ -44,6 +45,47 @@ const buildInterleavedTracks = (count: number, roomSizePx: number, hallwaySizePx
     if (i < count - 1) sizes.push(`${hallwaySizePx}px`);
   }
   return sizes.join(' ');
+};
+
+const getDoorwayOverhangPx = (cellSizePx: number): number => {
+  const borderWidthPx = Math.max(6, Math.round(cellSizePx * 0.14));
+  const doorwayDepthPx = Math.max(10, Math.round(cellSizePx * 0.3));
+  return borderWidthPx + doorwayDepthPx;
+};
+
+const calculateRoomGridLayout = (
+  roomWidth: number,
+  roomHeight: number
+): { cellSizePx: number; gridInsetPx: number } => {
+  const safeRoomWidth = Math.max(1, roomWidth);
+  const safeRoomHeight = Math.max(1, roomHeight);
+
+  for (let candidateCellSizePx = ROOM_TILE_SIZE; candidateCellSizePx >= 1; candidateCellSizePx--) {
+    const doorwayOverhangPx = getDoorwayOverhangPx(candidateCellSizePx);
+    const gridInsetPx = ROOM_GRID_MIN_MARGIN + doorwayOverhangPx;
+    const gridAvailableWidth = ROOM_TILE_SIZE - gridInsetPx * 2;
+    const gridAvailableHeight = ROOM_TILE_SIZE - gridInsetPx * 2 - ROOM_TITLE_SAFE_HEIGHT;
+
+    if (gridAvailableWidth <= 0 || gridAvailableHeight <= 0) {
+      continue;
+    }
+
+    if (
+      candidateCellSizePx * safeRoomWidth <= gridAvailableWidth &&
+      candidateCellSizePx * safeRoomHeight <= gridAvailableHeight
+    ) {
+      return {
+        cellSizePx: candidateCellSizePx,
+        gridInsetPx
+      };
+    }
+  }
+
+  const doorwayOverhangPx = getDoorwayOverhangPx(1);
+  return {
+    cellSizePx: 1,
+    gridInsetPx: ROOM_GRID_MIN_MARGIN + doorwayOverhangPx
+  };
 };
 
 const getDirectionDelta = (
@@ -153,6 +195,7 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [hoveredMonsterRoomIndex, setHoveredMonsterRoomIndex] = useState<number | null>(null);
   const hasCenteredInitialRoom = useRef(false);
 
   const calculateBounds = () => {
@@ -377,33 +420,21 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
 
             const gridColumnStart = normalizedX * 2 + 1;
             const gridRowStart = normalizedY * 2 + 1;
-
-            const gridAvailableWidth = ROOM_TILE_SIZE - ROOM_TILE_INNER_PADDING * 2;
-            const gridAvailableHeight =
-              ROOM_TILE_SIZE - ROOM_TILE_INNER_PADDING * 2 - ROOM_TITLE_SAFE_HEIGHT;
-            const cellSizePx = Math.max(
-              1,
-              Math.floor(
-                Math.min(
-                  gridAvailableWidth / Math.max(1, room.width),
-                  gridAvailableHeight / Math.max(1, room.height)
-                )
-              )
-            );
+            const { cellSizePx, gridInsetPx } = calculateRoomGridLayout(room.width, room.height);
 
             const monster = getMonsterForRoom(index);
 
             return (
               <div
-                key={`room-${index}`}
+                key={`room-${room.gridX}-${room.gridY}`}
                 data-testid={`room-tile-${room.gridX}-${room.gridY}`}
-                className="relative border-2 border-black rounded-lg overflow-visible"
+                className="relative rounded-none overflow-visible room-tile-fade-in"
                 style={{
                   width: `${ROOM_TILE_SIZE}px`,
                   height: `${ROOM_TILE_SIZE}px`,
                   gridColumnStart,
                   gridRowStart,
-                  zIndex: 2,
+                  zIndex: hoveredMonsterRoomIndex === index ? ROOM_HOVER_Z_INDEX : 2,
                   backgroundColor: '#e2dac9',
                   backgroundImage: PENCIL_ROOM_TEXTURE,
                   backgroundSize: '28px 28px',
@@ -411,49 +442,68 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
                     'inset 0 0 0 1px rgba(0, 0, 0, 0.08), 0 4px 0 rgba(0, 0, 0, 0.32)'
                 }}
               >
-                <div
-                  className="absolute top-2 left-2 text-xs text-black select-none pointer-events-none whitespace-nowrap overflow-hidden text-ellipsis"
-                  style={{ right: `${ROOM_TITLE_BADGE_GUTTER}px` }}
-                  title={roomTitle}
-                >
-                  {roomTitle}
-                </div>
-
-                {monster && (
-                  <div className="absolute top-2 right-2 z-20">
-                    <MonsterBadge
-                      monster={monster}
-                      canDrag={canPlayerDragMonster(monster)}
-                      onDragStart={onMonsterDragStart}
-                      onDragEnd={onMonsterDragEnd}
-                    />
+                <div className="relative z-10 w-full h-full">
+                  <div
+                    className="absolute top-2 left-2 text-sm font-bold text-black select-none pointer-events-none whitespace-nowrap overflow-hidden text-ellipsis"
+                    style={{ right: `${ROOM_TITLE_BADGE_GUTTER}px` }}
+                    title={roomTitle}
+                  >
+                    {roomTitle}
                   </div>
-                )}
 
-                <div
-                  className="w-full h-full flex items-start justify-center"
-                  style={{
-                    paddingLeft: `${ROOM_TILE_INNER_PADDING}px`,
-                    paddingRight: `${ROOM_TILE_INNER_PADDING}px`,
-                    paddingBottom: `${ROOM_TILE_INNER_PADDING}px`,
-                    paddingTop: `${ROOM_TILE_INNER_PADDING + ROOM_TITLE_SAFE_HEIGHT}px`
-                  }}
-                >
-                  <Grid
-                    room={room}
-                    handleSquareClick={(x, y) => handleSquareClick(x, y, index)}
-                    invalidSquareHighlight={
-                      invalidSquareHighlight && invalidSquareHighlight.roomIndex === index
-                        ? { x: invalidSquareHighlight.x, y: invalidSquareHighlight.y }
-                        : null
-                    }
-                    selectedSquares={selectedSquares}
-                    roomIndex={index}
-                    cellSizePx={cellSizePx}
-                    horizontalPairPreviewEnabled={horizontalPairPreviewEnabled}
-                    cunningStepPreviewLength={cunningStepPreviewLength}
-                    spreadOutPreviewEnabled={spreadOutPreviewEnabled}
-                  />
+                  {monster && (
+                    <div
+                      className="absolute top-2 right-2 z-30"
+                      onMouseEnter={() => setHoveredMonsterRoomIndex(index)}
+                      onMouseLeave={() =>
+                        setHoveredMonsterRoomIndex((current) => (current === index ? null : current))
+                      }
+                    >
+                      <MonsterBadge
+                        monster={monster}
+                        canDrag={canPlayerDragMonster(monster)}
+                        onDragStart={onMonsterDragStart}
+                        onDragEnd={onMonsterDragEnd}
+                      />
+                    </div>
+                  )}
+
+                  <div
+                    data-testid={`room-grid-wrap-${room.gridX}-${room.gridY}`}
+                    className="w-full h-full flex items-center justify-center"
+                    style={{
+                      paddingLeft: `${gridInsetPx}px`,
+                      paddingRight: `${gridInsetPx}px`,
+                      paddingBottom: `${gridInsetPx}px`,
+                      paddingTop: `${gridInsetPx + ROOM_TITLE_SAFE_HEIGHT}px`
+                    }}
+                  >
+                    <div
+                      className="relative"
+                      style={{
+                        width: `${room.width * cellSizePx}px`,
+                        height: `${room.height * cellSizePx}px`
+                      }}
+                    >
+                      <div className="relative">
+                        <Grid
+                          room={room}
+                          handleSquareClick={(x, y) => handleSquareClick(x, y, index)}
+                          invalidSquareHighlight={
+                            invalidSquareHighlight && invalidSquareHighlight.roomIndex === index
+                              ? { x: invalidSquareHighlight.x, y: invalidSquareHighlight.y }
+                              : null
+                          }
+                          selectedSquares={selectedSquares}
+                          roomIndex={index}
+                          cellSizePx={cellSizePx}
+                          horizontalPairPreviewEnabled={horizontalPairPreviewEnabled}
+                          cunningStepPreviewLength={cunningStepPreviewLength}
+                          spreadOutPreviewEnabled={spreadOutPreviewEnabled}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             );

@@ -48,12 +48,12 @@ export const CARD_LIBRARY_ENTRIES: CardLibraryEntry[] = [
   {
     type: 'cross_two_connected_each_monster',
     name: 'Every Monster',
-    description: 'Cross off 2 connected squares on every monster',
+    description: 'Cross off up to 2 connected squares on every monster',
     color: 'clear',
     defenseSymbol: 'counter',
     selectionTarget: 'monster_each',
     selectionMode: 'squares',
-    minSelections: 2,
+    minSelections: 1,
     maxSelections: 2,
     requiresConnected: true
   },

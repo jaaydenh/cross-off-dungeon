@@ -11,6 +11,80 @@ interface ConfirmMoveButtonProps {
   selectedMonsterSquares?: Array<{ monsterId: string; x: number; y: number }>;
 }
 
+const toHorizontalRoomPairAnchors = (
+  squares: Array<{ roomIndex: number; x: number; y: number }>
+): Array<{ roomIndex: number; x: number; y: number }> => {
+  const grouped = new Map<number, Array<{ roomIndex: number; x: number; y: number }>>();
+  for (const square of squares) {
+    const list = grouped.get(square.roomIndex) || [];
+    list.push(square);
+    grouped.set(square.roomIndex, list);
+  }
+
+  const anchors: Array<{ roomIndex: number; x: number; y: number }> = [];
+  for (const groupSquares of grouped.values()) {
+    const keySet = new Set(groupSquares.map((square) => `${square.x},${square.y}`));
+    const consumed = new Set<string>();
+    const sorted = [...groupSquares].sort((a, b) => a.y - b.y || a.x - b.x);
+
+    for (const square of sorted) {
+      const key = `${square.x},${square.y}`;
+      if (consumed.has(key)) continue;
+
+      const rightKey = `${square.x + 1},${square.y}`;
+      if (keySet.has(rightKey) && !consumed.has(rightKey)) {
+        anchors.push({ roomIndex: square.roomIndex, x: square.x, y: square.y });
+        consumed.add(key);
+        consumed.add(rightKey);
+        continue;
+      }
+
+      // Fall back to preserving payload if pair grouping failed; server validation will reject invalid moves.
+      anchors.push({ roomIndex: square.roomIndex, x: square.x, y: square.y });
+      consumed.add(key);
+    }
+  }
+
+  return anchors;
+};
+
+const toHorizontalMonsterPairAnchors = (
+  squares: Array<{ monsterId: string; x: number; y: number }>
+): Array<{ monsterId: string; x: number; y: number }> => {
+  const grouped = new Map<string, Array<{ monsterId: string; x: number; y: number }>>();
+  for (const square of squares) {
+    const list = grouped.get(square.monsterId) || [];
+    list.push(square);
+    grouped.set(square.monsterId, list);
+  }
+
+  const anchors: Array<{ monsterId: string; x: number; y: number }> = [];
+  for (const groupSquares of grouped.values()) {
+    const keySet = new Set(groupSquares.map((square) => `${square.x},${square.y}`));
+    const consumed = new Set<string>();
+    const sorted = [...groupSquares].sort((a, b) => a.y - b.y || a.x - b.x);
+
+    for (const square of sorted) {
+      const key = `${square.x},${square.y}`;
+      if (consumed.has(key)) continue;
+
+      const rightKey = `${square.x + 1},${square.y}`;
+      if (keySet.has(rightKey) && !consumed.has(rightKey)) {
+        anchors.push({ monsterId: square.monsterId, x: square.x, y: square.y });
+        consumed.add(key);
+        consumed.add(rightKey);
+        continue;
+      }
+
+      // Fall back to preserving payload if pair grouping failed; server validation will reject invalid moves.
+      anchors.push({ monsterId: square.monsterId, x: square.x, y: square.y });
+      consumed.add(key);
+    }
+  }
+
+  return anchors;
+};
+
 const ConfirmMoveButton: React.FC<ConfirmMoveButtonProps> = ({
   player,
   room,
@@ -24,12 +98,16 @@ const ConfirmMoveButton: React.FC<ConfirmMoveButtonProps> = ({
 
   const handleConfirmMove = () => {
     if (!room || !player) return;
+    if (activeCard?.selectionMode === 'cunning_three_step_different_cards') {
+      room.send('confirmCardAction', {});
+      return;
+    }
 
     const displayedRoomIndices = room?.state?.displayedRoomIndices;
     const currentRoomIndex = room?.state?.currentRoomIndex;
 
     // Map UI display room indices -> server room indices at submit time.
-    const roomSquares = (selectedSquares || []).map((pos) => ({
+    let roomSquares = (selectedSquares || []).map((pos) => ({
       roomIndex:
         pos.serverRoomIndex ??
         displayedRoomIndices?.[pos.roomIndex] ??
@@ -38,10 +116,16 @@ const ConfirmMoveButton: React.FC<ConfirmMoveButtonProps> = ({
       x: pos.x,
       y: pos.y
     }));
+    let monsterSquares = [...(selectedMonsterSquares || [])];
+
+    if (activeCard?.selectionMode === 'horizontal_pair_twice') {
+      roomSquares = toHorizontalRoomPairAnchors(roomSquares);
+      monsterSquares = toHorizontalMonsterPairAnchors(monsterSquares);
+    }
 
     const payload: any = {};
     if (roomSquares.length > 0) payload.roomSquares = roomSquares;
-    if ((selectedMonsterSquares || []).length > 0) payload.monsterSquares = selectedMonsterSquares;
+    if (monsterSquares.length > 0) payload.monsterSquares = monsterSquares;
 
     // Send message to server to confirm/commit the card action (includes pending selections)
     room.send('confirmCardAction', payload);

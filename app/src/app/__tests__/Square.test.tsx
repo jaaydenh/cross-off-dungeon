@@ -31,7 +31,7 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
       const exitSquare = createMockSquare({ exit: true });
       const mockOnClick = jest.fn();
 
-      render(
+      const { container } = render(
         <Square
           x={0}
           y={0}
@@ -41,10 +41,11 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
         />
       );
 
-      const square = screen.getByText('D');
-      expect(square).toHaveClass('bg-emerald-600');
+      const square = container.firstChild as HTMLElement;
+      expect(screen.queryByText('D')).not.toBeInTheDocument();
+      expect(square).toHaveClass('bg-stone-200');
       expect(square).toHaveClass('shadow-lg');
-      expect(square).toHaveClass('shadow-emerald-500/50');
+      expect(square).not.toHaveClass('opacity-75');
     });
 
     it('should apply correct styling for navigable but unconnected exits', () => {
@@ -52,7 +53,7 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
       const unconnectedExitInfo = { ...mockExitInfo, isConnected: false };
       const mockOnClick = jest.fn();
 
-      render(
+      const { container } = render(
         <Square
           x={0}
           y={0}
@@ -62,10 +63,10 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
         />
       );
 
-      const square = screen.getByText('D');
-      expect(square).toHaveClass('bg-blue-600');
+      const square = container.firstChild as HTMLElement;
+      expect(square).toHaveClass('bg-stone-200');
       expect(square).toHaveClass('shadow-lg');
-      expect(square).toHaveClass('shadow-blue-500/50');
+      expect(square).not.toHaveClass('opacity-75');
     });
 
     it('should apply correct styling for connected but non-navigable exits', () => {
@@ -73,7 +74,7 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
       const nonNavigableExitInfo = { ...mockExitInfo, isNavigable: false };
       const mockOnClick = jest.fn();
 
-      render(
+      const { container } = render(
         <Square
           x={0}
           y={0}
@@ -83,8 +84,8 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
         />
       );
 
-      const square = screen.getByText('D');
-      expect(square).toHaveClass('bg-green-800');
+      const square = container.firstChild as HTMLElement;
+      expect(square).toHaveClass('bg-stone-300');
       expect(square).toHaveClass('opacity-75');
     });
 
@@ -93,7 +94,7 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
       const blockedExitInfo = { ...mockExitInfo, isNavigable: false, isConnected: false };
       const mockOnClick = jest.fn();
 
-      render(
+      const { container } = render(
         <Square
           x={0}
           y={0}
@@ -103,8 +104,8 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
         />
       );
 
-      const square = screen.getByText('D');
-      expect(square).toHaveClass('bg-blue-800');
+      const square = container.firstChild as HTMLElement;
+      expect(square).toHaveClass('bg-stone-300');
       expect(square).toHaveClass('opacity-75');
     });
 
@@ -112,7 +113,7 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
       const exitSquare = createMockSquare({ exit: true });
       const mockOnClick = jest.fn();
 
-      render(
+      const { container } = render(
         <Square
           x={0}
           y={0}
@@ -123,8 +124,26 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
         />
       );
 
-      const square = screen.getByText('D');
+      const square = container.firstChild as HTMLElement;
       expect(square).toHaveClass('animate-pulse');
+    });
+
+    it('should show X on selected exit squares before confirmation', () => {
+      const exitSquare = createMockSquare({ exit: true, checked: false });
+      const mockOnClick = jest.fn();
+
+      render(
+        <Square
+          x={0}
+          y={0}
+          square={exitSquare}
+          onClick={mockOnClick}
+          exitInfo={mockExitInfo}
+          isSelected={true}
+        />
+      );
+
+      expect(screen.getByText('X')).toBeInTheDocument();
     });
   });
 
@@ -134,7 +153,7 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
       const mockOnClick = jest.fn();
       const mockOnExitHover = jest.fn();
 
-      render(
+      const { container } = render(
         <Square
           x={0}
           y={0}
@@ -145,7 +164,7 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
         />
       );
 
-      const square = screen.getByText('D');
+      const square = container.firstChild as HTMLElement;
 
       fireEvent.mouseEnter(square);
       expect(mockOnExitHover).toHaveBeenCalledWith(0);
@@ -181,7 +200,7 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
       const exitSquare = createMockSquare({ exit: true });
       const mockOnClick = jest.fn();
 
-      render(
+      const { container } = render(
         <Square
           x={0}
           y={0}
@@ -191,7 +210,7 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
         />
       );
 
-      const square = screen.getByText('D');
+      const square = container.firstChild as HTMLElement;
       expect(square).toHaveAttribute('title', 'Exit (Navigable) - Connected');
     });
 
@@ -233,7 +252,7 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
       expect(mockOnClick).toHaveBeenCalledWith(2, 3);
     });
 
-    it('should not be clickable for wall squares', () => {
+    it('should send wall clicks to the handler for invalid-move feedback', () => {
       const wallSquare = createMockSquare({ wall: true });
       const mockOnClick = jest.fn();
 
@@ -249,15 +268,34 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
       const square = container.firstChild as HTMLElement;
       fireEvent.click(square);
 
-      expect(mockOnClick).not.toHaveBeenCalled();
+      expect(mockOnClick).toHaveBeenCalledWith(0, 0);
       expect(square).not.toHaveClass('cursor-pointer');
+    });
+
+    it('should apply invalid highlight styling on exit squares', () => {
+      const exitSquare = createMockSquare({ exit: true });
+      const mockOnClick = jest.fn();
+
+      const { container } = render(
+        <Square
+          x={0}
+          y={0}
+          square={exitSquare}
+          onClick={mockOnClick}
+          exitInfo={mockExitInfo}
+          showInvalidHighlight={true}
+        />
+      );
+
+      const square = container.firstChild as HTMLElement;
+      expect(square).toHaveClass('bg-red-600');
+      expect(square).toHaveClass('invalid-square-highlight');
     });
   });
 
   describe('Visual Consistency', () => {
     it('should maintain consistent styling for different square types', () => {
       const squares = [
-        { square: createMockSquare({ entrance: true }), content: 'E', expectedBg: 'bg-green-700' },
         { square: createMockSquare({ treasure: true }), content: 'T', expectedBg: 'bg-yellow-700' },
         { square: createMockSquare({ monster: true }), content: 'M', expectedBg: 'bg-red-700' },
         { square: createMockSquare({ checked: true }), content: 'X', expectedBg: 'bg-gray-700' },
@@ -278,6 +316,17 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
 
         unmount();
       });
+
+      const { container: entranceContainer } = render(
+        <Square
+          x={0}
+          y={0}
+          square={createMockSquare({ entrance: true })}
+          onClick={jest.fn()}
+        />
+      );
+      const entranceElement = entranceContainer.firstChild as HTMLElement;
+      expect(entranceElement.textContent).toBe('');
 
       // Test wall square separately since it has empty content
       const { container } = render(

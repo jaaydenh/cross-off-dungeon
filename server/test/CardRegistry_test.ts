@@ -26,6 +26,31 @@ describe("Card Registry", () => {
     assert.strictEqual(created.description, "Cross off up to 2 squares on a single room or monster");
   });
 
+  it("should configure Every Monster as up to 2 connected squares with a minimum of 1 per monster", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "cross_two_connected_each_monster");
+    assert(definition, "Every Monster card definition should exist");
+
+    assert.strictEqual(definition.name, "Every Monster");
+    assert.strictEqual(definition.description, "Cross off up to 2 connected squares on every monster");
+    assert.strictEqual(definition.selection.target, "monster_each");
+    assert.strictEqual(definition.selection.mode, "squares");
+    assert.strictEqual(definition.selection.minSelections, 1);
+    assert.strictEqual(definition.selection.maxSelections, 2);
+    assert.strictEqual(definition.selection.connected, true);
+  });
+
+  it("should create Every Monster cards with minSelections = 1 and maxSelections = 2", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "cross_two_connected_each_monster");
+    assert(definition, "Every Monster card definition should exist");
+
+    const created = createCardFromDefinition(definition, "test_every_monster");
+
+    assert.strictEqual(created.type, "cross_two_connected_each_monster");
+    assert.strictEqual(created.minSelections, 1);
+    assert.strictEqual(created.maxSelections, 2);
+    assert.strictEqual(created.description, "Cross off up to 2 connected squares on every monster");
+  });
+
   it("should configure Reposition as a room-only adjacent move with a bonus draw", () => {
     const definition = CARD_DEFINITIONS.find((card) => card.id === "reposition");
     assert(definition, "Reposition card definition should exist");

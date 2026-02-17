@@ -142,6 +142,58 @@ describe("Inspiration Card", () => {
     assert.strictEqual(caster.discardPile[0].type, "inspiration");
   });
 
+  it("should build solo starter decks without Inspiration", () => {
+    const state = new DungeonState();
+    state.initializeBoard();
+    state.createPlayer(CASTER_SESSION_ID, "Solo");
+
+    const soloPlayer = state.players.get(CASTER_SESSION_ID)!;
+    const hasInspirationInDeck = soloPlayer.deck.some((card) => card.type === "inspiration");
+    assert.strictEqual(hasInspirationInDeck, false);
+  });
+
+  it("should not activate Inspiration in a solo game", () => {
+    const state = new DungeonState();
+    state.initializeBoard();
+    state.createPlayer(CASTER_SESSION_ID, "Caster");
+
+    const caster = state.players.get(CASTER_SESSION_ID)!;
+    caster.deck.clear();
+    caster.drawnCards.clear();
+    caster.discardPile.clear();
+
+    const inspiration = makeInspirationCard("inspiration_solo");
+    caster.drawnCards.push(inspiration);
+    caster.turnStatus = "playing_turn";
+    caster.hasDrawnCard = true;
+    state.turnInProgress = true;
+
+    const activateResult = state.playCard(CASTER_SESSION_ID, inspiration.id);
+    assert.strictEqual(activateResult.success, false);
+    assert(activateResult.error?.includes("2 or more players"));
+    assert.strictEqual(inspiration.isActive, false);
+    assert.strictEqual(state.activeCardPlayers.has(CASTER_SESSION_ID), false);
+  });
+
+  it("should deactivate active Inspiration when player count drops below two", () => {
+    const { state, caster } = createStateWithTwoPlayers();
+    const inspiration = makeInspirationCard("inspiration_drop_to_solo");
+    const deckInspiration = makeInspirationCard("inspiration_in_deck");
+    inspiration.isActive = true;
+    caster.drawnCards.push(inspiration);
+    caster.deck.push(deckInspiration);
+    state.activeCardPlayers.set(CASTER_SESSION_ID, inspiration.id);
+    state.inspirationPendingTargets.set(CASTER_SESSION_ID, TARGET_SESSION_ID);
+
+    state.removePlayer(TARGET_SESSION_ID);
+
+    assert.strictEqual(state.players.size, 1);
+    assert.strictEqual(inspiration.isActive, false);
+    assert.strictEqual(state.activeCardPlayers.has(CASTER_SESSION_ID), false);
+    assert.strictEqual(state.inspirationPendingTargets.has(CASTER_SESSION_ID), false);
+    assert.strictEqual(caster.deck.some((card) => card.type === "inspiration"), false);
+  });
+
   it("should return the target player's active card to drawn cards once and consume the x2 replay", () => {
     const state = new DungeonState();
     state.initializeBoard();

@@ -165,6 +165,7 @@ class DungeonState extends schema_1.Schema {
         room.generateExits(); // No entrance direction for the starting room
         // Add an entrance to the first room (players need a way to enter)
         room.createEntrance("south"); // Create entrance from the south
+        this.ensureEntranceChecked(room);
         this.rooms.push(room);
         this.currentRoomIndex = 0;
         // Draw a monster for the initial room too
@@ -185,8 +186,21 @@ class DungeonState extends schema_1.Schema {
         // Generate exits with entrance direction if provided
         if (entranceDirection) {
             room.generateExits(entranceDirection);
+            this.ensureEntranceChecked(room);
         }
         return room;
+    }
+    ensureEntranceChecked(room) {
+        if (room.entranceX < 0 || room.entranceY < 0) {
+            return;
+        }
+        const entranceSquare = room.getSquare(room.entranceX, room.entranceY);
+        if (!entranceSquare) {
+            return;
+        }
+        entranceSquare.wall = false;
+        entranceSquare.entrance = true;
+        entranceSquare.checked = true;
     }
     /**
      * Room generation supports:
@@ -1513,23 +1527,124 @@ class DungeonState extends schema_1.Schema {
         }
         return 3;
     }
+    getCunningRequiredSelectionCount(requiredSteps) {
+        switch (requiredSteps) {
+            case 1:
+                return 1;
+            case 2:
+                return 3;
+            default:
+                return 6;
+        }
+    }
+    getCunningStepLengths(requiredSteps) {
+        if (requiredSteps === 1)
+            return [1];
+        if (requiredSteps === 2)
+            return [1, 2];
+        return [1, 2, 3];
+    }
     getCunningProgressMessage(completedSteps) {
         if (completedSteps === 1) {
-            return "First step crossed. On a different room or monster, cross 2 horizontal squares.";
+            return "First step selected. On a different room or monster, select 2 horizontal squares.";
         }
         if (completedSteps === 2) {
-            return "Second step crossed. On a different room or monster, cross 3 horizontal squares.";
+            return "Second step selected. On a different room or monster, select 3 horizontal squares.";
         }
-        return "Cunning step crossed.";
+        return "Third step selected. Use confirm button to commit move.";
     }
-    getCunningCompletionMessage(completedSteps) {
-        if (completedSteps === 1) {
-            return "First step crossed. Cunning completed.";
+    validateCunningSelectionsForConfirm(sessionId, selections, card) {
+        const requiredSteps = this.getCunningRequiredStepCount(sessionId, card);
+        const requiredSelectionCount = this.getCunningRequiredSelectionCount(requiredSteps);
+        if (selections.length !== requiredSelectionCount) {
+            if (requiredSteps === 1) {
+                return { valid: false, error: "Select exactly 1 square to confirm Cunning" };
+            }
+            if (requiredSteps === 2) {
+                return {
+                    valid: false,
+                    error: "Select exactly 3 squares to confirm Cunning (1 square, then 2 horizontal squares)"
+                };
+            }
+            return {
+                valid: false,
+                error: "Select exactly 6 squares to confirm Cunning (1, then 2, then 3 horizontal squares)"
+            };
         }
-        if (completedSteps === 2) {
-            return "Second step crossed. Cunning completed.";
+        const seenSelections = new Set();
+        for (const selection of selections) {
+            if (selection.kind === "room") {
+                const room = this.rooms[selection.roomIndex];
+                const square = room?.getSquare(selection.x, selection.y);
+                if (!square || square.wall || square.checked) {
+                    return { valid: false, error: "Cunning includes an invalid room square" };
+                }
+                const key = `r:${selection.roomIndex}:${selection.x},${selection.y}`;
+                if (seenSelections.has(key)) {
+                    return { valid: false, error: "Cunning cannot include duplicate squares" };
+                }
+                seenSelections.add(key);
+            }
+            else {
+                const monster = this.activeMonsters.find((m) => m.id === selection.monsterId);
+                if (!monster) {
+                    return { valid: false, error: "Cunning includes an invalid monster card" };
+                }
+                if (!this.canPlayerTargetMonster(sessionId, monster, card)) {
+                    return { valid: false, error: "Cunning includes a monster this card cannot target" };
+                }
+                const square = monster.getSquare(selection.x, selection.y);
+                if (!square || !square.filled || square.checked) {
+                    return { valid: false, error: "Cunning includes an invalid monster square" };
+                }
+                const key = `m:${selection.monsterId}:${selection.x},${selection.y}`;
+                if (seenSelections.has(key)) {
+                    return { valid: false, error: "Cunning cannot include duplicate squares" };
+                }
+                seenSelections.add(key);
+            }
         }
-        return "Third step crossed. Cunning completed.";
+        const stepLengths = this.getCunningStepLengths(requiredSteps);
+        let cursor = 0;
+        const usedTargetKeys = new Set();
+        for (const stepLength of stepLengths) {
+            const stepSelections = selections.slice(cursor, cursor + stepLength);
+            if (stepSelections.length !== stepLength) {
+                return { valid: false, error: "Cunning card is in an invalid state. Cancel and replay this card." };
+            }
+            const stepTargetKey = this.getSelectionTargetKey(stepSelections[0]);
+            const sameTarget = stepSelections.every((selection) => this.getSelectionTargetKey(selection) === stepTargetKey);
+            if (!sameTarget) {
+                return { valid: false, error: "Cunning card is in an invalid state. Cancel and replay this card." };
+            }
+            if (usedTargetKeys.has(stepTargetKey)) {
+                return { valid: false, error: "Each Cunning step must target a different room or monster card" };
+            }
+            usedTargetKeys.add(stepTargetKey);
+            for (let i = 1; i < stepSelections.length; i++) {
+                const previous = stepSelections[i - 1];
+                const current = stepSelections[i];
+                if (previous.kind !== current.kind) {
+                    return { valid: false, error: "Cunning card is in an invalid state. Cancel and replay this card." };
+                }
+                if (current.y !== previous.y || current.x !== previous.x + 1) {
+                    return { valid: false, error: "Each Cunning step must be horizontal and contiguous" };
+                }
+                if (previous.kind === "room" &&
+                    previous.roomIndex !== current.roomIndex) {
+                    return { valid: false, error: "Cunning card is in an invalid state. Cancel and replay this card." };
+                }
+                if (previous.kind === "monster" &&
+                    previous.monsterId !== current.monsterId) {
+                    return { valid: false, error: "Cunning card is in an invalid state. Cancel and replay this card." };
+                }
+            }
+            cursor += stepLength;
+        }
+        if (cursor !== selections.length) {
+            return { valid: false, error: "Cunning card is in an invalid state. Cancel and replay this card." };
+        }
+        return { valid: true };
     }
     resolveCunningRoomStep(sessionId, roomIndex, room, x, y, currentSelections) {
         const progress = this.getCunningProgress(currentSelections);
@@ -1578,28 +1693,15 @@ class DungeonState extends schema_1.Schema {
             }
             stepSelections.push({ kind: "room", roomIndex, x: targetX, y });
         }
-        const crossedExits = [];
-        for (const selection of stepSelections) {
-            this.crossRoomSquare(sessionId, selection.roomIndex, selection.x, selection.y, crossedExits);
-        }
-        this.resolveCrossedExits(crossedExits);
         const updatedSelections = [...currentSelections, ...stepSelections];
         this.setSelections(sessionId, updatedSelections);
         const completedSteps = progress.stepLength;
         const requiredSteps = this.getCunningRequiredStepCount(sessionId, this.getActiveCard(sessionId));
-        if (completedSteps >= requiredSteps) {
-            const completed = this.completeCardAction(sessionId, []);
-            if (!completed.success) {
-                return completed;
-            }
-            return {
-                ...completed,
-                message: this.getCunningCompletionMessage(completedSteps)
-            };
-        }
         return {
             success: true,
-            message: this.getCunningProgressMessage(completedSteps),
+            message: completedSteps >= requiredSteps
+                ? "Cunning selections ready. Use confirm button to commit move."
+                : this.getCunningProgressMessage(completedSteps),
             completed: false
         };
     }
@@ -1650,29 +1752,15 @@ class DungeonState extends schema_1.Schema {
             }
             stepSelections.push({ kind: "monster", monsterId: monster.id, x: targetX, y });
         }
-        for (const selection of stepSelections) {
-            const square = monster.getSquare(selection.x, selection.y);
-            if (!square)
-                continue;
-            square.checked = true;
-        }
         const updatedSelections = [...currentSelections, ...stepSelections];
         this.setSelections(sessionId, updatedSelections);
         const completedSteps = progress.stepLength;
         const requiredSteps = this.getCunningRequiredStepCount(sessionId, this.getActiveCard(sessionId));
-        if (completedSteps >= requiredSteps) {
-            const completed = this.completeCardAction(sessionId, []);
-            if (!completed.success) {
-                return completed;
-            }
-            return {
-                ...completed,
-                message: this.getCunningCompletionMessage(completedSteps)
-            };
-        }
         return {
             success: true,
-            message: this.getCunningProgressMessage(completedSteps),
+            message: completedSteps >= requiredSteps
+                ? "Cunning selections ready. Use confirm button to commit move."
+                : this.getCunningProgressMessage(completedSteps),
             completed: false
         };
     }
@@ -1816,7 +1904,9 @@ class DungeonState extends schema_1.Schema {
                     invalidSquare: true
                 };
             }
-            if (leftSquare.checked || rightSquare.checked) {
+            const leftBlockedByChecked = leftSquare.checked && !leftSquare.entrance;
+            const rightBlockedByChecked = rightSquare.checked && !rightSquare.entrance;
+            if (leftBlockedByChecked || rightBlockedByChecked) {
                 return {
                     success: false,
                     error: "Cannot place horizontal pair on already crossed squares",
@@ -1995,7 +2085,7 @@ class DungeonState extends schema_1.Schema {
             return this.resolveCunningRoomStep(sessionId, roomIndex, room, x, y, currentSelections);
         }
         if (selectionMode === "row") {
-            if (square.checked) {
+            if (square.checked && !square.entrance) {
                 return { success: false, error: "Square already crossed", invalidSquare: true };
             }
             if (card.requiresRoomStartAdjacency && !this.isValidStartingSquare(room, x, y)) {
@@ -2010,7 +2100,7 @@ class DungeonState extends schema_1.Schema {
                 const rowSquare = room.getSquare(checkX, y);
                 if (!rowSquare || rowSquare.wall)
                     continue;
-                if (rowSquare.checked)
+                if (rowSquare.checked && !rowSquare.entrance)
                     continue;
                 rowSelections.push({ kind: "room", roomIndex, x: checkX, y });
             }
@@ -2026,7 +2116,7 @@ class DungeonState extends schema_1.Schema {
             };
         }
         // Squares mode
-        if (square.checked) {
+        if (square.checked && !square.entrance) {
             return { success: false, error: "Square already crossed", invalidSquare: true };
         }
         // Check if this square is already selected
@@ -2349,7 +2439,6 @@ class DungeonState extends schema_1.Schema {
         const selectionMode = card.selectionMode || "squares";
         if (selectionMode === "horizontal_pair_twice" ||
             selectionMode === "room_2x2_choose_two_twice" ||
-            selectionMode === "cunning_three_step_different_cards" ||
             selectionMode === "centered_monster_3x3" ||
             selectionMode === "monster_swipe_l") {
             return {
@@ -2362,6 +2451,12 @@ class DungeonState extends schema_1.Schema {
         const payloadRoomSquares = Array.isArray(data?.roomSquares) ? data.roomSquares : undefined;
         const payloadMonsterSquares = Array.isArray(data?.monsterSquares) ? data.monsterSquares : undefined;
         const hasPayload = payloadRoomSquares !== undefined || payloadMonsterSquares !== undefined;
+        if (hasPayload && selectionMode === "cunning_three_step_different_cards") {
+            return {
+                success: false,
+                error: "Cunning selections are staged on board clicks. Confirm without sending explicit selections."
+            };
+        }
         if (hasPayload) {
             const roomSquares = payloadRoomSquares || [];
             const monsterSquares = payloadMonsterSquares || [];
@@ -2487,15 +2582,21 @@ class DungeonState extends schema_1.Schema {
                     return { success: false, error: "This card cannot target that monster" };
                 }
             }
+            const minPerMonster = card.minSelections || 1;
             const maxPerMonster = card.maxSelections || 2;
             for (const monster of eligibleMonsters) {
                 const remainingSquares = monster.squares.filter((s) => s.filled && !s.checked).length;
-                const required = Math.min(maxPerMonster, remainingSquares);
+                const requiredMax = Math.min(maxPerMonster, remainingSquares);
+                const requiredMin = Math.min(minPerMonster, requiredMax);
                 const selectedForMonster = byMonster.get(monster.id) || [];
-                if (selectedForMonster.length !== required) {
+                if (selectedForMonster.length < requiredMin ||
+                    selectedForMonster.length > requiredMax) {
+                    const requiredRange = requiredMin === requiredMax
+                        ? `${requiredMin}`
+                        : `${requiredMin}-${requiredMax}`;
                     return {
                         success: false,
-                        error: `Must select ${required} square(s) for each monster (missing for ${monster.name})`
+                        error: `Must select ${requiredRange} square(s) for each monster (${monster.name})`
                     };
                 }
             }
@@ -2531,6 +2632,16 @@ class DungeonState extends schema_1.Schema {
             const targetMonster = eligibleMonsters.find((m) => m.id === monsterId);
             if (!targetMonster) {
                 return { success: false, error: "Fight 2 must target an available monster you own" };
+            }
+            return this.completeCardAction(sessionId, selectedSelections);
+        }
+        if (selectionMode === "cunning_three_step_different_cards") {
+            const cunningValidation = this.validateCunningSelectionsForConfirm(sessionId, selectedSelections, card);
+            if (!cunningValidation.valid) {
+                return {
+                    success: false,
+                    error: "error" in cunningValidation ? cunningValidation.error : "Invalid Cunning selections"
+                };
             }
             return this.completeCardAction(sessionId, selectedSelections);
         }

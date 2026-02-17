@@ -115,6 +115,10 @@ export class Room extends Schema {
   // Create an entrance at the appropriate edge based on the direction
   createEntrance(direction: string) {
     let x, y;
+
+    if (["north", "east", "south", "west"].includes(direction)) {
+      this.entranceDirection = direction;
+    }
     
     switch (direction) {
       case "north":
@@ -152,6 +156,7 @@ export class Room extends Schema {
     if (square) {
       square.wall = false;
       square.entrance = true;
+      square.checked = true;
     }
     
     // Ensure orthogonally adjacent squares are not walls

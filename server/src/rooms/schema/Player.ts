@@ -3,7 +3,7 @@ import { Card } from "./Card";
 import { createStarterDeck } from "../cards/CardRegistry";
 
 export class Player extends Schema {
-  constructor(name: string) {
+  constructor(name: string, lobbyPlayerCount: number = 2) {
     super();
     this.name = name;
     this.deck = new ArraySchema<Card>();
@@ -13,7 +13,7 @@ export class Player extends Schema {
     this.hasDrawnCard = false;
 
     // Initialize a random 10-card starter deck.
-    this.initializeDeck();
+    this.initializeDeck(lobbyPlayerCount);
   }
 
   @type("string") name: string;
@@ -24,8 +24,8 @@ export class Player extends Schema {
   @type("boolean") hasDrawnCard: boolean = false;
   @type("number") xp: number = 0;
 
-  private initializeDeck(): void {
-    const cards: Card[] = createStarterDeck();
+  private initializeDeck(lobbyPlayerCount: number): void {
+    const cards: Card[] = createStarterDeck({ includeInspiration: lobbyPlayerCount >= 2 });
 
     // Add shuffled cards to deck
     cards.forEach(card => this.deck.push(card));

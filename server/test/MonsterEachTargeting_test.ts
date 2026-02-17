@@ -11,10 +11,10 @@ const makeMonsterEachCard = (id: string) =>
   new Card(
     id,
     "cross_two_connected_each_monster",
-    "Cross off 2 connected squares on every monster",
+    "Cross off up to 2 connected squares on every monster",
     "monster_each",
     "squares",
-    2,
+    1,
     2,
     true,
     false,
@@ -71,6 +71,19 @@ const findOrthAdjacentMonsterPair = (monster: any): [Coord, Coord] | null => {
   return null;
 };
 
+const findAvailableMonsterSquare = (monster: any): Coord | null => {
+  for (let y = 0; y < monster.height; y++) {
+    for (let x = 0; x < monster.width; x++) {
+      const square = monster.getSquare(x, y);
+      if (square && square.filled && !square.checked) {
+        return { x, y };
+      }
+    }
+  }
+
+  return null;
+};
+
 const createStateWithPlayers = (): DungeonState => {
   const state = new DungeonState();
   state.initializeBoard();
@@ -80,6 +93,75 @@ const createStateWithPlayers = (): DungeonState => {
 };
 
 describe("Monster Each Targeting", () => {
+  it("allows confirming with one square selected per eligible monster", () => {
+    const state = createStateWithPlayers();
+    const playerA = state.players.get(PLAYER_A)!;
+
+    const card = makeMonsterEachCard("monster_each_card_single_each");
+    card.isActive = true;
+    playerA.drawnCards.push(card);
+    state.activeCardPlayers.set(PLAYER_A, card.id);
+
+    const firstMonster = MonsterFactory.createGoblin("target_monster_a");
+    firstMonster.playerOwnerId = PLAYER_B;
+    firstMonster.connectedToRoomIndex = -1;
+
+    const secondMonster = MonsterFactory.createBat("target_monster_b");
+    secondMonster.playerOwnerId = PLAYER_B;
+    secondMonster.connectedToRoomIndex = -1;
+
+    state.activeMonsters.push(firstMonster);
+    state.activeMonsters.push(secondMonster);
+
+    const firstPick = findAvailableMonsterSquare(firstMonster);
+    const secondPick = findAvailableMonsterSquare(secondMonster);
+    assert(firstPick, "Expected an available square on first monster");
+    assert(secondPick, "Expected an available square on second monster");
+
+    const firstResult = state.crossMonsterSquare(PLAYER_A, firstMonster.id, firstPick.x, firstPick.y);
+    assert.strictEqual(firstResult.success, true);
+
+    const secondResult = state.crossMonsterSquare(PLAYER_A, secondMonster.id, secondPick.x, secondPick.y);
+    assert.strictEqual(secondResult.success, true);
+
+    const confirmResult = state.confirmCardAction(PLAYER_A);
+    assert.strictEqual(confirmResult.success, true);
+    assert.strictEqual(confirmResult.completed, true);
+    assert.strictEqual(firstMonster.getSquare(firstPick.x, firstPick.y)?.checked, true);
+    assert.strictEqual(secondMonster.getSquare(secondPick.x, secondPick.y)?.checked, true);
+  });
+
+  it("still requires at least one selection on each eligible monster", () => {
+    const state = createStateWithPlayers();
+    const playerA = state.players.get(PLAYER_A)!;
+
+    const card = makeMonsterEachCard("monster_each_card_missing_monster");
+    card.isActive = true;
+    playerA.drawnCards.push(card);
+    state.activeCardPlayers.set(PLAYER_A, card.id);
+
+    const firstMonster = MonsterFactory.createGoblin("required_monster_a");
+    firstMonster.playerOwnerId = PLAYER_B;
+    firstMonster.connectedToRoomIndex = -1;
+
+    const secondMonster = MonsterFactory.createBat("required_monster_b");
+    secondMonster.playerOwnerId = PLAYER_B;
+    secondMonster.connectedToRoomIndex = -1;
+
+    state.activeMonsters.push(firstMonster);
+    state.activeMonsters.push(secondMonster);
+
+    const pick = findAvailableMonsterSquare(firstMonster);
+    assert(pick, "Expected an available square on first monster");
+
+    const pickResult = state.crossMonsterSquare(PLAYER_A, firstMonster.id, pick.x, pick.y);
+    assert.strictEqual(pickResult.success, true);
+
+    const confirmResult = state.confirmCardAction(PLAYER_A);
+    assert.strictEqual(confirmResult.success, false);
+    assert(confirmResult.error?.includes("Must select"));
+  });
+
   it("allows monster_each cards to target monsters owned by other players", () => {
     const state = createStateWithPlayers();
     const playerA = state.players.get(PLAYER_A)!;

@@ -98,6 +98,16 @@ describe("Room", () => {
     assert.strictEqual(room.isWalkable(5, 5), false);
   });
 
+  it("should mark the entrance square as checked when an entrance is created", () => {
+    const room = new Room(6, 6);
+    room.createEntrance("south");
+
+    assert.notStrictEqual(room.entranceX, -1);
+    assert.notStrictEqual(room.entranceY, -1);
+    assert.strictEqual(room.getSquare(room.entranceX, room.entranceY)?.entrance, true);
+    assert.strictEqual(room.getSquare(room.entranceX, room.entranceY)?.checked, true);
+  });
+
   describe("Grid Coordinate Properties", () => {
     it("should initialize with default grid coordinates", () => {
       const room = new Room(8, 8);

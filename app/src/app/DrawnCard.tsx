@@ -12,7 +12,11 @@ interface DrawnCardProps {
   showExtraUseBadge?: boolean;
 }
 
-export default function DrawnCard({ player, room, showExtraUseBadge = false }: DrawnCardProps) {
+export default function DrawnCard({
+  player,
+  room,
+  showExtraUseBadge = false
+}: DrawnCardProps) {
   const [drawnCard, setDrawnCard] = useState<Card | null>(null);
   const [isNewCard, setIsNewCard] = useState(false);
   const [lastCardId, setLastCardId] = useState<string | null>(null);

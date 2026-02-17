@@ -80,6 +80,9 @@ type XpFlyAnimation = {
   toY: number;
   ownerSessionId: string;
 };
+type CunningLocalSelection =
+  | { kind: 'room'; roomIndex: number; serverRoomIndex?: number; x: number; y: number }
+  | { kind: 'monster'; monsterId: string; x: number; y: number };
 
 const isMonsterCardCompleted = (monster: any): boolean => {
   if (!monster?.squares) return false;
@@ -176,10 +179,7 @@ export default function Game() {
   const [hiddenCompletedMonsterIds, setHiddenCompletedMonsterIds] = useState<string[]>([]);
   const [xpFlyAnimations, setXpFlyAnimations] = useState<XpFlyAnimation[]>([]);
   const [xpPulseByPlayerId, setXpPulseByPlayerId] = useState<Record<string, true>>({});
-  const [cunningActivationBaseline, setCunningActivationBaseline] = useState<{
-    cardId: string;
-    totalCheckedSquares: number;
-  } | null>(null);
+  const [cunningSelectionOrder, setCunningSelectionOrder] = useState<CunningLocalSelection[]>([]);
   const dayBannerTimeoutRef = useRef<any>(null);
   const monsterPopoverCloseTimeoutRef = useRef<any>(null);
   const monsterCompletionSnapshotRef = useRef<
@@ -191,6 +191,7 @@ export default function Game() {
   const xpPulseTimeoutsRef = useRef<Map<string, any>>(new Map());
   const lastAnnouncedDayRef = useRef<number | null>(null);
   const lastGameStatusRef = useRef<string | null>(null);
+  const roomRef = useRef<Room>();
   const hasGameState = gameState !== null;
   const currentDay = Number(gameState?.currentDay || 1);
   const currentGameStatus = gameState?.gameStatus || null;
@@ -221,63 +222,84 @@ export default function Game() {
   const showCombatBlastPreview = activeCard?.selectionMode === 'centered_monster_3x3';
   const showSwipePreview = activeCard?.selectionMode === 'monster_swipe_l';
   const showCunningPreview = activeCard?.selectionMode === 'cunning_three_step_different_cards';
-  const totalCheckedSquares = useMemo(() => {
-    if (!gameState) {
-      return 0;
+  const getCunningRequiredStepCount = (): 1 | 2 | 3 => {
+    const roomCardsInPlay = displayedRooms.length;
+    const monsterCardsInPlay = (gameState?.activeMonsters || []).filter(
+      (monster: any) => canCardTargetMonster(activeCard, monster) && !isMonsterCardCompleted(monster)
+    ).length;
+    const totalCardsInPlay = roomCardsInPlay + monsterCardsInPlay;
+
+    if (totalCardsInPlay <= 1) {
+      return 1;
     }
 
-    let total = 0;
+    if (totalCardsInPlay === 2) {
+      return 2;
+    }
 
-    for (const room of gameState.rooms || []) {
-      for (const square of room.squares || []) {
-        if (square?.checked) {
-          total += 1;
-        }
+    return 3;
+  };
+  const getCunningRequiredSelectionCount = (requiredSteps: 1 | 2 | 3): number => {
+    if (requiredSteps === 1) return 1;
+    if (requiredSteps === 2) return 3;
+    return 6;
+  };
+  const getCunningNextStepLength = (
+    selectionCount: number,
+    requiredSteps: 1 | 2 | 3
+  ): 1 | 2 | 3 | null => {
+    if (selectionCount === 0) {
+      return 1;
+    }
+    if (selectionCount === 1) {
+      return requiredSteps >= 2 ? 2 : null;
+    }
+    if (selectionCount === 3) {
+      return requiredSteps >= 3 ? 3 : null;
+    }
+    return null;
+  };
+  const getCunningTargetKey = (selection: CunningLocalSelection): string =>
+    selection.kind === 'room'
+      ? `room:${selection.serverRoomIndex ?? selection.roomIndex}`
+      : `monster:${selection.monsterId}`;
+  const getCunningStepTargetKeys = (
+    orderedSelections: CunningLocalSelection[],
+    requiredSteps: 1 | 2 | 3
+  ): string[] | null => {
+    const stepLengths = requiredSteps === 1 ? [1] : requiredSteps === 2 ? [1, 2] : [1, 2, 3];
+    const keys: string[] = [];
+    let cursor = 0;
+
+    for (const stepLength of stepLengths) {
+      if (cursor >= orderedSelections.length) {
+        break;
       }
-    }
 
-    for (const monster of gameState.activeMonsters || []) {
-      for (const square of monster.squares || []) {
-        if (square?.filled && square?.checked) {
-          total += 1;
-        }
-      }
-    }
-
-    return total;
-  }, [gameState]);
-  useEffect(() => {
-    if (!showCunningPreview || !activeCard?.id) {
-      setCunningActivationBaseline(null);
-      return;
-    }
-
-    setCunningActivationBaseline((previous) => {
-      if (previous?.cardId === String(activeCard.id)) {
-        return previous;
+      const stepSelections = orderedSelections.slice(cursor, cursor + stepLength);
+      if (stepSelections.length !== stepLength) {
+        return null;
       }
 
-      return {
-        cardId: String(activeCard.id),
-        totalCheckedSquares
-      };
-    });
-  }, [showCunningPreview, activeCard?.id, totalCheckedSquares]);
-  const cunningCheckedDelta =
-    showCunningPreview &&
-    activeCard?.id &&
-    cunningActivationBaseline?.cardId === String(activeCard.id)
-      ? Math.max(0, totalCheckedSquares - cunningActivationBaseline.totalCheckedSquares)
-      : 0;
-  const cunningPreviewStepLength: 1 | 2 | 3 | null = !showCunningPreview
-    ? null
-    : cunningCheckedDelta < 1
-      ? 1
-      : cunningCheckedDelta < 3
-        ? 2
-        : cunningCheckedDelta < 6
-          ? 3
-          : null;
+      const key = getCunningTargetKey(stepSelections[0]);
+      if (stepSelections.some((selection) => getCunningTargetKey(selection) !== key)) {
+        return null;
+      }
+
+      keys.push(key);
+      cursor += stepLength;
+    }
+
+    if (cursor !== orderedSelections.length) {
+      return null;
+    }
+
+    return keys;
+  };
+  const cunningRequiredStepCount = showCunningPreview ? getCunningRequiredStepCount() : 3;
+  const cunningPreviewStepLength: 1 | 2 | 3 | null = showCunningPreview
+    ? getCunningNextStepLength(cunningSelectionOrder.length, cunningRequiredStepCount)
+    : null;
 
   const clearMonsterCompletionTimeouts = useCallback(() => {
     monsterCompletionTimeoutsRef.current.forEach((timeoutPair) => {
@@ -524,7 +546,6 @@ export default function Game() {
   const cancelIsActive = !!currentPlayer && hasActiveCard;
   const mapScrollRef = useRef<HTMLDivElement>(null);
   const playerAreaRef = useRef<HTMLDivElement>(null);
-  const roomRef = useRef<Room>();
   const clientRef = useRef<Client | null>(null);
   const reconnectNameRef = useRef('');
   const resumeAttemptInFlightRef = useRef(false);
@@ -688,8 +709,15 @@ export default function Game() {
     if (!hasActiveCard) {
       setSelectedSquares([]);
       setSelectedMonsterSquares([]);
+      setCunningSelectionOrder([]);
     }
   }, [hasActiveCard]);
+
+  useEffect(() => {
+    if (!showCunningPreview) {
+      setCunningSelectionOrder([]);
+    }
+  }, [showCunningPreview, activeCard?.id]);
 
   useEffect(() => {
     if (!inRoom) {
@@ -735,7 +763,7 @@ export default function Game() {
       if (currentGameStatus === 'won') {
         setGameResultBanner('Victory! Boss Defeated');
       } else if (currentGameStatus === 'lost') {
-        setGameResultBanner('Defeat! 3 Days Elapsed');
+        setGameResultBanner('Defeat: 3 days elapsed');
       } else {
         setGameResultBanner(null);
       }
@@ -851,6 +879,7 @@ export default function Game() {
   const handleCancelCleanup = useCallback(() => {
     setSelectedSquares([]);
     setSelectedMonsterSquares([]);
+    setCunningSelectionOrder([]);
   }, []);
 
   const triggerCancelAction = useCallback(() => {
@@ -982,6 +1011,46 @@ export default function Game() {
       }
       return next;
     });
+
+    setCunningSelectionOrder((prev) => {
+      if (!prev.length) {
+        return prev;
+      }
+
+      const monstersById = new Map<string, any>();
+      for (const monster of (state.activeMonsters || [])) {
+        monstersById.set(String((monster as any).id), monster as any);
+      }
+
+      const next = prev.filter((selection) => {
+        if (selection.kind === 'room') {
+          const fallbackRoomIndex = typeof selection.roomIndex === 'number' ? selection.roomIndex : 0;
+          const resolvedRoomIndex = typeof selection.serverRoomIndex === 'number'
+            ? selection.serverRoomIndex
+            : (state.displayedRoomIndices?.[fallbackRoomIndex] ?? fallbackRoomIndex);
+          const room = state.rooms?.[resolvedRoomIndex];
+          if (!room) {
+            return false;
+          }
+
+          const square = room.squares?.[selection.y * room.width + selection.x];
+          return !!square && !square.wall && !square.checked;
+        }
+
+        const monster = monstersById.get(selection.monsterId);
+        if (!monster) {
+          return false;
+        }
+
+        const square = monster.squares?.[selection.y * monster.width + selection.x];
+        return !!square && square.filled && !square.checked;
+      });
+
+      if (next.length !== prev.length) {
+        console.log('Removed stale pending Cunning selections after server update');
+      }
+      return next;
+    });
   }, []);
 
   // Monster drag handlers
@@ -1018,7 +1087,11 @@ export default function Game() {
     }
 
     // Prevent mixing monster + room selections in the same card action
-    if (selectedMonsterSquares.length > 0 && !isHeroicMoveAndFightCard(activeCard)) {
+    if (
+      selectedMonsterSquares.length > 0 &&
+      !isHeroicMoveAndFightCard(activeCard) &&
+      activeCard.selectionMode !== 'cunning_three_step_different_cards'
+    ) {
       console.log('Cannot select room squares while monster squares are selected');
       return;
     }
@@ -1034,6 +1107,29 @@ export default function Game() {
 
     if (activeCard.selectionMode === 'horizontal_pair_twice') {
       const rightX = x + 1;
+      const selectedInRoom = selectedSquares.filter((pos) => pos.roomIndex === displayRoomIndex);
+      if (
+        selectedSquares.length > 0 &&
+        selectedSquares.some((pos) => pos.roomIndex !== displayRoomIndex)
+      ) {
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        return;
+      }
+      if (selectedInRoom.length % 2 !== 0) {
+        console.log('Horizontal pair selection is in an invalid state. Cancel and replay this card.');
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        return;
+      }
+
+      const maxSelectionsForCard = activeCard.maxSelections || 0;
+      if (maxSelectionsForCard > 0 && selectedInRoom.length + 2 > maxSelectionsForCard) {
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        return;
+      }
+
       if (
         x < 0 ||
         x >= room.width ||
@@ -1048,11 +1144,28 @@ export default function Game() {
 
       const leftSquare = room.squares[y * room.width + x];
       const rightSquare = room.squares[y * room.width + rightX];
+      const alreadySelected =
+        selectedInRoom.some((pos) => pos.x === x && pos.y === y) ||
+        selectedInRoom.some((pos) => pos.x === rightX && pos.y === y);
+      if (alreadySelected) {
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        return;
+      }
+
+      const pendingSquaresInRoom = selectedInRoom.map((pos) => ({ x: pos.x, y: pos.y }));
+      const pendingPairSquares = [
+        ...pendingSquaresInRoom,
+        { x, y },
+        { x: rightX, y }
+      ];
       if (
         !leftSquare ||
         !rightSquare ||
         leftSquare.wall ||
         rightSquare.wall ||
+        (leftSquare.exit && !hasAdjacentCrossedSquare(room, x, y, pendingPairSquares)) ||
+        (rightSquare.exit && !hasAdjacentCrossedSquare(room, rightX, y, pendingPairSquares)) ||
         leftSquare.checked ||
         rightSquare.checked
       ) {
@@ -1062,45 +1175,128 @@ export default function Game() {
       }
 
       const hasRequiredAdjacency =
-        isAdjacentToEntranceOrCrossedSquare(room, x, y) ||
-        isAdjacentToEntranceOrCrossedSquare(room, rightX, y);
+        isAdjacentToEntranceOrCrossedSquare(room, x, y, pendingSquaresInRoom) ||
+        isAdjacentToEntranceOrCrossedSquare(room, rightX, y, pendingSquaresInRoom);
       if (!hasRequiredAdjacency) {
         setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
         setTimeout(() => setInvalidSquareHighlight(null), 500);
         return;
       }
 
-      if (roomRef.current) {
-        roomRef.current.send('crossSquare', {
-          roomIndex: serverRoomIndex ?? displayRoomIndex,
+      setSelectedSquares((prev) => [
+        ...prev,
+        {
+          roomIndex: displayRoomIndex,
+          serverRoomIndex,
           x,
           y
-        });
-      }
+        },
+        {
+          roomIndex: displayRoomIndex,
+          serverRoomIndex,
+          x: rightX,
+          y
+        }
+      ]);
       return;
     }
 
     if (activeCard.selectionMode === 'cunning_three_step_different_cards') {
-      if (x < 0 || x >= room.width || y < 0 || y >= room.height) {
+      const requiredSteps = cunningRequiredStepCount;
+      const stepLength = getCunningNextStepLength(cunningSelectionOrder.length, requiredSteps);
+      const priorTargetKeys = getCunningStepTargetKeys(cunningSelectionOrder, requiredSteps);
+      const targetKey = `room:${serverRoomIndex ?? displayRoomIndex}`;
+
+      if (!stepLength || !priorTargetKeys || priorTargetKeys.includes(targetKey)) {
         setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
         setTimeout(() => setInvalidSquareHighlight(null), 500);
         return;
       }
 
-      const targetSquare = room.squares[y * room.width + x];
-      if (!targetSquare || targetSquare.wall || targetSquare.checked) {
+      const pendingStepSquares = Array.from({ length: stepLength }, (_, offset) => ({
+        x: x + offset,
+        y
+      }));
+      const nextStepSquares: Array<{ x: number; y: number }> = [];
+      for (let offset = 0; offset < stepLength; offset++) {
+        const targetX = x + offset;
+        const targetY = y;
+        if (targetX < 0 || targetX >= room.width || targetY < 0 || targetY >= room.height) {
+          setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+          setTimeout(() => setInvalidSquareHighlight(null), 500);
+          return;
+        }
+
+        const targetSquare = room.squares[targetY * room.width + targetX];
+        if (
+          !targetSquare ||
+          targetSquare.wall ||
+          targetSquare.checked ||
+          (targetSquare.exit &&
+            !hasAdjacentCrossedSquare(room, targetX, targetY, pendingStepSquares))
+        ) {
+          setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+          setTimeout(() => setInvalidSquareHighlight(null), 500);
+          return;
+        }
+
+        const alreadySelected = cunningSelectionOrder.some(
+          (selection) =>
+            selection.kind === 'room' &&
+            selection.roomIndex === displayRoomIndex &&
+            selection.x === targetX &&
+            selection.y === targetY
+        );
+        if (alreadySelected) {
+          setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+          setTimeout(() => setInvalidSquareHighlight(null), 500);
+          return;
+        }
+
+        nextStepSquares.push({ x: targetX, y: targetY });
+      }
+
+      const pendingSquaresInRoom = cunningSelectionOrder
+        .filter(
+          (selection) =>
+            selection.kind === 'room' &&
+            (selection.serverRoomIndex ?? selection.roomIndex) === (serverRoomIndex ?? displayRoomIndex)
+        )
+        .map((selection) => ({ x: selection.x, y: selection.y }));
+      const hasRequiredAdjacency = nextStepSquares.some((pos) =>
+        isAdjacentToEntranceOrCrossedSquare(room, pos.x, pos.y, pendingSquaresInRoom)
+      );
+      if (!hasRequiredAdjacency) {
         setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
         setTimeout(() => setInvalidSquareHighlight(null), 500);
         return;
       }
 
-      if (roomRef.current) {
-        roomRef.current.send('crossSquare', {
-          roomIndex: serverRoomIndex ?? displayRoomIndex,
-          x,
-          y
-        });
-      }
+      setCunningSelectionOrder((prev) => [
+        ...prev,
+        ...nextStepSquares.map((square) => ({
+          kind: 'room' as const,
+          roomIndex: displayRoomIndex,
+          serverRoomIndex,
+          x: square.x,
+          y: square.y
+        }))
+      ]);
+      setSelectedSquares((prev) => [
+        ...prev,
+        ...nextStepSquares.map((square) => ({
+          roomIndex: displayRoomIndex,
+          serverRoomIndex,
+          x: square.x,
+          y: square.y
+        }))
+      ]);
+
+      roomRef.current?.send('crossSquare', {
+        roomIndex: serverRoomIndex ?? displayRoomIndex,
+        x,
+        y
+      });
       return;
     }
 
@@ -1145,6 +1341,13 @@ export default function Game() {
         { roomIndex: displayRoomIndex, serverRoomIndex, x, y },
         ...surroundingSquares.filter((pos) => !(pos.x === x && pos.y === y))
       ];
+      const pendingSpreadSquares = selectedSpreadSquares.map((pos) => ({ x: pos.x, y: pos.y }));
+
+      if (centerSquare.exit && !hasAdjacentCrossedSquare(room, x, y, pendingSpreadSquares)) {
+        setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+        setTimeout(() => setInvalidSquareHighlight(null), 500);
+        return;
+      }
 
       const hasRequiredAdjacency = selectedSpreadSquares.some((pos) =>
         isAdjacentToEntranceOrCrossedSquare(room, pos.x, pos.y)
@@ -1187,6 +1390,15 @@ export default function Game() {
         const s = room.squares[y * room.width + checkX];
         if (!s || s.wall || s.checked) continue;
         rowSquares.push({ roomIndex: displayRoomIndex, serverRoomIndex, x: checkX, y });
+      }
+
+      if (square.exit) {
+        const pendingRowSquares = rowSquares.map((pos) => ({ x: pos.x, y: pos.y }));
+        if (!hasAdjacentCrossedSquare(room, x, y, pendingRowSquares)) {
+          setInvalidSquareHighlight({ roomIndex: displayRoomIndex, x, y });
+          setTimeout(() => setInvalidSquareHighlight(null), 500);
+          return;
+        }
       }
 
       if (rowSquares.length === 0) {
@@ -1247,12 +1459,18 @@ export default function Game() {
     }
 
     // Prevent mixing monster + room selections in the same card action
-    if (selectedSquares.length > 0 && !isHeroicMoveAndFightCard(activeCard)) {
+    if (
+      selectedSquares.length > 0 &&
+      !isHeroicMoveAndFightCard(activeCard) &&
+      activeCard.selectionMode !== 'cunning_three_step_different_cards'
+    ) {
       console.log('Cannot select monster squares while room squares are selected');
       return;
     }
 
-    const allowsMultiMonster = activeCard.selectionTarget === 'monster_each';
+    const allowsMultiMonster =
+      activeCard.selectionTarget === 'monster_each' ||
+      activeCard.selectionMode === 'cunning_three_step_different_cards';
     const maxSelections = activeCard.maxSelections || 0;
     const maxSelectionsForMonster = isHeroicMoveAndFightCard(activeCard) ? 2 : maxSelections;
 
@@ -1276,6 +1494,16 @@ export default function Game() {
 
     if (activeCard.selectionMode === 'horizontal_pair_twice') {
       const rightX = x + 1;
+      const selectedForMonster = selectedMonsterSquares.filter((pos) => pos.monsterId === monsterId);
+      if (selectedForMonster.length % 2 !== 0) {
+        console.log('Horizontal pair selection is in an invalid state. Cancel and replay this card.');
+        return;
+      }
+      if (maxSelectionsForMonster > 0 && selectedForMonster.length + 2 > maxSelectionsForMonster) {
+        console.log(`Maximum of ${maxSelectionsForMonster} squares can be selected for this card`);
+        return;
+      }
+
       const leftSquare = monster.squares[y * monster.width + x];
       const rightSquare = monster.squares[y * monster.width + rightX];
 
@@ -1291,22 +1519,77 @@ export default function Game() {
         return;
       }
 
-      if (roomRef.current) {
-        roomRef.current.send('crossMonsterSquare', { monsterId, x, y });
+      const alreadySelected =
+        selectedForMonster.some((pos) => pos.x === x && pos.y === y) ||
+        selectedForMonster.some((pos) => pos.x === rightX && pos.y === y);
+      if (alreadySelected) {
+        console.log('Monster square already selected');
+        return;
       }
+
+      setSelectedMonsterSquares((prev) => [
+        ...prev,
+        { monsterId, x, y },
+        { monsterId, x: rightX, y }
+      ]);
       return;
     }
 
     if (activeCard.selectionMode === 'cunning_three_step_different_cards') {
-      const square = monster.squares[y * monster.width + x];
-      if (!square || !square.filled || square.checked) {
+      const requiredSteps = cunningRequiredStepCount;
+      const stepLength = getCunningNextStepLength(cunningSelectionOrder.length, requiredSteps);
+      const priorTargetKeys = getCunningStepTargetKeys(cunningSelectionOrder, requiredSteps);
+      const targetKey = `monster:${monsterId}`;
+
+      if (!stepLength || !priorTargetKeys || priorTargetKeys.includes(targetKey)) {
         console.log('Invalid Cunning monster step placement');
         return;
       }
 
-      if (roomRef.current) {
-        roomRef.current.send('crossMonsterSquare', { monsterId, x, y });
+      const nextStepSquares: Array<{ x: number; y: number }> = [];
+      for (let offset = 0; offset < stepLength; offset++) {
+        const targetX = x + offset;
+        const targetY = y;
+        const square = monster.squares[targetY * monster.width + targetX];
+        if (!square || !square.filled || square.checked) {
+          console.log('Invalid Cunning monster step placement');
+          return;
+        }
+
+        const alreadySelected = cunningSelectionOrder.some(
+          (selection) =>
+            selection.kind === 'monster' &&
+            selection.monsterId === monsterId &&
+            selection.x === targetX &&
+            selection.y === targetY
+        );
+        if (alreadySelected) {
+          console.log('Invalid Cunning monster step placement');
+          return;
+        }
+
+        nextStepSquares.push({ x: targetX, y: targetY });
       }
+
+      setCunningSelectionOrder((prev) => [
+        ...prev,
+        ...nextStepSquares.map((square) => ({
+          kind: 'monster' as const,
+          monsterId,
+          x: square.x,
+          y: square.y
+        }))
+      ]);
+      setSelectedMonsterSquares((prev) => [
+        ...prev,
+        ...nextStepSquares.map((square) => ({
+          monsterId,
+          x: square.x,
+          y: square.y
+        }))
+      ]);
+
+      roomRef.current?.send('crossMonsterSquare', { monsterId, x, y });
       return;
     }
 
@@ -1407,6 +1690,15 @@ export default function Game() {
       return { valid: false, reason: 'Cannot select wall squares' };
     }
 
+    const pendingSquaresInRoom = selectedSquares
+      .filter((pos) => pos.roomIndex === displayRoomIndex)
+      .map((pos) => ({ x: pos.x, y: pos.y }));
+
+    // Blocked exits are invalid until they have an adjacent crossed (or already-selected pending) square.
+    if (square.exit && !hasAdjacentCrossedSquare(room, x, y, pendingSquaresInRoom)) {
+      return { valid: false, reason: 'Cannot select blocked exit squares' };
+    }
+
     // Cannot select already crossed squares
     if (square.checked) {
       return { valid: false, reason: 'Square already crossed' };
@@ -1482,9 +1774,15 @@ export default function Game() {
     return false;
   };
 
-  const isAdjacentToEntranceOrCrossedSquare = (room: DungeonRoom, x: number, y: number): boolean => {
+  const isAdjacentToEntranceOrCrossedSquare = (
+    room: DungeonRoom,
+    x: number,
+    y: number,
+    pendingSquares: Array<{ x: number; y: number }> = []
+  ): boolean => {
     const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
       (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
+    const pendingKeySet = new Set(pendingSquares.map((square) => `${square.x},${square.y}`));
 
     if (room.entranceX !== -1 && room.entranceY !== -1) {
       if (isOrthAdjacent(x, y, room.entranceX, room.entranceY)) {
@@ -1495,9 +1793,40 @@ export default function Game() {
     for (let checkX = 0; checkX < room.width; checkX++) {
       for (let checkY = 0; checkY < room.height; checkY++) {
         const square = room.squares[checkY * room.width + checkX];
-        if (square?.checked && isOrthAdjacent(x, y, checkX, checkY)) {
+        if ((square?.checked || pendingKeySet.has(`${checkX},${checkY}`)) && isOrthAdjacent(x, y, checkX, checkY)) {
           return true;
         }
+      }
+    }
+
+    return false;
+  };
+
+  const hasAdjacentCrossedSquare = (
+    room: DungeonRoom,
+    x: number,
+    y: number,
+    pendingSquares: Array<{ x: number; y: number }> = []
+  ): boolean => {
+    const pendingKeySet = new Set(pendingSquares.map((square) => `${square.x},${square.y}`));
+    const directions = [
+      { dx: 0, dy: -1 }, // North
+      { dx: 1, dy: 0 }, // East
+      { dx: 0, dy: 1 }, // South
+      { dx: -1, dy: 0 } // West
+    ];
+
+    for (const direction of directions) {
+      const adjacentX = x + direction.dx;
+      const adjacentY = y + direction.dy;
+
+      if (adjacentX < 0 || adjacentX >= room.width || adjacentY < 0 || adjacentY >= room.height) {
+        continue;
+      }
+
+      const adjacentSquare = room.squares[adjacentY * room.width + adjacentX];
+      if (adjacentSquare?.checked || pendingKeySet.has(`${adjacentX},${adjacentY}`)) {
+        return true;
       }
     }
 
@@ -1717,6 +2046,7 @@ export default function Game() {
         setGameState(null);
         setSelectedSquares([]);
         setSelectedMonsterSquares([]);
+        setCunningSelectionOrder([]);
         setMonsterAttackAnimations([]);
         setDeckReturnAnimations([]);
         setOpenMonsterPopoverFor(null);
@@ -1784,6 +2114,7 @@ export default function Game() {
 
       setSelectedSquares([]);
       setSelectedMonsterSquares([]);
+      setCunningSelectionOrder([]);
       setMonsterAttackAnimations([]);
       setDeckReturnAnimations([]);
       setRoomCodeInput('');
@@ -1889,6 +2220,7 @@ export default function Game() {
         } else if (message.completed) {
           // Card action completed - clear selected squares
           setSelectedSquares([]);
+          setCunningSelectionOrder([]);
         } else if (message.invalidSquare) {
           // Server confirmed invalid square - visual feedback already shown
           console.log('Server confirmed invalid square selection');
@@ -1903,6 +2235,7 @@ export default function Game() {
           // Card action was successfully cancelled - clear selected squares
           setSelectedSquares([]);
           setSelectedMonsterSquares([]);
+          setCunningSelectionOrder([]);
         }
       });
 
@@ -1913,6 +2246,7 @@ export default function Game() {
         if (message.success) {
           setSelectedSquares([]);
           setSelectedMonsterSquares([]);
+          setCunningSelectionOrder([]);
         }
       });
 
@@ -1924,6 +2258,7 @@ export default function Game() {
           // Card action was successfully completed - clear selected squares
           setSelectedSquares([]);
           setSelectedMonsterSquares([]);
+          setCunningSelectionOrder([]);
         }
       });
 
@@ -2239,6 +2574,25 @@ export default function Game() {
       return false;
     }
 
+    if (activeCard.selectionMode === 'cunning_three_step_different_cards') {
+      if (selectedCount !== cunningSelectionOrder.length) {
+        return false;
+      }
+
+      const requiredSteps = cunningRequiredStepCount;
+      const requiredSelections = getCunningRequiredSelectionCount(requiredSteps);
+      if (cunningSelectionOrder.length !== requiredSelections) {
+        return false;
+      }
+
+      const stepTargetKeys = getCunningStepTargetKeys(cunningSelectionOrder, requiredSteps);
+      if (!stepTargetKeys || stepTargetKeys.length !== requiredSteps) {
+        return false;
+      }
+
+      return new Set(stepTargetKeys).size === stepTargetKeys.length;
+    }
+
     if (target === 'monster_each') {
       if (selectedSquares.length > 0) return false;
       const sessionId = roomRef.current?.sessionId;
@@ -2252,12 +2606,14 @@ export default function Game() {
       const eligibleIds = new Set(eligible.map((m: any) => m.id));
       if (selectedMonsterSquares.some((s) => !eligibleIds.has(s.monsterId))) return false;
 
+      const perMonsterMin = minSelections || 1;
       const perMonsterMax = maxSelections || 2;
       for (const monster of eligible) {
         const remaining = getMonsterRemainingSquares(monster);
-        const required = Math.min(perMonsterMax, remaining);
+        const requiredMax = Math.min(perMonsterMax, remaining);
+        const requiredMin = Math.min(perMonsterMin, requiredMax);
         const selectedForMonster = selectedMonsterSquares.filter((s) => s.monsterId === monster.id).length;
-        if (selectedForMonster !== required) return false;
+        if (selectedForMonster < requiredMin || selectedForMonster > requiredMax) return false;
       }
 
       return true;
@@ -2712,7 +3068,10 @@ export default function Game() {
           </div>
 
           {/* Bottom drawer for player's area */}
-          <div ref={playerAreaRef} className="player-area fixed bottom-0 left-0 right-0 h-72 bg-slate-800 border-t-2 border-slate-600 p-2 z-50">
+          <div
+            ref={playerAreaRef}
+            className="player-area fixed bottom-0 left-0 right-0 h-72 bg-slate-800 border-t-2 border-slate-600 p-2 z-50 hover:z-[130] focus-within:z-[130]"
+          >
             <div className="flex flex-col h-full gap-2">
               <div className="flex-1 flex gap-4 min-h-0 items-center">
                 <div className="bg-slate-700 border-2 border-slate-600 p-4 rounded flex-1 h-full flex items-center">
@@ -2786,10 +3145,10 @@ export default function Game() {
       {inRoom && gameResultBanner && (
         <div className="fixed inset-0 z-[95] pointer-events-none flex items-center justify-center">
           <div
-            className={`rounded-xl border-4 bg-slate-950/92 px-12 py-8 text-5xl font-black tracking-wide shadow-2xl ${
+            className={`rounded-xl border-4 px-12 py-8 text-5xl font-black tracking-wide shadow-2xl ${
               gameState?.gameStatus === 'lost'
-                ? 'border-rose-300 text-rose-200'
-                : 'border-emerald-300 text-emerald-200'
+                ? 'border-rose-300 bg-rose-950 text-rose-200'
+                : 'border-emerald-300 bg-emerald-950 text-emerald-200'
             }`}
           >
             {gameResultBanner}

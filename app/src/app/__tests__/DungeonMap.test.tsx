@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import DungeonMap, { getFantasyRoomName } from '../DungeonMap';
 import { Room } from '@/types/Room';
 import { DungeonSquare } from '@/types/DungeonSquare';
@@ -228,5 +228,71 @@ describe('DungeonMap Grid Positioning', () => {
         expect(room00.style.height).toBe('320px');
         expect(room10.style.width).toBe('320px');
         expect(room10.style.height).toBe('320px');
+    });
+
+    test('should keep doorway edges at least 20px away from the room tile border', () => {
+        const room = createMockRoom(0, 0, 6, 4);
+
+        render(
+            <DungeonMap
+                rooms={[{ room, x: 0, y: 0 }]}
+                handleSquareClick={mockHandleSquareClick}
+                player={mockPlayer}
+                colyseusRoom={mockColyseusRoom}
+                gameState={mockGameState}
+            />
+        );
+
+        const roomGridWrapper = screen.getByTestId('room-grid-wrap-0-0') as HTMLElement;
+        const roomGridFrame = roomGridWrapper.firstElementChild as HTMLElement;
+        const gridWidthPx = Number.parseFloat(roomGridFrame.style.width || '0');
+        const cellSizePx = gridWidthPx / room.width;
+        const doorwayOverhangPx =
+            Math.max(6, Math.round(cellSizePx * 0.14)) + Math.max(10, Math.round(cellSizePx * 0.3));
+
+        const paddingLeftPx = Number.parseFloat(roomGridWrapper.style.paddingLeft || '0');
+        const paddingRightPx = Number.parseFloat(roomGridWrapper.style.paddingRight || '0');
+        const paddingBottomPx = Number.parseFloat(roomGridWrapper.style.paddingBottom || '0');
+        const paddingTopPx = Number.parseFloat(roomGridWrapper.style.paddingTop || '0');
+
+        expect(roomGridWrapper.className).toContain('items-center');
+        expect(paddingLeftPx - doorwayOverhangPx).toBeGreaterThanOrEqual(20);
+        expect(paddingRightPx - doorwayOverhangPx).toBeGreaterThanOrEqual(20);
+        expect(paddingBottomPx - doorwayOverhangPx).toBeGreaterThanOrEqual(20);
+        expect(paddingTopPx - doorwayOverhangPx).toBeGreaterThanOrEqual(20);
+    });
+
+    test('should apply fade-in class to room tiles when rendered', async () => {
+        const room1 = createMockRoom(0, 0);
+        const room2 = createMockRoom(1, 0);
+
+        const { rerender } = render(
+            <DungeonMap
+                rooms={[{ room: room1, x: 0, y: 0 }]}
+                handleSquareClick={mockHandleSquareClick}
+                player={mockPlayer}
+                colyseusRoom={mockColyseusRoom}
+                gameState={mockGameState}
+            />
+        );
+
+        expect(screen.getByTestId('room-tile-0-0').className).toContain('room-tile-fade-in');
+
+        rerender(
+            <DungeonMap
+                rooms={[
+                    { room: room1, x: 0, y: 0 },
+                    { room: room2, x: 0, y: 0 }
+                ]}
+                handleSquareClick={mockHandleSquareClick}
+                player={mockPlayer}
+                colyseusRoom={mockColyseusRoom}
+                gameState={mockGameState}
+            />
+        );
+
+        await waitFor(() => {
+            expect(screen.getByTestId('room-tile-1-0').className).toContain('room-tile-fade-in');
+        });
     });
 });

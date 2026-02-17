@@ -41,6 +41,10 @@ export type CardDefinition = {
   };
 };
 
+type CreateStarterDeckOptions = {
+  includeInspiration?: boolean;
+};
+
 export const CARD_DEFINITIONS: CardDefinition[] = [
   {
     id: "cross_connected_squares",
@@ -77,13 +81,13 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
   {
     id: "cross_two_connected_each_monster",
     name: "Every Monster",
-    description: "Cross off 2 connected squares on every monster",
+    description: "Cross off up to 2 connected squares on every monster",
     color: "clear",
     defenseSymbol: "counter",
     selection: {
       target: "monster_each",
       mode: "squares",
-      minSelections: 2,
+      minSelections: 1,
       maxSelections: 2,
       connected: true,
       requireMonsterStartAdjacency: true
@@ -308,11 +312,16 @@ export function createCardFromDefinition(definition: CardDefinition, id: string)
   );
 }
 
-export function createStarterDeck(): Card[] {
+export function createStarterDeck(options: CreateStarterDeckOptions = {}): Card[] {
+  const includeInspiration = options.includeInspiration !== false;
+  const definitionPool = includeInspiration
+    ? CARD_DEFINITIONS
+    : CARD_DEFINITIONS.filter((definition) => definition.id !== INSPIRATION_CARD_ID);
+
   const cards: Card[] = [];
   for (let cardIndex = 1; cardIndex <= STARTER_DECK_SIZE; cardIndex++) {
-    const definitionIndex = Math.floor(Math.random() * CARD_DEFINITIONS.length);
-    const definition = CARD_DEFINITIONS[definitionIndex];
+    const definitionIndex = Math.floor(Math.random() * definitionPool.length);
+    const definition = definitionPool[definitionIndex];
     cards.push(createCardFromDefinition(definition, `card_${cardIndex}`));
   }
 

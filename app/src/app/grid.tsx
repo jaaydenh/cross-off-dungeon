@@ -21,6 +21,16 @@ interface ExitHighlightInfo {
   adjacentCrossedSquares: { x: number; y: number }[];
 }
 
+type DoorwayDirection = 'north' | 'east' | 'south' | 'west';
+interface DoorwayPlacement {
+  x: number;
+  y: number;
+  direction: DoorwayDirection;
+}
+
+const ROOM_BORDER_COLOR = '#0b0b0b';
+const ROOM_DOORWAY_FILL_COLOR = '#e8dfcf';
+
 const Grid: FC<GridProps> = ({
   room,
   handleSquareClick,
@@ -34,6 +44,34 @@ const Grid: FC<GridProps> = ({
 }) => {
   const [hoveredExit, setHoveredExit] = useState<number | null>(null);
   const [hoveredSquare, setHoveredSquare] = useState<{ x: number; y: number } | null>(null);
+  const gridWidthPx = room.width * cellSizePx;
+  const gridHeightPx = room.height * cellSizePx;
+  const borderWidthPx = Math.max(6, Math.round(cellSizePx * 0.14));
+  const extendedBorderWidthPx = gridWidthPx + borderWidthPx * 2;
+  const extendedBorderHeightPx = gridHeightPx + borderWidthPx * 2;
+  const doorwayOpeningPx = Math.max(18, Math.round(cellSizePx * 0.66));
+  const doorwayDepthPx = Math.max(10, Math.round(cellSizePx * 0.3));
+  const doorwayRailPx = Math.max(3, Math.round(borderWidthPx * 0.72));
+
+  const asDoorwayDirection = (direction?: string): DoorwayDirection | null => {
+    if (
+      direction === 'north' ||
+      direction === 'east' ||
+      direction === 'south' ||
+      direction === 'west'
+    ) {
+      return direction;
+    }
+    return null;
+  };
+
+  const inferEdgeDirection = (x: number, y: number): DoorwayDirection | null => {
+    if (y === 0) return 'north';
+    if (x === room.width - 1) return 'east';
+    if (y === room.height - 1) return 'south';
+    if (x === 0) return 'west';
+    return null;
+  };
 
   // Helper function to get square at coordinates
   const getSquareAt = useCallback((x: number, y: number) => {
@@ -100,7 +138,13 @@ const Grid: FC<GridProps> = ({
   const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
     (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
 
-  const isAdjacentToEntranceOrCrossed = (x: number, y: number): boolean => {
+  const isAdjacentToEntranceOrCrossed = (
+    x: number,
+    y: number,
+    pendingSquares: Array<{ x: number; y: number }> = []
+  ): boolean => {
+    const pendingKeySet = new Set(pendingSquares.map((square) => `${square.x},${square.y}`));
+
     if (room.entranceX !== -1 && room.entranceY !== -1) {
       if (isOrthAdjacent(x, y, room.entranceX, room.entranceY)) {
         return true;
@@ -109,6 +153,9 @@ const Grid: FC<GridProps> = ({
 
     for (let checkY = 0; checkY < room.height; checkY++) {
       for (let checkX = 0; checkX < room.width; checkX++) {
+        if (pendingKeySet.has(`${checkX},${checkY}`) && isOrthAdjacent(x, y, checkX, checkY)) {
+          return true;
+        }
         const square = getSquareAt(checkX, checkY);
         if (square?.checked && isOrthAdjacent(x, y, checkX, checkY)) {
           return true;
@@ -154,6 +201,9 @@ const Grid: FC<GridProps> = ({
 
     const cells: Array<{ x: number; y: number }> = [];
     let invalid = false;
+    const pendingSquaresInRoom = (selectedSquares || [])
+      .filter((pos) => pos.roomIndex === roomIndex)
+      .map((pos) => ({ x: pos.x, y: pos.y }));
 
     for (let offset = 0; offset < cunningStepPreviewLength; offset++) {
       const x = hoveredSquare.x + offset;
@@ -163,6 +213,15 @@ const Grid: FC<GridProps> = ({
         invalid = true;
       }
       cells.push({ x, y });
+    }
+
+    if (!invalid) {
+      const hasRequiredAdjacency = cells.some((cell) =>
+        isAdjacentToEntranceOrCrossed(cell.x, cell.y, pendingSquaresInRoom)
+      );
+      if (!hasRequiredAdjacency) {
+        invalid = true;
+      }
     }
 
     return { cells, invalid };
@@ -233,6 +292,173 @@ const Grid: FC<GridProps> = ({
     return { isAdjacentToExit: false };
   }, [exitHighlightInfo, room]);
 
+  const doorwayPlacements = (() => {
+    const placements: DoorwayPlacement[] = [];
+    const seen = new Set<string>();
+
+    const addDoorway = (x: number, y: number, direction?: string) => {
+      if (x < 0 || y < 0 || x >= room.width || y >= room.height) {
+        return;
+      }
+
+      const doorwayDirection = asDoorwayDirection(direction) || inferEdgeDirection(x, y);
+      if (!doorwayDirection) {
+        return;
+      }
+
+      const key = `${x},${y},${doorwayDirection}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      placements.push({
+        x,
+        y,
+        direction: doorwayDirection
+      });
+    };
+
+    if (room.entranceX >= 0 && room.entranceY >= 0) {
+      addDoorway(room.entranceX, room.entranceY, room.entranceDirection);
+    }
+
+    for (let i = 0; i < room.exitX.length; i++) {
+      addDoorway(room.exitX[i], room.exitY[i], room.exitDirections[i]);
+    }
+
+    return placements;
+  })();
+
+  const renderDoorwayBorder = (doorway: DoorwayPlacement, index: number): JSX.Element[] => {
+    const centerX = doorway.x * cellSizePx + cellSizePx / 2;
+    const centerY = doorway.y * cellSizePx + cellSizePx / 2;
+    const openingOffset = doorwayOpeningPx / 2;
+    const openingKey = `door-opening-${index}-${doorway.direction}-${doorway.x}-${doorway.y}`;
+    const frameKey = `door-frame-${index}-${doorway.direction}-${doorway.x}-${doorway.y}`;
+
+    if (doorway.direction === 'north') {
+      return [
+        <div
+          key={openingKey}
+          style={{
+            position: 'absolute',
+            left: `${centerX - openingOffset}px`,
+            top: `${-borderWidthPx}px`,
+            width: `${doorwayOpeningPx}px`,
+            height: `${borderWidthPx + 2}px`,
+            backgroundColor: ROOM_DOORWAY_FILL_COLOR
+          }}
+        />,
+        <div
+          key={frameKey}
+          style={{
+            position: 'absolute',
+            left: `${centerX - openingOffset}px`,
+            top: `${-(doorwayDepthPx + borderWidthPx)}px`,
+            width: `${doorwayOpeningPx}px`,
+            height: `${doorwayDepthPx + borderWidthPx}px`,
+            boxSizing: 'border-box',
+            backgroundColor: ROOM_DOORWAY_FILL_COLOR,
+            borderLeft: `${doorwayRailPx}px solid ${ROOM_BORDER_COLOR}`,
+            borderRight: `${doorwayRailPx}px solid ${ROOM_BORDER_COLOR}`,
+            borderTop: `${doorwayRailPx}px solid ${ROOM_BORDER_COLOR}`
+          }}
+        />
+      ];
+    }
+
+    if (doorway.direction === 'south') {
+      return [
+        <div
+          key={openingKey}
+          style={{
+            position: 'absolute',
+            left: `${centerX - openingOffset}px`,
+            top: `${gridHeightPx - 1}px`,
+            width: `${doorwayOpeningPx}px`,
+            height: `${borderWidthPx + 2}px`,
+            backgroundColor: ROOM_DOORWAY_FILL_COLOR
+          }}
+        />,
+        <div
+          key={frameKey}
+          style={{
+            position: 'absolute',
+            left: `${centerX - openingOffset}px`,
+            top: `${gridHeightPx}px`,
+            width: `${doorwayOpeningPx}px`,
+            height: `${doorwayDepthPx + borderWidthPx}px`,
+            boxSizing: 'border-box',
+            backgroundColor: ROOM_DOORWAY_FILL_COLOR,
+            borderLeft: `${doorwayRailPx}px solid ${ROOM_BORDER_COLOR}`,
+            borderRight: `${doorwayRailPx}px solid ${ROOM_BORDER_COLOR}`,
+            borderBottom: `${doorwayRailPx}px solid ${ROOM_BORDER_COLOR}`
+          }}
+        />
+      ];
+    }
+
+    if (doorway.direction === 'west') {
+      return [
+        <div
+          key={openingKey}
+          style={{
+            position: 'absolute',
+            left: `${-borderWidthPx}px`,
+            top: `${centerY - openingOffset}px`,
+            width: `${borderWidthPx + 2}px`,
+            height: `${doorwayOpeningPx}px`,
+            backgroundColor: ROOM_DOORWAY_FILL_COLOR
+          }}
+        />,
+        <div
+          key={frameKey}
+          style={{
+            position: 'absolute',
+            left: `${-(doorwayDepthPx + borderWidthPx)}px`,
+            top: `${centerY - openingOffset}px`,
+            width: `${doorwayDepthPx + borderWidthPx}px`,
+            height: `${doorwayOpeningPx}px`,
+            boxSizing: 'border-box',
+            backgroundColor: ROOM_DOORWAY_FILL_COLOR,
+            borderTop: `${doorwayRailPx}px solid ${ROOM_BORDER_COLOR}`,
+            borderBottom: `${doorwayRailPx}px solid ${ROOM_BORDER_COLOR}`,
+            borderLeft: `${doorwayRailPx}px solid ${ROOM_BORDER_COLOR}`
+          }}
+        />
+      ];
+    }
+
+    return [
+      <div
+        key={openingKey}
+        style={{
+          position: 'absolute',
+          left: `${gridWidthPx - 1}px`,
+          top: `${centerY - openingOffset}px`,
+          width: `${borderWidthPx + 2}px`,
+          height: `${doorwayOpeningPx}px`,
+          backgroundColor: ROOM_DOORWAY_FILL_COLOR
+        }}
+      />,
+      <div
+        key={frameKey}
+        style={{
+          position: 'absolute',
+          left: `${gridWidthPx}px`,
+          top: `${centerY - openingOffset}px`,
+          width: `${doorwayDepthPx + borderWidthPx}px`,
+          height: `${doorwayOpeningPx}px`,
+          boxSizing: 'border-box',
+          backgroundColor: ROOM_DOORWAY_FILL_COLOR,
+          borderTop: `${doorwayRailPx}px solid ${ROOM_BORDER_COLOR}`,
+          borderBottom: `${doorwayRailPx}px solid ${ROOM_BORDER_COLOR}`,
+          borderRight: `${doorwayRailPx}px solid ${ROOM_BORDER_COLOR}`
+        }}
+      />
+    ];
+  };
+
   const renderSquares = () => {
     const squares = [];
 
@@ -302,7 +528,7 @@ const Grid: FC<GridProps> = ({
   };
 
   return (
-    <div className="relative" style={{ width: `${room.width * cellSizePx}px`, height: `${room.height * cellSizePx}px` }}>
+    <div className="relative" style={{ width: `${gridWidthPx}px`, height: `${gridHeightPx}px` }}>
       <div
         className="grid relative z-0"
         style={{
@@ -311,6 +537,57 @@ const Grid: FC<GridProps> = ({
         }}
       >
         {renderSquares()}
+      </div>
+      <div
+        className="pointer-events-none absolute z-20"
+        style={{
+          left: 0,
+          top: 0,
+          width: `${gridWidthPx}px`,
+          height: `${gridHeightPx}px`
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            left: `${-borderWidthPx}px`,
+            top: `${-borderWidthPx}px`,
+            width: `${extendedBorderWidthPx}px`,
+            height: `${borderWidthPx}px`,
+            backgroundColor: ROOM_BORDER_COLOR
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: `${-borderWidthPx}px`,
+            top: `${gridHeightPx}px`,
+            width: `${extendedBorderWidthPx}px`,
+            height: `${borderWidthPx}px`,
+            backgroundColor: ROOM_BORDER_COLOR
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: `${-borderWidthPx}px`,
+            top: `${-borderWidthPx}px`,
+            width: `${borderWidthPx}px`,
+            height: `${extendedBorderHeightPx}px`,
+            backgroundColor: ROOM_BORDER_COLOR
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: `${gridWidthPx}px`,
+            top: `${-borderWidthPx}px`,
+            width: `${borderWidthPx}px`,
+            height: `${extendedBorderHeightPx}px`,
+            backgroundColor: ROOM_BORDER_COLOR
+          }}
+        />
+        {doorwayPlacements.flatMap((doorway, index) => renderDoorwayBorder(doorway, index))}
       </div>
       {horizontalPairPreviewEnabled && previewOverlayCells.length > 0 && (
         <div className="pointer-events-none absolute inset-0 z-30">

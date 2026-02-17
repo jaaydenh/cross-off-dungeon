@@ -54,18 +54,11 @@ const Square: React.FC<SquareProps> = ({
   let borderColor = 'border-gray-700';
   let additionalClasses = '';
   let hoverEffect = 'hover:bg-gray-700';
+  let textColorClass = 'text-white';
   let fillColor = '#e9e1d2';
   const fontPx = Math.max(12, Math.min(28, Math.round(sizePx * 0.55)));
   const textureOffsetX = (x * 7 + y * 5) % 24;
   const textureOffsetY = (x * 11 + y * 3) % 24;
-
-  // Override colors for invalid square highlight (red highlight animation)
-  if (showInvalidHighlight) {
-    bgColor = 'bg-red-600';
-    borderColor = 'border-red-400';
-    additionalClasses = 'invalid-square-highlight';
-    fillColor = '#d94a4a';
-  }
 
   if (square.wall) {
     bgColor = 'bg-gray-900'; // Darker for walls
@@ -74,44 +67,40 @@ const Square: React.FC<SquareProps> = ({
     hoverEffect = '';
     fillColor = '#4d4e56';
   } else if (square.entrance) {
-    bgColor = 'bg-green-700'; // Green for entrance
-    content = 'E';
-    borderColor = 'border-green-500';
-    fillColor = '#2f9152';
+    bgColor = 'bg-stone-200';
+    content = square.checked ? 'X' : '';
+    borderColor = 'border-stone-500';
+    textColorClass = 'text-stone-900';
+    fillColor = '#e8dfcf';
   } else if (square.exit) {
-    // Show X if exit has been crossed OR if it's currently selected for card action
-    content = (square.checked || isSelected) ? 'X' : 'D';
+    // Doorway icon-only presentation (no letter labels).
+    content = (square.checked || isSelected) ? 'X' : '';
+    textColorClass = 'text-stone-900';
     
     // Apply exit highlighting based on navigation eligibility and connection status
     if (exitInfo) {
       if (exitInfo.isNavigable && exitInfo.isConnected) {
-        // Navigable and connected - bright green
-        bgColor = 'bg-emerald-600';
-        borderColor = 'border-emerald-400';
-        hoverEffect = 'hover:bg-emerald-500';
-        additionalClasses = 'shadow-lg shadow-emerald-500/50';
-        fillColor = '#3e9772';
+        bgColor = 'bg-stone-200';
+        borderColor = 'border-stone-600';
+        additionalClasses = 'shadow-lg shadow-black/25';
+        fillColor = '#e8dfcf';
       } else if (exitInfo.isNavigable && !exitInfo.isConnected) {
-        // Navigable but not connected - bright blue
-        bgColor = 'bg-blue-600';
-        borderColor = 'border-blue-400';
-        hoverEffect = 'hover:bg-blue-500';
-        additionalClasses = 'shadow-lg shadow-blue-500/50';
-        fillColor = '#5d77b3';
+        bgColor = 'bg-stone-200';
+        borderColor = 'border-stone-600';
+        additionalClasses = 'shadow-lg shadow-black/25';
+        fillColor = '#e8dfcf';
       } else if (!exitInfo.isNavigable && exitInfo.isConnected) {
-        // Connected but not navigable - dim green
-        bgColor = 'bg-green-800';
-        borderColor = 'border-green-600';
-        hoverEffect = 'hover:bg-green-700';
+        bgColor = 'bg-stone-300';
+        borderColor = 'border-stone-700';
+        hoverEffect = 'hover:bg-stone-200';
         additionalClasses = 'opacity-75';
-        fillColor = '#587665';
+        fillColor = '#d9cfbd';
       } else {
-        // Not navigable and not connected - dim blue
-        bgColor = 'bg-blue-800';
-        borderColor = 'border-blue-600';
-        hoverEffect = 'hover:bg-blue-700';
+        bgColor = 'bg-stone-300';
+        borderColor = 'border-stone-700';
+        hoverEffect = 'hover:bg-stone-200';
         additionalClasses = 'opacity-75';
-        fillColor = '#5f6885';
+        fillColor = '#d9cfbd';
       }
 
       // Add pulsing effect when hovered
@@ -120,35 +109,16 @@ const Square: React.FC<SquareProps> = ({
       }
     } else {
       // Fallback for exits without info
-      bgColor = 'bg-blue-700';
-      borderColor = 'border-blue-500';
-      fillColor = '#5d77b3';
+      bgColor = 'bg-stone-200';
+      borderColor = 'border-stone-600';
+      fillColor = '#e8dfcf';
     }
     
     // If exit is selected (for card action), show selection styling
     if (isSelected && !square.checked) {
-      // Brighten the background and add selection effects for selected exits
-      additionalClasses += ' shadow-lg shadow-blue-500/50 ring-2 ring-blue-400';
-      // Keep the exit colors but make them more vibrant to show selection
+      additionalClasses += ' ring-2 ring-sky-400';
     } else if (square.checked) {
-      // If exit is checked, override with crossed styling while maintaining exit colors
-      // Darken the background slightly to indicate it's been used
-      if (bgColor.includes('emerald-600')) {
-        bgColor = 'bg-emerald-700';
-        fillColor = '#347f61';
-      } else if (bgColor.includes('blue-600')) {
-        bgColor = 'bg-blue-700';
-        fillColor = '#4f679d';
-      } else if (bgColor.includes('green-800')) {
-        bgColor = 'bg-green-900';
-        fillColor = '#4b6759';
-      } else if (bgColor.includes('blue-800')) {
-        bgColor = 'bg-blue-900';
-        fillColor = '#4e5771';
-      } else {
-        bgColor = 'bg-blue-800'; // Fallback darkened blue
-        fillColor = '#4e5771';
-      }
+      fillColor = '#d6cab5';
     }
   } else if (square.checked) {
     content = 'X';
@@ -171,6 +141,16 @@ const Square: React.FC<SquareProps> = ({
     fillColor = '#9d5454';
   }
 
+  // Invalid move highlight must win over any square-type styling (including exits/walls).
+  if (showInvalidHighlight) {
+    bgColor = 'bg-red-600';
+    borderColor = 'border-red-400';
+    hoverEffect = '';
+    textColorClass = 'text-white';
+    additionalClasses = `${additionalClasses} invalid-square-highlight`.trim();
+    fillColor = '#d94a4a';
+  }
+
   const handleMouseEnter = () => {
     onHover?.(x, y);
     if (square.exit && exitInfo && onExitHover) {
@@ -189,13 +169,33 @@ const Square: React.FC<SquareProps> = ({
   const textureSize = square.wall ? '16px 16px' : '24px 24px';
   const dividerDotColor = square.wall ? 'rgba(180, 185, 200, 0.4)' : 'rgba(24, 24, 24, 0.55)';
   const dividerDotPattern = `radial-gradient(circle, ${dividerDotColor} 1px, transparent 1.3px)`;
+  const showTopDivider = y > 0;
+  const showLeftDivider = x > 0;
+  const backgroundLayers = [textureImage];
+  const backgroundSizes = [textureSize];
+  const backgroundPositions = [`${textureOffsetX}px ${textureOffsetY}px`];
+  const backgroundRepeats = ['repeat'];
+
+  if (showTopDivider) {
+    backgroundLayers.push(dividerDotPattern);
+    backgroundSizes.push(`${DIVIDER_DOT_SPACING_PX}px 2px`);
+    backgroundPositions.push('0 0');
+    backgroundRepeats.push('repeat-x');
+  }
+
+  if (showLeftDivider) {
+    backgroundLayers.push(dividerDotPattern);
+    backgroundSizes.push(`2px ${DIVIDER_DOT_SPACING_PX}px`);
+    backgroundPositions.push('0 0');
+    backgroundRepeats.push('repeat-y');
+  }
 
   return (
     <div
-      onClick={() => clickable && onClick(x, y)}
+      onClick={() => onClick(x, y)}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className={`flex items-center justify-center font-bold text-white border ${bgColor} ${borderColor} ${clickable ? `cursor-pointer ${hoverEffect}` : ''} ${additionalClasses}`}
+      className={`relative flex items-center justify-center font-bold ${textColorClass} border ${bgColor} ${borderColor} ${clickable ? `cursor-pointer ${hoverEffect}` : ''} ${additionalClasses}`}
       style={{
         width: `${sizePx}px`,
         height: `${sizePx}px`,
@@ -204,10 +204,10 @@ const Square: React.FC<SquareProps> = ({
         boxSizing: 'border-box',
         transition: 'all 0.2s ease',
         backgroundColor: fillColor,
-        backgroundImage: `${textureImage}, ${dividerDotPattern}, ${dividerDotPattern}`,
-        backgroundSize: `${textureSize}, ${DIVIDER_DOT_SPACING_PX}px 2px, 2px ${DIVIDER_DOT_SPACING_PX}px`,
-        backgroundPosition: `${textureOffsetX}px ${textureOffsetY}px, 0 0, 0 0`,
-        backgroundRepeat: 'repeat, repeat-x, repeat-y',
+        backgroundImage: backgroundLayers.join(', '),
+        backgroundSize: backgroundSizes.join(', '),
+        backgroundPosition: backgroundPositions.join(', '),
+        backgroundRepeat: backgroundRepeats.join(', '),
         borderStyle: 'solid',
         borderWidth: '0px',
       }}
