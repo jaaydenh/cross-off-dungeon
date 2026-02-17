@@ -125,4 +125,30 @@ describe("Monster Attack Phase", () => {
     assert.strictEqual(player.deck.length, deckBefore);
     assert.strictEqual(getCheckedSquares(monster), checkedBefore + 1);
   });
+
+  it("should counter-attack two monster squares when the defending card is Magic", () => {
+    const state = createSinglePlayerState();
+    const player = state.players.get("player_1")!;
+    const monster = state.activeMonsters[0];
+
+    const claim = state.claimMonster("player_1", monster.id);
+    assert.strictEqual(claim.success, true);
+
+    player.deck[0].defenseSymbol = "counter";
+    player.deck[0].type = "magic";
+    const deckBefore = player.deck.length;
+    const checkedBefore = getCheckedSquares(monster);
+
+    completeSinglePlayerTurn(state, "player_1");
+
+    const attackPhase = state.consumePendingMonsterAttackPhaseResult();
+    assert(attackPhase);
+    assert.strictEqual(attackPhase.totalAttacks, 1);
+    assert.strictEqual(attackPhase.attacks[0].outcome, "counter_attack");
+    assert.strictEqual(attackPhase.attacks[0].card?.defenseSymbol, "counter");
+    assert.strictEqual(attackPhase.attacks[0].card?.type, "magic");
+
+    assert.strictEqual(player.deck.length, deckBefore);
+    assert.strictEqual(getCheckedSquares(monster), checkedBefore + 2);
+  });
 });

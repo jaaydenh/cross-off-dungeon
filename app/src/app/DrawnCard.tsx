@@ -9,9 +9,10 @@ import CardFaceContent from './CardFaceContent';
 interface DrawnCardProps {
   player: Player | null;
   room: Room | undefined;
+  showExtraUseBadge?: boolean;
 }
 
-export default function DrawnCard({ player, room }: DrawnCardProps) {
+export default function DrawnCard({ player, room, showExtraUseBadge = false }: DrawnCardProps) {
   const [drawnCard, setDrawnCard] = useState<Card | null>(null);
   const [isNewCard, setIsNewCard] = useState(false);
   const [lastCardId, setLastCardId] = useState<string | null>(null);
@@ -83,7 +84,17 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
   if (!player || !drawnCard) {
     return (
       <div className="flex flex-col items-center gap-2">
-        <h3 className="text-md font-semibold text-white">Active Card</h3>
+        <h3 className="text-md font-semibold text-white flex items-center gap-2">
+          <span>Active Card</span>
+          {showExtraUseBadge ? (
+            <span
+              className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-emerald-300 bg-emerald-500/30 px-1 text-[10px] font-black text-emerald-100"
+              title="Your next active card returns to be played again"
+            >
+              x2
+            </span>
+          ) : null}
+        </h3>
         <div className="w-[121px] h-[176px] bg-gray-700 border-2 border-gray-600 rounded-lg flex items-center justify-center">
           <p className="text-gray-400 text-xs text-center">No card drawn</p>
         </div>
@@ -93,7 +104,17 @@ export default function DrawnCard({ player, room }: DrawnCardProps) {
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <h3 className="text-md font-semibold text-white">Active Card</h3>
+      <h3 className="text-md font-semibold text-white flex items-center gap-2">
+        <span>Active Card</span>
+        {showExtraUseBadge ? (
+          <span
+            className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-emerald-300 bg-emerald-500/30 px-1 text-[10px] font-black text-emerald-100"
+            title="Your next active card returns to be played again"
+          >
+            x2
+          </span>
+        ) : null}
+      </h3>
 
       {/* Drawn Card */}
       <div

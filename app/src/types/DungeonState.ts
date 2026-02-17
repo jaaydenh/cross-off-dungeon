@@ -36,6 +36,8 @@ export class DungeonState extends Schema {
     @type("string") public bossMonsterId!: string;
     @type("boolean") public bossDefeated!: boolean;
     @type({ map: "string" }) public activeCardPlayers: MapSchema<string> = new MapSchema<string>();
+    @type({ map: "string" }) public inspirationPendingTargets: MapSchema<string> = new MapSchema<string>();
+    @type({ map: "number" }) public inspirationExtraActiveUses: MapSchema<number> = new MapSchema<number>();
     @type({ map: "string" }) public selectedSquares: MapSchema<string> = new MapSchema<string>();
     @type({ map: "number" }) public selectedSquareCount: MapSchema<number> = new MapSchema<number>();
     @type([ MonsterCard ]) public monsterDeck: ArraySchema<MonsterCard> = new ArraySchema<MonsterCard>();

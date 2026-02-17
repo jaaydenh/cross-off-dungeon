@@ -9,6 +9,7 @@ export type CardLibraryEntry = {
     | 'squares'
     | 'row'
     | 'horizontal_pair_twice'
+    | 'room_2x2_choose_two_twice'
     | 'cunning_three_step_different_cards'
     | 'centered_room_3x3'
     | 'centered_monster_3x3'
@@ -118,6 +119,19 @@ export const CARD_LIBRARY_ENTRIES: CardLibraryEntry[] = [
     requiresConnected: false
   },
   {
+    type: 'magic',
+    name: 'Magic',
+    description:
+      'On a single room or monster card, cross off up to 3 squares that are not orthogonally adjacent.',
+    color: 'blue',
+    defenseSymbol: 'counter',
+    selectionTarget: 'room_or_monster',
+    selectionMode: 'squares',
+    minSelections: 1,
+    maxSelections: 3,
+    requiresConnected: false
+  },
+  {
     type: 'combat_fight_three_diagonal_or_move_three',
     name: 'Combat',
     description: 'Fight',
@@ -166,5 +180,30 @@ export const CARD_LIBRARY_ENTRIES: CardLibraryEntry[] = [
     maxSelections: 1,
     requiresConnected: true,
     drawCardsOnResolve: 1
+  },
+  {
+    type: 'inspiration',
+    name: 'Inspiration',
+    description:
+      'Pick a player. They can use their active card an extra time. Then cross off a single square on any card.',
+    color: 'green',
+    defenseSymbol: 'dodge',
+    selectionTarget: 'room_or_monster',
+    selectionMode: 'squares',
+    minSelections: 1,
+    maxSelections: 1,
+    requiresConnected: false
+  },
+  {
+    type: 'explore',
+    name: 'Explore',
+    description: 'Move 5 (orthogonally connected)',
+    color: 'green',
+    defenseSymbol: 'dodge',
+    selectionTarget: 'room',
+    selectionMode: 'squares',
+    minSelections: 5,
+    maxSelections: 5,
+    requiresConnected: true
   }
 ];

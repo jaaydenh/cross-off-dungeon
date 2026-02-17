@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CARD_DEFINITIONS = exports.STARTER_DECK_SIZE = exports.QUICK_STEP_CARD_ID = exports.CUNNING_CARD_ID = exports.SPREAD_OUT_CARD_ID = exports.SWIPE_CARD_ID = exports.COMBAT_CARD_ID = exports.HEROIC_MOVE_AND_FIGHT_CARD_ID = void 0;
+exports.CARD_DEFINITIONS = exports.STARTER_DECK_SIZE = exports.INSPIRATION_CARD_ID = exports.MAGIC_CARD_ID = exports.EXPLORE_CARD_ID = exports.QUICK_STEP_CARD_ID = exports.CUNNING_CARD_ID = exports.SPREAD_OUT_CARD_ID = exports.SWIPE_CARD_ID = exports.COMBAT_CARD_ID = exports.HEROIC_MOVE_AND_FIGHT_CARD_ID = void 0;
 exports.getCardDefinition = getCardDefinition;
 exports.createCardFromDefinition = createCardFromDefinition;
 exports.createStarterDeck = createStarterDeck;
@@ -11,6 +11,9 @@ exports.SWIPE_CARD_ID = "swipe_fight_l_overlay";
 exports.SPREAD_OUT_CARD_ID = "spread_out_room_overlay";
 exports.CUNNING_CARD_ID = "cunning";
 exports.QUICK_STEP_CARD_ID = "quick_step";
+exports.EXPLORE_CARD_ID = "explore";
+exports.MAGIC_CARD_ID = "magic";
+exports.INSPIRATION_CARD_ID = "inspiration";
 exports.STARTER_DECK_SIZE = 10;
 exports.CARD_DEFINITIONS = [
     {
@@ -138,6 +141,22 @@ exports.CARD_DEFINITIONS = [
         }
     },
     {
+        id: exports.MAGIC_CARD_ID,
+        name: "Magic",
+        description: "On a single room or monster card, cross off up to 3 squares that are not orthogonally adjacent.",
+        color: "blue",
+        defenseSymbol: "counter",
+        selection: {
+            target: "room_or_monster",
+            mode: "squares",
+            minSelections: 1,
+            maxSelections: 3,
+            connected: false,
+            requireRoomStartAdjacency: false,
+            requireMonsterStartAdjacency: false
+        }
+    },
+    {
         id: exports.COMBAT_CARD_ID,
         name: "Combat",
         description: "Fight",
@@ -197,6 +216,37 @@ exports.CARD_DEFINITIONS = [
             mode: "squares",
             minSelections: 1,
             maxSelections: 1,
+            connected: true,
+            requireRoomStartAdjacency: true
+        }
+    },
+    {
+        id: exports.INSPIRATION_CARD_ID,
+        name: "Inspiration",
+        description: "Pick a player. They can use their active card an extra time. Then cross off a single square on any card.",
+        color: "green",
+        defenseSymbol: "dodge",
+        selection: {
+            target: "room_or_monster",
+            mode: "squares",
+            minSelections: 1,
+            maxSelections: 1,
+            connected: false,
+            requireRoomStartAdjacency: false,
+            requireMonsterStartAdjacency: false
+        }
+    },
+    {
+        id: exports.EXPLORE_CARD_ID,
+        name: "Explore",
+        description: "Move 5 (orthogonally connected)",
+        color: "green",
+        defenseSymbol: "dodge",
+        selection: {
+            target: "room",
+            mode: "squares",
+            minSelections: 5,
+            maxSelections: 5,
             connected: true,
             requireRoomStartAdjacency: true
         }

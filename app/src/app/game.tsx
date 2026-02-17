@@ -99,7 +99,7 @@ const getAttackOutcomeLabel = (attack: MonsterAttackAnimation): string => {
     case 'returned_to_deck':
       return attack.card?.defenseSymbol === 'dodge' ? 'Dodged' : 'Blocked';
     case 'counter_attack':
-      return 'Counter!';
+      return attack.card?.type === 'magic' ? 'Counter x2!' : 'Counter!';
     case 'no_card_available':
       return 'No card';
     default:
@@ -561,6 +561,50 @@ export default function Game() {
   );
   const isHeroicMoveAndFightCard = (card: any): boolean => card?.type === 'heroic_move_two_and_fight_two';
   const isCombatCard = (card: any): boolean => card?.type === 'combat_fight_three_diagonal_or_move_three';
+  const isMagicCard = (card: any): boolean => card?.type === 'magic';
+  const isInspirationCard = (card: any): boolean => card?.type === 'inspiration';
+  const localSessionId = roomRef.current?.sessionId || '';
+  const inspirationPendingTargets = (gameState as any)?.inspirationPendingTargets;
+  const inspirationExtraActiveUses = (gameState as any)?.inspirationExtraActiveUses;
+  const isSelectingInspirationTarget = !!activeCard && isInspirationCard(activeCard);
+  const selectedInspirationTargetSessionId = isSelectingInspirationTarget && localSessionId
+    ? String(inspirationPendingTargets?.get?.(localSessionId) || '')
+    : '';
+  const inspirationPendingTargetCounts = (() => {
+    const counts = new Map<string, number>();
+    if (!inspirationPendingTargets || typeof inspirationPendingTargets.forEach !== 'function') {
+      return counts;
+    }
+
+    inspirationPendingTargets.forEach((targetSessionId: string) => {
+      const safeTargetSessionId = String(targetSessionId || '');
+      if (!safeTargetSessionId) {
+        return;
+      }
+      counts.set(safeTargetSessionId, (counts.get(safeTargetSessionId) || 0) + 1);
+    });
+
+    return counts;
+  })();
+  const currentPlayerResolvedExtraUses = localSessionId
+    ? Number(inspirationExtraActiveUses?.get?.(localSessionId) || 0)
+    : 0;
+  const currentPlayerPendingExtraUses = localSessionId
+    ? Number(inspirationPendingTargetCounts.get(localSessionId) || 0)
+    : 0;
+  const showCurrentPlayerExtraUseBadge =
+    Math.max(currentPlayerResolvedExtraUses, currentPlayerPendingExtraUses) > 0;
+  const handleInspirationTargetPick = useCallback((targetSessionId: string) => {
+    if (!roomRef.current || !isSelectingInspirationTarget) {
+      return;
+    }
+
+    if (!targetSessionId || !gameState?.players?.get?.(targetSessionId)) {
+      return;
+    }
+
+    roomRef.current.send('selectInspirationTarget', { targetSessionId });
+  }, [isSelectingInspirationTarget, gameState]);
   const roomCode = roomRef.current?.roomId || '';
   const normalizedName = name.trim().replace(/\s+/g, ' ').slice(0, 24);
   const canJoinLobbyActions = normalizedName.length > 0 && !isJoiningRoom && !isResumingSession;
@@ -961,6 +1005,11 @@ export default function Game() {
       return;
     }
 
+    if (isInspirationCard(activeCard) && !selectedInspirationTargetSessionId) {
+      console.log('Select a player in the player area before using Inspiration');
+      return;
+    }
+
     const allowsRoomSelection =
       activeCard.selectionTarget === 'room' || activeCard.selectionTarget === 'room_or_monster';
     if (!allowsRoomSelection) {
@@ -1186,6 +1235,11 @@ export default function Game() {
       return;
     }
 
+    if (isInspirationCard(activeCard) && !selectedInspirationTargetSessionId) {
+      console.log('Select a player in the player area before using Inspiration');
+      return;
+    }
+
     const allowsMonsterSelection = cardAllowsMonsterSelection(activeCard);
     if (!allowsMonsterSelection) {
       console.log('Active card does not allow selecting monster squares');
@@ -1264,6 +1318,8 @@ export default function Game() {
     }
 
     const selectedForMonster = selectedMonsterSquares.filter((pos) => pos.monsterId === monsterId);
+    const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
+      (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
 
     // Enforce max selection limits
     if (maxSelectionsForMonster > 0) {
@@ -1293,10 +1349,16 @@ export default function Game() {
       return;
     }
 
-    const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
-      (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
     const isDiagonalAdjacent = (ax: number, ay: number, bx: number, by: number) =>
       Math.abs(ax - bx) === 1 && Math.abs(ay - by) === 1;
+
+    if (isMagicCard(activeCard)) {
+      const hasOrthAdjacentSelection = selectedForMonster.some((pos) => isOrthAdjacent(x, y, pos.x, pos.y));
+      if (hasOrthAdjacentSelection) {
+        console.log('Magic requires selected squares to not be orthogonally adjacent');
+        return;
+      }
+    }
 
     // Connectivity (per monster): subsequent squares must be adjacent to existing selections on this monster
     if (activeCard.requiresConnected && selectedForMonster.length > 0) {
@@ -1356,6 +1418,17 @@ export default function Game() {
     );
     if (alreadySelected) {
       return { valid: false, reason: 'Square already selected' };
+    }
+
+    const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
+      (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
+    if (isMagicCard(card)) {
+      const hasOrthAdjacentSelection = selectedSquares.some(
+        (pos) => pos.roomIndex === displayRoomIndex && isOrthAdjacent(x, y, pos.x, pos.y)
+      );
+      if (hasOrthAdjacentSelection) {
+        return { valid: false, reason: 'Magic requires selected squares to not be orthogonally adjacent' };
+      }
     }
 
     const maxSelections = card?.maxSelections || 0;
@@ -2162,6 +2235,10 @@ export default function Game() {
     const minSelections = activeCard.minSelections ?? 1;
     const maxSelections = activeCard.maxSelections ?? 0;
 
+    if (isInspirationCard(activeCard) && !selectedInspirationTargetSessionId) {
+      return false;
+    }
+
     if (target === 'monster_each') {
       if (selectedSquares.length > 0) return false;
       const sessionId = roomRef.current?.sessionId;
@@ -2408,6 +2485,13 @@ export default function Game() {
             </div>
             <span>
               <h2 className="text-xl font-bold mb-4">Players</h2>
+              {isSelectingInspirationTarget && (
+                <p className="mb-3 text-xs font-semibold text-emerald-200">
+                  {selectedInspirationTargetSessionId
+                    ? 'Inspiration target selected. Cross 1 square, then confirm.'
+                    : 'Inspiration active: click a player to grant an x2 replay.'}
+                </p>
+              )}
               <ul className="space-y-2">
                 {gameState?.players && Array.from(gameState.players.entries()).map(([sessionId, player]) => {
                   if (!player) {
@@ -2461,12 +2545,20 @@ export default function Game() {
                   );
                   const playerXp = Math.max(0, Number((player as any).xp || 0));
                   const isXpPulseActive = !!xpPulseByPlayerId[sessionId];
+                  const playerResolvedExtraUses = Number(inspirationExtraActiveUses?.get?.(sessionId) || 0);
+                  const playerPendingExtraUses = Number(inspirationPendingTargetCounts.get(sessionId) || 0);
+                  const showPlayerInspirationBadge =
+                    Math.max(playerResolvedExtraUses, playerPendingExtraUses) > 0;
+                  const isSelectedInspirationTarget = selectedInspirationTargetSessionId === sessionId;
 
                   return (
                     <li
                       key={sessionId}
                       data-player-row-id={sessionId}
-                      className="relative p-2 bg-slate-700 rounded flex justify-between items-center gap-2"
+                      onClick={() => handleInspirationTargetPick(sessionId)}
+                      className={`relative p-2 rounded flex justify-between items-center gap-2 bg-slate-700 transition-colors ${
+                        isSelectingInspirationTarget ? 'cursor-pointer hover:bg-slate-600' : ''
+                      } ${isSelectedInspirationTarget ? 'ring-2 ring-emerald-300' : ''}`}
                     >
                       <span className="font-medium">{player.name}</span>
                       <div className="flex items-center gap-2">
@@ -2486,6 +2578,15 @@ export default function Game() {
                             {formatStatus(player.turnStatus)}
                           </span>
                         </div>
+
+                        {showPlayerInspirationBadge && (
+                          <div
+                            className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-emerald-300 bg-emerald-500/25 px-2 text-xs font-black text-emerald-100"
+                            title="Active card replay available (x2)"
+                          >
+                            x2
+                          </div>
+                        )}
 
                         {hasMonsters && (
                           <div
@@ -2617,7 +2718,12 @@ export default function Game() {
                 <div className="bg-slate-700 border-2 border-slate-600 p-4 rounded flex-1 h-full flex items-center">
                   <div className="flex justify-start gap-6 items-center">
                     <CardDeck player={currentPlayer} room={roomRef.current} />
-                    <DrawnCard player={currentPlayer} room={roomRef.current} key={updateCounter} />
+                    <DrawnCard
+                      player={currentPlayer}
+                      room={roomRef.current}
+                      key={updateCounter}
+                      showExtraUseBadge={showCurrentPlayerExtraUseBadge}
+                    />
                     <DiscardPile
                       player={currentPlayer}
                       room={roomRef.current}

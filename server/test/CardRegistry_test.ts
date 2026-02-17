@@ -90,6 +90,111 @@ describe("Card Registry", () => {
     assert.strictEqual(created.drawCardsOnResolve, 1);
   });
 
+  it("should configure Explore as a green room-only orthogonally connected move 5 with dodge", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "explore");
+    assert(definition, "Explore card definition should exist");
+
+    assert.strictEqual(definition.name, "Explore");
+    assert.strictEqual(definition.description, "Move 5 (orthogonally connected)");
+    assert.strictEqual(definition.color, "green");
+    assert.strictEqual(definition.defenseSymbol, "dodge");
+    assert.strictEqual(definition.selection.target, "room");
+    assert.strictEqual(definition.selection.mode, "squares");
+    assert.strictEqual(definition.selection.minSelections, 5);
+    assert.strictEqual(definition.selection.maxSelections, 5);
+    assert.strictEqual(definition.selection.connected, true);
+    assert.strictEqual(definition.selection.requireRoomStartAdjacency, true);
+  });
+
+  it("should create Explore cards with dodge defense symbol and five connected room selections", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "explore");
+    assert(definition, "Explore card definition should exist");
+
+    const created = createCardFromDefinition(definition, "test_explore");
+
+    assert.strictEqual(created.type, "explore");
+    assert.strictEqual(created.name, "Explore");
+    assert.strictEqual(created.color, "green");
+    assert.strictEqual(created.defenseSymbol, "dodge");
+    assert.strictEqual(created.selectionTarget, "room");
+    assert.strictEqual(created.selectionMode, "squares");
+    assert.strictEqual(created.minSelections, 5);
+    assert.strictEqual(created.maxSelections, 5);
+    assert.strictEqual(created.requiresConnected, true);
+    assert.strictEqual(created.requiresRoomStartAdjacency, true);
+    assert.strictEqual(created.drawCardsOnResolve, 0);
+  });
+
+  it("should configure Inspiration as a green room/monster single-square card with dodge", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "inspiration");
+    assert(definition, "Inspiration card definition should exist");
+
+    assert.strictEqual(definition.name, "Inspiration");
+    assert.strictEqual(
+      definition.description,
+      "Pick a player. They can use their active card an extra time. Then cross off a single square on any card."
+    );
+    assert.strictEqual(definition.color, "green");
+    assert.strictEqual(definition.defenseSymbol, "dodge");
+    assert.strictEqual(definition.selection.target, "room_or_monster");
+    assert.strictEqual(definition.selection.mode, "squares");
+    assert.strictEqual(definition.selection.minSelections, 1);
+    assert.strictEqual(definition.selection.maxSelections, 1);
+    assert.strictEqual(definition.selection.connected, false);
+  });
+
+  it("should create Inspiration cards with dodge and single-square room/monster targeting", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "inspiration");
+    assert(definition, "Inspiration card definition should exist");
+
+    const created = createCardFromDefinition(definition, "test_inspiration");
+
+    assert.strictEqual(created.type, "inspiration");
+    assert.strictEqual(created.name, "Inspiration");
+    assert.strictEqual(created.color, "green");
+    assert.strictEqual(created.defenseSymbol, "dodge");
+    assert.strictEqual(created.selectionTarget, "room_or_monster");
+    assert.strictEqual(created.selectionMode, "squares");
+    assert.strictEqual(created.minSelections, 1);
+    assert.strictEqual(created.maxSelections, 1);
+    assert.strictEqual(created.requiresConnected, false);
+  });
+
+  it("should configure Magic as a blue room/monster card with non-adjacent up-to-3 selection and counter", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "magic");
+    assert(definition, "Magic card definition should exist");
+
+    assert.strictEqual(definition.name, "Magic");
+    assert.strictEqual(
+      definition.description,
+      "On a single room or monster card, cross off up to 3 squares that are not orthogonally adjacent."
+    );
+    assert.strictEqual(definition.color, "blue");
+    assert.strictEqual(definition.defenseSymbol, "counter");
+    assert.strictEqual(definition.selection.target, "room_or_monster");
+    assert.strictEqual(definition.selection.mode, "squares");
+    assert.strictEqual(definition.selection.minSelections, 1);
+    assert.strictEqual(definition.selection.maxSelections, 3);
+    assert.strictEqual(definition.selection.connected, false);
+  });
+
+  it("should create Magic cards with blue color, counter, and up-to-3 square mode", () => {
+    const definition = CARD_DEFINITIONS.find((card) => card.id === "magic");
+    assert(definition, "Magic card definition should exist");
+
+    const created = createCardFromDefinition(definition, "test_magic");
+
+    assert.strictEqual(created.type, "magic");
+    assert.strictEqual(created.name, "Magic");
+    assert.strictEqual(created.color, "blue");
+    assert.strictEqual(created.defenseSymbol, "counter");
+    assert.strictEqual(created.selectionTarget, "room_or_monster");
+    assert.strictEqual(created.selectionMode, "squares");
+    assert.strictEqual(created.minSelections, 1);
+    assert.strictEqual(created.maxSelections, 3);
+    assert.strictEqual(created.requiresConnected, false);
+  });
+
   it("should configure Heroic Move and Fight as a counter card that requires 2 room + 2 monster squares", () => {
     const definition = CARD_DEFINITIONS.find((card) => card.id === "heroic_move_two_and_fight_two");
     assert(definition, "Heroic Move and Fight card definition should exist");

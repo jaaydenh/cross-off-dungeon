@@ -8,6 +8,7 @@ export type CardSelectionMode =
   | "row"
   | "horizontal_pair_twice"
   | "centered_room_3x3"
+  | "room_2x2_choose_two_twice"
   | "cunning_three_step_different_cards"
   | "centered_monster_3x3"
   | "monster_swipe_l";
@@ -17,6 +18,9 @@ export const SWIPE_CARD_ID = "swipe_fight_l_overlay";
 export const SPREAD_OUT_CARD_ID = "spread_out_room_overlay";
 export const CUNNING_CARD_ID = "cunning";
 export const QUICK_STEP_CARD_ID = "quick_step";
+export const EXPLORE_CARD_ID = "explore";
+export const MAGIC_CARD_ID = "magic";
+export const INSPIRATION_CARD_ID = "inspiration";
 export const STARTER_DECK_SIZE = 10;
 
 export type CardDefinition = {
@@ -164,6 +168,23 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
     }
   },
   {
+    id: MAGIC_CARD_ID,
+    name: "Magic",
+    description:
+      "On a single room or monster card, cross off up to 3 squares that are not orthogonally adjacent.",
+    color: "blue",
+    defenseSymbol: "counter",
+    selection: {
+      target: "room_or_monster",
+      mode: "squares",
+      minSelections: 1,
+      maxSelections: 3,
+      connected: false,
+      requireRoomStartAdjacency: false,
+      requireMonsterStartAdjacency: false
+    }
+  },
+  {
     id: COMBAT_CARD_ID,
     name: "Combat",
     description: "Fight",
@@ -223,6 +244,38 @@ export const CARD_DEFINITIONS: CardDefinition[] = [
       mode: "squares",
       minSelections: 1,
       maxSelections: 1,
+      connected: true,
+      requireRoomStartAdjacency: true
+    }
+  },
+  {
+    id: INSPIRATION_CARD_ID,
+    name: "Inspiration",
+    description:
+      "Pick a player. They can use their active card an extra time. Then cross off a single square on any card.",
+    color: "green",
+    defenseSymbol: "dodge",
+    selection: {
+      target: "room_or_monster",
+      mode: "squares",
+      minSelections: 1,
+      maxSelections: 1,
+      connected: false,
+      requireRoomStartAdjacency: false,
+      requireMonsterStartAdjacency: false
+    }
+  },
+  {
+    id: EXPLORE_CARD_ID,
+    name: "Explore",
+    description: "Move 5 (orthogonally connected)",
+    color: "green",
+    defenseSymbol: "dodge",
+    selection: {
+      target: "room",
+      mode: "squares",
+      minSelections: 5,
+      maxSelections: 5,
       connected: true,
       requireRoomStartAdjacency: true
     }

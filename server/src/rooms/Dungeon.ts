@@ -362,6 +362,12 @@ export class Dungeon extends Room<{ state: DungeonState }> {
       this.state.playCard(client.sessionId, message.cardId);
     });
 
+    this.onMessage("selectInspirationTarget", (client, message) => {
+      // Mutates state; clients will see inspiration targeting updates via state patches.
+      // NOTE: Sending explicit result messages has intermittently triggered msgpackr issues in this project.
+      this.state.selectInspirationTarget(client.sessionId, this.toSafeString(message?.targetSessionId));
+    });
+
     this.onMessage("cancelCardAction", (client, message) => {
       const result = this.state.cancelCardAction(client.sessionId);
       client.send("cancelCardActionResult", result);

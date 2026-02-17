@@ -264,6 +264,11 @@ class Dungeon extends core_1.Room {
             // RangeErrors in this project, so we intentionally do not respond here.
             this.state.playCard(client.sessionId, message.cardId);
         });
+        this.onMessage("selectInspirationTarget", (client, message) => {
+            // Mutates state; clients will see inspiration targeting updates via state patches.
+            // NOTE: Sending explicit result messages has intermittently triggered msgpackr issues in this project.
+            this.state.selectInspirationTarget(client.sessionId, this.toSafeString(message?.targetSessionId));
+        });
         this.onMessage("cancelCardAction", (client, message) => {
             const result = this.state.cancelCardAction(client.sessionId);
             client.send("cancelCardActionResult", result);

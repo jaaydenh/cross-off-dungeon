@@ -50,6 +50,8 @@ class DungeonState extends schema_1.Schema {
         this.bossDefeated = false;
         // Card-based square selection tracking
         this.activeCardPlayers = new schema_1.MapSchema(); // sessionId -> cardId
+        this.inspirationPendingTargets = new schema_1.MapSchema(); // casterSessionId -> targetSessionId
+        this.inspirationExtraActiveUses = new schema_1.MapSchema(); // targetSessionId -> remaining extra active-card replays
         // NOTE: These can grow quickly and are frequently mutated; keeping them inside Schema maps
         // has caused serialization issues (msgpackr RangeError: ERR_BUFFER_OUT_OF_BOUNDS) when sending
         // state patches under load / rapid interactions.
@@ -316,6 +318,17 @@ class DungeonState extends schema_1.Schema {
         if (this.activeCardPlayers.has(id)) {
             this.activeCardPlayers.delete(id);
         }
+        this.inspirationPendingTargets.delete(id);
+        this.inspirationExtraActiveUses.delete(id);
+        const inspirationTargetsToClear = [];
+        this.inspirationPendingTargets.forEach((targetSessionId, casterSessionId) => {
+            if (targetSessionId === id) {
+                inspirationTargetsToClear.push(casterSessionId);
+            }
+        });
+        inspirationTargetsToClear.forEach((casterSessionId) => {
+            this.inspirationPendingTargets.delete(casterSessionId);
+        });
         this.selectedSquares.delete(id);
         this.selectedSquareCount.delete(id);
         // Remove player from turn order
@@ -696,6 +709,8 @@ class DungeonState extends schema_1.Schema {
             carryOverCards.forEach((card) => player.deck.push(card));
         });
         this.activeCardPlayers.clear();
+        this.inspirationPendingTargets.clear();
+        this.inspirationExtraActiveUses.clear();
         this.selectedSquares.clear();
         this.selectedSquareCount.clear();
         this.resetPlayersForFreshTurn();
@@ -789,8 +804,11 @@ class DungeonState extends schema_1.Schema {
                     continue;
                 }
                 if (defenseSymbol === "counter") {
-                    // Counter crosses one random available monster square, then returns card to deck.
-                    const counterSquare = this.crossRandomUncrossedMonsterSquare(monster);
+                    // Counter crosses one random available monster square.
+                    // Magic upgrades this to a double counter (up to 2 crossed squares).
+                    const counterHitCount = this.isMagicCard(defenseCard) ? 2 : 1;
+                    const counterSquares = this.crossRandomUncrossedMonsterSquares(monster, counterHitCount);
+                    const counterSquare = counterSquares[0] || null;
                     this.checkAndHandleBossDefeat();
                     player.deck.push(defenseCard);
                     attacks.push({
@@ -823,6 +841,18 @@ class DungeonState extends schema_1.Schema {
             totalAttacks: attacks.length,
             attacks
         };
+    }
+    crossRandomUncrossedMonsterSquares(monster, count) {
+        const safeCount = Math.max(0, Math.floor(count || 0));
+        const crossedSquares = [];
+        for (let i = 0; i < safeCount; i++) {
+            const crossed = this.crossRandomUncrossedMonsterSquare(monster);
+            if (!crossed) {
+                break;
+            }
+            crossedSquares.push(crossed);
+        }
+        return crossedSquares;
     }
     crossRandomUncrossedMonsterSquare(monster) {
         const availableSquares = monster.squares.filter((square) => square.filled && !square.checked);
@@ -937,6 +967,7 @@ class DungeonState extends schema_1.Schema {
         if (!activeCard) {
             // Defensive cleanup for stale state.
             this.activeCardPlayers.delete(sessionId);
+            this.inspirationPendingTargets.delete(sessionId);
             this.clearSelections(sessionId);
             return { success: true, discardedActiveCard: false };
         }
@@ -1009,6 +1040,28 @@ class DungeonState extends schema_1.Schema {
         }
         return drawnCount;
     }
+    selectInspirationTarget(sessionId, targetSessionId) {
+        if (!this.isGameInProgress()) {
+            return { success: false, error: "Game is already complete" };
+        }
+        const player = this.players.get(sessionId);
+        if (!player) {
+            return { success: false, error: "Player not found" };
+        }
+        const activeCard = this.getActiveCard(sessionId);
+        if (!this.isInspirationCard(activeCard)) {
+            return { success: false, error: "Inspiration is not active" };
+        }
+        if (!targetSessionId || !this.players.has(targetSessionId)) {
+            return { success: false, error: "Target player not found" };
+        }
+        this.inspirationPendingTargets.set(sessionId, targetSessionId);
+        const targetPlayer = this.players.get(targetSessionId);
+        return {
+            success: true,
+            message: `Inspiration target selected: ${targetPlayer?.name || targetSessionId}`
+        };
+    }
     /**
      * Activate a drawn card for square selection
      * @param sessionId Session ID of the player
@@ -1043,6 +1096,7 @@ class DungeonState extends schema_1.Schema {
         // Activate the card
         card.isActive = true;
         this.activeCardPlayers.set(sessionId, cardId);
+        this.inspirationPendingTargets.delete(sessionId);
         this.clearSelections(sessionId);
         console.log(`Player ${sessionId} activated card: ${cardId}`);
         // If a card targets "every monster" and the player has no eligible monsters, auto-discard it.
@@ -1066,6 +1120,36 @@ class DungeonState extends schema_1.Schema {
         if (!player)
             return null;
         return player.drawnCards.find((card) => card.id === activeCardId) || null;
+    }
+    getValidInspirationTargetSessionId(casterSessionId) {
+        const targetSessionId = this.inspirationPendingTargets.get(casterSessionId);
+        if (!targetSessionId) {
+            return null;
+        }
+        if (!this.players.has(targetSessionId)) {
+            this.inspirationPendingTargets.delete(casterSessionId);
+            return null;
+        }
+        return targetSessionId;
+    }
+    grantInspirationExtraActiveUse(sessionId) {
+        const existing = this.inspirationExtraActiveUses.get(sessionId);
+        const safeExisting = typeof existing === "number" && Number.isFinite(existing) ? Math.max(0, Math.floor(existing)) : 0;
+        this.inspirationExtraActiveUses.set(sessionId, safeExisting + 1);
+    }
+    consumeInspirationExtraActiveUse(sessionId) {
+        const existing = this.inspirationExtraActiveUses.get(sessionId);
+        const safeExisting = typeof existing === "number" && Number.isFinite(existing) ? Math.max(0, Math.floor(existing)) : 0;
+        if (safeExisting <= 0) {
+            return false;
+        }
+        if (safeExisting === 1) {
+            this.inspirationExtraActiveUses.delete(sessionId);
+        }
+        else {
+            this.inspirationExtraActiveUses.set(sessionId, safeExisting - 1);
+        }
+        return true;
     }
     canActiveCardStartAnySelection(sessionId, card) {
         if (card.selectionTarget === "monster_each") {
@@ -1153,6 +1237,30 @@ class DungeonState extends schema_1.Schema {
                             continue;
                         }
                         const hasRequiredAdjacency = spreadSelections.some((sel) => this.isAdjacentToEntranceOrCrossedSquare(room, sel.x, sel.y));
+                        if (hasRequiredAdjacency) {
+                            return true;
+                        }
+                    }
+                }
+                continue;
+            }
+            if (mode === "room_2x2_choose_two_twice") {
+                for (let y = 0; y < room.height - 1; y++) {
+                    for (let x = 0; x < room.width - 1; x++) {
+                        const overlaySquares = [
+                            { x, y },
+                            { x: x + 1, y },
+                            { x, y: y + 1 },
+                            { x: x + 1, y: y + 1 }
+                        ];
+                        const crossableSquares = overlaySquares.filter((pos) => {
+                            const square = room.getSquare(pos.x, pos.y);
+                            return !!square && !square.wall && !square.checked;
+                        });
+                        if (crossableSquares.length < 2) {
+                            continue;
+                        }
+                        const hasRequiredAdjacency = crossableSquares.some((pos) => this.isAdjacentToEntranceOrCrossedSquare(room, pos.x, pos.y));
                         if (hasRequiredAdjacency) {
                             return true;
                         }
@@ -1269,6 +1377,12 @@ class DungeonState extends schema_1.Schema {
     }
     isSpreadOutCard(card) {
         return card?.type === CardRegistry_1.SPREAD_OUT_CARD_ID;
+    }
+    isMagicCard(card) {
+        return card?.type === CardRegistry_1.MAGIC_CARD_ID;
+    }
+    isInspirationCard(card) {
+        return card?.type === CardRegistry_1.INSPIRATION_CARD_ID;
     }
     isCunningCard(card) {
         return card?.type === CardRegistry_1.CUNNING_CARD_ID;
@@ -1579,6 +1693,13 @@ class DungeonState extends schema_1.Schema {
         if (!card) {
             return { success: false, error: "No active card for player" };
         }
+        if (this.isInspirationCard(card) && !this.getValidInspirationTargetSessionId(sessionId)) {
+            return {
+                success: false,
+                error: "Select a player in the player area before crossing a square with Inspiration",
+                invalidSquare: true
+            };
+        }
         if (!this.cardAllowsRoom(card)) {
             return { success: false, error: "Active card does not allow room selection", invalidSquare: true };
         }
@@ -1674,6 +1795,92 @@ class DungeonState extends schema_1.Schema {
                 completed: false
             };
         }
+        if (selectionMode === "room_2x2_choose_two_twice") {
+            if (currentSelections.length !== 0 && currentSelections.length !== 2) {
+                return {
+                    success: false,
+                    error: "Magic card is in an invalid state. Cancel and replay this card.",
+                    invalidSquare: true
+                };
+            }
+            if (!room.isValidPosition(x + 1, y + 1)) {
+                return {
+                    success: false,
+                    error: "2x2 placement must fully fit inside the room",
+                    invalidSquare: true
+                };
+            }
+            const overlayCoordinates = [
+                { x, y },
+                { x: x + 1, y },
+                { x, y: y + 1 },
+                { x: x + 1, y: y + 1 }
+            ];
+            const crossableOverlaySquares = overlayCoordinates.filter((pos) => {
+                const overlaySquare = room.getSquare(pos.x, pos.y);
+                if (!overlaySquare || overlaySquare.wall || overlaySquare.checked) {
+                    return false;
+                }
+                const alreadySelected = roomSelections.some((selection) => selection.roomIndex === roomIndex && selection.x === pos.x && selection.y === pos.y);
+                return !alreadySelected;
+            });
+            if (crossableOverlaySquares.length < 2) {
+                return {
+                    success: false,
+                    error: "Need at least 2 available squares in the 2x2 area",
+                    invalidSquare: true
+                };
+            }
+            const orderedCrossableSquares = [...crossableOverlaySquares].sort((left, right) => {
+                const leftAdjacent = this.isAdjacentToEntranceOrCrossedSquare(room, left.x, left.y) ? 1 : 0;
+                const rightAdjacent = this.isAdjacentToEntranceOrCrossedSquare(room, right.x, right.y) ? 1 : 0;
+                if (leftAdjacent !== rightAdjacent) {
+                    return rightAdjacent - leftAdjacent;
+                }
+                if (left.y !== right.y) {
+                    return left.y - right.y;
+                }
+                return left.x - right.x;
+            });
+            const selectedForPhase = orderedCrossableSquares.slice(0, 2);
+            const hasRequiredAdjacency = selectedForPhase.some((pos) => this.isAdjacentToEntranceOrCrossedSquare(room, pos.x, pos.y));
+            if (!hasRequiredAdjacency) {
+                return {
+                    success: false,
+                    error: "At least one crossed square must be adjacent to the entrance or an existing crossed square",
+                    invalidSquare: true
+                };
+            }
+            const phaseSelections = selectedForPhase.map((pos) => ({
+                kind: "room",
+                roomIndex,
+                x: pos.x,
+                y: pos.y
+            }));
+            const crossedExits = [];
+            for (const selection of phaseSelections) {
+                this.crossRoomSquare(sessionId, selection.roomIndex, selection.x, selection.y, crossedExits);
+            }
+            this.resolveCrossedExits(crossedExits);
+            const updatedSelections = [...currentSelections, ...phaseSelections];
+            this.setSelections(sessionId, updatedSelections);
+            const phasesCompleted = Math.floor(updatedSelections.length / 2);
+            if (phasesCompleted >= 2) {
+                const completed = this.completeCardAction(sessionId, []);
+                if (!completed.success) {
+                    return completed;
+                }
+                return {
+                    ...completed,
+                    message: "Second Magic 2x2 resolved. Card action completed."
+                };
+            }
+            return {
+                success: true,
+                message: "First Magic 2x2 resolved. Place one more 2x2.",
+                completed: false
+            };
+        }
         if (selectionMode === "centered_room_3x3" || this.isSpreadOutCard(card)) {
             if (square.checked) {
                 return { success: false, error: "Center square is already crossed", invalidSquare: true };
@@ -1757,6 +1964,17 @@ class DungeonState extends schema_1.Schema {
         if (alreadySelected) {
             return { success: false, error: "Square already selected", invalidSquare: true };
         }
+        if (this.isMagicCard(card)) {
+            const hasOrthogonalNeighbor = roomSelections.some((selection) => selection.roomIndex === roomIndex &&
+                this.areOrthogonallyAdjacent(selection.x, selection.y, x, y));
+            if (hasOrthogonalNeighbor) {
+                return {
+                    success: false,
+                    error: "Magic requires selected squares to not be orthogonally adjacent",
+                    invalidSquare: true
+                };
+            }
+        }
         if (this.isHeroicMoveAndFightCard(card) && roomSelections.length >= 2) {
             return {
                 success: false,
@@ -1807,15 +2025,15 @@ class DungeonState extends schema_1.Schema {
         // Check if the square is orthogonally adjacent to any selected square in the same room
         for (const pos of selectedPositions) {
             if (pos.roomIndex === roomIndex) {
-                const dx = Math.abs(x - pos.x);
-                const dy = Math.abs(y - pos.y);
-                // Orthogonally adjacent means exactly one coordinate differs by 1
-                if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+                if (this.areOrthogonallyAdjacent(x, y, pos.x, pos.y)) {
                     return true;
                 }
             }
         }
         return false;
+    }
+    areOrthogonallyAdjacent(ax, ay, bx, by) {
+        return (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
     }
     isAdjacentToEntranceOrCrossedSquare(room, x, y) {
         const isOrthAdjacent = (ax, ay, bx, by) => (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
@@ -1886,6 +2104,12 @@ class DungeonState extends schema_1.Schema {
             return { success: false, error: "Active card not found", completed: false };
         }
         const card = player.drawnCards[cardIndex];
+        const inspirationTargetSessionId = this.isInspirationCard(card)
+            ? this.getValidInspirationTargetSessionId(sessionId)
+            : null;
+        if (this.isInspirationCard(card) && !inspirationTargetSessionId) {
+            return { success: false, error: "Select a player for Inspiration before confirming", completed: false };
+        }
         // Cross all selected squares (room or monster)
         const crossedExits = [];
         for (const sel of selectedSelections) {
@@ -1920,17 +2144,29 @@ class DungeonState extends schema_1.Schema {
         // This ensures that exits included in multi-square moves (like row sweeps) open reliably,
         // even when the exit's adjacent squares are crossed within the same action.
         this.resolveCrossedExits(crossedExits);
-        // Move card to discard pile
+        const returnsToDrawnForExtraUse = this.consumeInspirationExtraActiveUse(sessionId);
+        // Move card to discard pile unless Inspiration (or another effect) granted an extra replay.
         card.isActive = false;
-        player.drawnCards.splice(cardIndex, 1);
-        player.discardPile.push(card);
+        if (returnsToDrawnForExtraUse) {
+            // Keep the card in drawnCards so the player can activate it again.
+        }
+        else {
+            player.drawnCards.splice(cardIndex, 1);
+            player.discardPile.push(card);
+        }
+        if (inspirationTargetSessionId) {
+            this.grantInspirationExtraActiveUse(inspirationTargetSessionId);
+        }
         // Clean up card selection state
         this.activeCardPlayers.delete(sessionId);
+        this.inspirationPendingTargets.delete(sessionId);
         this.clearSelections(sessionId);
         const requestedBonusDraws = Math.max(0, Math.floor(card.drawCardsOnResolve || 0));
         const actualBonusDraws = requestedBonusDraws > 0 ? this.drawCardsFromDeckForEffect(sessionId, requestedBonusDraws) : 0;
         console.log(`Player ${sessionId} completed card action with card ${activeCardId}`);
-        let message = "Card action completed! Squares crossed and card moved to discard pile.";
+        let message = returnsToDrawnForExtraUse
+            ? "Card action completed! Squares crossed and card returned to your active pile for one extra use."
+            : "Card action completed! Squares crossed and card moved to discard pile.";
         if (requestedBonusDraws > 0) {
             if (actualBonusDraws === requestedBonusDraws) {
                 message += ` Drew ${actualBonusDraws} bonus card${actualBonusDraws === 1 ? "" : "s"}.`;
@@ -1940,6 +2176,12 @@ class DungeonState extends schema_1.Schema {
             }
             else {
                 message += " Could not draw a bonus card because the deck is empty.";
+            }
+        }
+        if (inspirationTargetSessionId) {
+            const targetPlayer = this.players.get(inspirationTargetSessionId);
+            if (targetPlayer) {
+                message += ` ${targetPlayer.name} can replay their active card once (x2).`;
             }
         }
         return {
@@ -1969,6 +2211,7 @@ class DungeonState extends schema_1.Schema {
         }
         // Clear card selection state
         this.activeCardPlayers.delete(sessionId);
+        this.inspirationPendingTargets.delete(sessionId);
         this.clearSelections(sessionId);
         console.log(`Player ${sessionId} cancelled card action for card ${activeCardId}`);
         return {
@@ -1995,6 +2238,7 @@ class DungeonState extends schema_1.Schema {
         const cardIndex = player.drawnCards.findIndex((card) => card.id === activeCardId);
         if (cardIndex === -1) {
             this.activeCardPlayers.delete(sessionId);
+            this.inspirationPendingTargets.delete(sessionId);
             this.clearSelections(sessionId);
             return { success: false, error: "Active card not found" };
         }
@@ -2003,6 +2247,7 @@ class DungeonState extends schema_1.Schema {
         player.drawnCards.splice(cardIndex, 1);
         player.discardPile.push(card);
         this.activeCardPlayers.delete(sessionId);
+        this.inspirationPendingTargets.delete(sessionId);
         this.clearSelections(sessionId);
         console.log(`Player ${sessionId} discarded active card ${activeCardId}`);
         return {
@@ -2028,8 +2273,12 @@ class DungeonState extends schema_1.Schema {
         if (!card) {
             return { success: false, error: "No active card to confirm" };
         }
+        if (this.isInspirationCard(card) && !this.getValidInspirationTargetSessionId(sessionId)) {
+            return { success: false, error: "Select a player for Inspiration before confirming" };
+        }
         const selectionMode = card.selectionMode || "squares";
         if (selectionMode === "horizontal_pair_twice" ||
+            selectionMode === "room_2x2_choose_two_twice" ||
             selectionMode === "cunning_three_step_different_cards" ||
             selectionMode === "centered_monster_3x3" ||
             selectionMode === "monster_swipe_l") {
@@ -2337,6 +2586,13 @@ class DungeonState extends schema_1.Schema {
         if (!card) {
             return { success: false, error: "No active card for player" };
         }
+        if (this.isInspirationCard(card) && !this.getValidInspirationTargetSessionId(sessionId)) {
+            return {
+                success: false,
+                error: "Select a player in the player area before crossing a square with Inspiration",
+                invalidSquare: true
+            };
+        }
         if (!this.cardAllowsMonster(card)) {
             return { success: false, error: "Active card does not allow monster selection", invalidSquare: true };
         }
@@ -2502,6 +2758,16 @@ class DungeonState extends schema_1.Schema {
             return { success: false, error: "Square already selected", invalidSquare: true };
         }
         const currentForMonster = monsterSelections.filter((p) => p.monsterId === monster.id);
+        if (this.isMagicCard(card)) {
+            const hasOrthogonalNeighbor = currentForMonster.some((selection) => this.areOrthogonallyAdjacent(selection.x, selection.y, x, y));
+            if (hasOrthogonalNeighbor) {
+                return {
+                    success: false,
+                    error: "Magic requires selected squares to not be orthogonally adjacent",
+                    invalidSquare: true
+                };
+            }
+        }
         if (this.isHeroicMoveAndFightCard(card) && currentForMonster.length >= 2) {
             return {
                 success: false,
@@ -2778,3 +3044,9 @@ __decorate([
 __decorate([
     (0, schema_1.type)({ map: "string" })
 ], DungeonState.prototype, "activeCardPlayers", void 0);
+__decorate([
+    (0, schema_1.type)({ map: "string" })
+], DungeonState.prototype, "inspirationPendingTargets", void 0);
+__decorate([
+    (0, schema_1.type)({ map: "number" })
+], DungeonState.prototype, "inspirationExtraActiveUses", void 0);

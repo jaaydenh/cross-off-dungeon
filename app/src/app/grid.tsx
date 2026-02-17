@@ -97,34 +97,34 @@ const Grid: FC<GridProps> = ({
 
   const exitHighlightInfo = getExitHighlightInfo();
 
+  const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
+    (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
+
+  const isAdjacentToEntranceOrCrossed = (x: number, y: number): boolean => {
+    if (room.entranceX !== -1 && room.entranceY !== -1) {
+      if (isOrthAdjacent(x, y, room.entranceX, room.entranceY)) {
+        return true;
+      }
+    }
+
+    for (let checkY = 0; checkY < room.height; checkY++) {
+      for (let checkX = 0; checkX < room.width; checkX++) {
+        const square = getSquareAt(checkX, checkY);
+        if (square?.checked && isOrthAdjacent(x, y, checkX, checkY)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
   const previewCells = (() => {
     if (!horizontalPairPreviewEnabled || !hoveredSquare) return { cells: [], invalid: false };
     const left = getSquareAt(hoveredSquare.x, hoveredSquare.y);
     const rightX = hoveredSquare.x + 1;
     const rightY = hoveredSquare.y;
     const right = getSquareAt(rightX, rightY);
-
-    const isOrthAdjacent = (ax: number, ay: number, bx: number, by: number) =>
-      (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
-
-    const isAdjacentToEntranceOrCrossed = (x: number, y: number): boolean => {
-      if (room.entranceX !== -1 && room.entranceY !== -1) {
-        if (isOrthAdjacent(x, y, room.entranceX, room.entranceY)) {
-          return true;
-        }
-      }
-
-      for (let checkY = 0; checkY < room.height; checkY++) {
-        for (let checkX = 0; checkX < room.width; checkX++) {
-          const square = getSquareAt(checkX, checkY);
-          if (square?.checked && isOrthAdjacent(x, y, checkX, checkY)) {
-            return true;
-          }
-        }
-      }
-
-      return false;
-    };
 
     const invalid =
       !left ||
@@ -271,12 +271,16 @@ const Grid: FC<GridProps> = ({
               square={square}
               onClick={handleSquareClick}
               onHover={
-                horizontalPairPreviewEnabled || spreadOutPreviewEnabled || !!cunningStepPreviewLength
+                horizontalPairPreviewEnabled ||
+                spreadOutPreviewEnabled ||
+                !!cunningStepPreviewLength
                   ? (hoverX, hoverY) => setHoveredSquare({ x: hoverX, y: hoverY })
                   : undefined
               }
               onHoverEnd={
-                horizontalPairPreviewEnabled || spreadOutPreviewEnabled || !!cunningStepPreviewLength
+                horizontalPairPreviewEnabled ||
+                spreadOutPreviewEnabled ||
+                !!cunningStepPreviewLength
                   ? () => setHoveredSquare(null)
                   : undefined
               }
