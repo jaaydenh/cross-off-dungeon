@@ -114,9 +114,12 @@ const Square: React.FC<SquareProps> = ({
       fillColor = '#e8dfcf';
     }
     
-    // If exit is selected (for card action), show selection styling
+    // If exit is selected (for card action), match pending-selection styling
     if (isSelected && !square.checked) {
-      additionalClasses += ' ring-2 ring-sky-400';
+      bgColor = 'bg-blue-600';
+      borderColor = 'border-blue-400';
+      additionalClasses = `${additionalClasses} ring-2 ring-sky-400 shadow-lg shadow-blue-500/50`.trim();
+      fillColor = '#5d77b3';
     } else if (square.checked) {
       fillColor = '#d6cab5';
     }

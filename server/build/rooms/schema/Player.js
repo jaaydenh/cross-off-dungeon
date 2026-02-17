@@ -11,7 +11,7 @@ const schema_1 = require("@colyseus/schema");
 const Card_1 = require("./Card");
 const CardRegistry_1 = require("../cards/CardRegistry");
 class Player extends schema_1.Schema {
-    constructor(name) {
+    constructor(name, lobbyPlayerCount = 2) {
         super();
         this.deck = new schema_1.ArraySchema();
         this.drawnCards = new schema_1.ArraySchema();
@@ -26,10 +26,10 @@ class Player extends schema_1.Schema {
         this.turnStatus = "not_started";
         this.hasDrawnCard = false;
         // Initialize a random 10-card starter deck.
-        this.initializeDeck();
+        this.initializeDeck(lobbyPlayerCount);
     }
-    initializeDeck() {
-        const cards = (0, CardRegistry_1.createStarterDeck)();
+    initializeDeck(lobbyPlayerCount) {
+        const cards = (0, CardRegistry_1.createStarterDeck)({ includeInspiration: lobbyPlayerCount >= 2 });
         // Add shuffled cards to deck
         cards.forEach(card => this.deck.push(card));
     }

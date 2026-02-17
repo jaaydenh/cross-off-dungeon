@@ -23,19 +23,30 @@ const toHorizontalRoomPairAnchors = (
 
   const anchors: Array<{ roomIndex: number; x: number; y: number }> = [];
   for (const groupSquares of grouped.values()) {
-    const keySet = new Set(groupSquares.map((square) => `${square.x},${square.y}`));
+    const byKey = new Map<string, { roomIndex: number; x: number; y: number }>();
+    for (const square of groupSquares) {
+      byKey.set(`${square.x},${square.y}`, square);
+    }
     const consumed = new Set<string>();
-    const sorted = [...groupSquares].sort((a, b) => a.y - b.y || a.x - b.x);
 
-    for (const square of sorted) {
+    for (const square of groupSquares) {
       const key = `${square.x},${square.y}`;
       if (consumed.has(key)) continue;
 
       const rightKey = `${square.x + 1},${square.y}`;
-      if (keySet.has(rightKey) && !consumed.has(rightKey)) {
+      if (byKey.has(rightKey) && !consumed.has(rightKey)) {
         anchors.push({ roomIndex: square.roomIndex, x: square.x, y: square.y });
         consumed.add(key);
         consumed.add(rightKey);
+        continue;
+      }
+
+      const leftKey = `${square.x - 1},${square.y}`;
+      if (byKey.has(leftKey) && !consumed.has(leftKey)) {
+        const left = byKey.get(leftKey)!;
+        anchors.push({ roomIndex: left.roomIndex, x: left.x, y: left.y });
+        consumed.add(leftKey);
+        consumed.add(key);
         continue;
       }
 
@@ -60,19 +71,30 @@ const toHorizontalMonsterPairAnchors = (
 
   const anchors: Array<{ monsterId: string; x: number; y: number }> = [];
   for (const groupSquares of grouped.values()) {
-    const keySet = new Set(groupSquares.map((square) => `${square.x},${square.y}`));
+    const byKey = new Map<string, { monsterId: string; x: number; y: number }>();
+    for (const square of groupSquares) {
+      byKey.set(`${square.x},${square.y}`, square);
+    }
     const consumed = new Set<string>();
-    const sorted = [...groupSquares].sort((a, b) => a.y - b.y || a.x - b.x);
 
-    for (const square of sorted) {
+    for (const square of groupSquares) {
       const key = `${square.x},${square.y}`;
       if (consumed.has(key)) continue;
 
       const rightKey = `${square.x + 1},${square.y}`;
-      if (keySet.has(rightKey) && !consumed.has(rightKey)) {
+      if (byKey.has(rightKey) && !consumed.has(rightKey)) {
         anchors.push({ monsterId: square.monsterId, x: square.x, y: square.y });
         consumed.add(key);
         consumed.add(rightKey);
+        continue;
+      }
+
+      const leftKey = `${square.x - 1},${square.y}`;
+      if (byKey.has(leftKey) && !consumed.has(leftKey)) {
+        const left = byKey.get(leftKey)!;
+        anchors.push({ monsterId: left.monsterId, x: left.x, y: left.y });
+        consumed.add(leftKey);
+        consumed.add(key);
         continue;
       }
 

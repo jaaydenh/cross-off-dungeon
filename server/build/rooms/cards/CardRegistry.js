@@ -260,11 +260,15 @@ function createCardFromDefinition(definition, id) {
     const selection = definition.selection;
     return new Card_1.Card(id, definition.id, definition.description, selection.target, selection.mode, selection.minSelections ?? 1, selection.maxSelections ?? 0, selection.connected ?? false, selection.requireRoomStartAdjacency ?? false, selection.requireMonsterStartAdjacency ?? false, definition.defenseSymbol ?? "empty", definition.drawCardsOnResolve ?? 0, definition.color ?? "clear", definition.name);
 }
-function createStarterDeck() {
+function createStarterDeck(options = {}) {
+    const includeInspiration = options.includeInspiration !== false;
+    const definitionPool = includeInspiration
+        ? exports.CARD_DEFINITIONS
+        : exports.CARD_DEFINITIONS.filter((definition) => definition.id !== exports.INSPIRATION_CARD_ID);
     const cards = [];
     for (let cardIndex = 1; cardIndex <= exports.STARTER_DECK_SIZE; cardIndex++) {
-        const definitionIndex = Math.floor(Math.random() * exports.CARD_DEFINITIONS.length);
-        const definition = exports.CARD_DEFINITIONS[definitionIndex];
+        const definitionIndex = Math.floor(Math.random() * definitionPool.length);
+        const definition = definitionPool[definitionIndex];
         cards.push(createCardFromDefinition(definition, `card_${cardIndex}`));
     }
     // Shuffle the cards using Fisher-Yates algorithm

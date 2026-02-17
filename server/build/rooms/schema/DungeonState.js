@@ -389,7 +389,8 @@ class DungeonState extends schema_1.Schema {
         return this.addNewRoomFromExit(this.currentRoomIndex, exitDirection, exitIndex);
     }
     createPlayer(id, name) {
-        this.players.set(id, new Player_1.Player(name));
+        const lobbyPlayerCount = this.players.size + 1;
+        this.players.set(id, new Player_1.Player(name, lobbyPlayerCount));
         // Add player to turn order if turn system is active
         this.addPlayerToTurnOrder(id);
         this.reconfigureRoomDeckForLobbyPlayerCount();
@@ -417,6 +418,8 @@ class DungeonState extends schema_1.Schema {
         this.selectedSquareCount.delete(id);
         // Remove player from turn order
         this.removePlayerFromTurnOrder(id);
+        this.deactivateInspirationWhenInsufficientPlayers();
+        this.removeInspirationFromSoloDecks();
         this.reconfigureRoomDeckForLobbyPlayerCount();
     }
     reconfigureRoomDeckForLobbyPlayerCount() {
@@ -1136,6 +1139,9 @@ class DungeonState extends schema_1.Schema {
         if (!this.isInspirationCard(activeCard)) {
             return { success: false, error: "Inspiration is not active" };
         }
+        if (!this.canUseInspiration()) {
+            return { success: false, error: "Inspiration can only be activated in games with 2 or more players" };
+        }
         if (!targetSessionId || !this.players.has(targetSessionId)) {
             return { success: false, error: "Target player not found" };
         }
@@ -1173,6 +1179,9 @@ class DungeonState extends schema_1.Schema {
             return { success: false, error: "Card not found in drawn cards" };
         }
         const card = player.drawnCards[cardIndex];
+        if (this.isInspirationCard(card) && !this.canUseInspiration()) {
+            return { success: false, error: "Inspiration can only be activated in games with 2 or more players" };
+        }
         // Check if player already has an active card
         if (this.activeCardPlayers.has(sessionId)) {
             return { success: false, error: "Player already has an active card" };
@@ -1206,6 +1215,10 @@ class DungeonState extends schema_1.Schema {
         return player.drawnCards.find((card) => card.id === activeCardId) || null;
     }
     getValidInspirationTargetSessionId(casterSessionId) {
+        if (!this.canUseInspiration()) {
+            this.inspirationPendingTargets.delete(casterSessionId);
+            return null;
+        }
         const targetSessionId = this.inspirationPendingTargets.get(casterSessionId);
         if (!targetSessionId) {
             return null;
@@ -1352,6 +1365,20 @@ class DungeonState extends schema_1.Schema {
                 }
                 continue;
             }
+            if (mode === "cunning_three_step_different_cards") {
+                for (let y = 0; y < room.height; y++) {
+                    for (let x = 0; x < room.width; x++) {
+                        const square = room.getSquare(x, y);
+                        if (!square || square.wall || square.checked) {
+                            continue;
+                        }
+                        if (this.isAdjacentToEntranceOrCrossedSquare(room, x, y)) {
+                            return true;
+                        }
+                    }
+                }
+                continue;
+            }
             for (let y = 0; y < room.height; y++) {
                 for (let x = 0; x < room.width; x++) {
                     const square = room.getSquare(x, y);
@@ -1467,6 +1494,45 @@ class DungeonState extends schema_1.Schema {
     }
     isInspirationCard(card) {
         return card?.type === CardRegistry_1.INSPIRATION_CARD_ID;
+    }
+    canUseInspiration() {
+        return this.players.size >= 2;
+    }
+    deactivateInspirationWhenInsufficientPlayers() {
+        if (this.canUseInspiration()) {
+            return;
+        }
+        const castersToDeactivate = [];
+        this.activeCardPlayers.forEach((activeCardId, casterSessionId) => {
+            const caster = this.players.get(casterSessionId);
+            const activeCard = caster?.drawnCards.find((card) => card.id === activeCardId);
+            if (!this.isInspirationCard(activeCard)) {
+                return;
+            }
+            if (activeCard) {
+                activeCard.isActive = false;
+            }
+            castersToDeactivate.push(casterSessionId);
+        });
+        castersToDeactivate.forEach((casterSessionId) => {
+            this.activeCardPlayers.delete(casterSessionId);
+            this.inspirationPendingTargets.delete(casterSessionId);
+            this.clearSelections(casterSessionId);
+        });
+    }
+    removeInspirationFromSoloDecks() {
+        if (this.canUseInspiration()) {
+            return;
+        }
+        this.players.forEach((player) => {
+            for (let index = player.deck.length - 1; index >= 0; index--) {
+                const card = player.deck[index];
+                if (!this.isInspirationCard(card)) {
+                    continue;
+                }
+                player.deck.splice(index, 1);
+            }
+        });
     }
     isCunningCard(card) {
         return card?.type === CardRegistry_1.CUNNING_CARD_ID;
@@ -1621,6 +1687,21 @@ class DungeonState extends schema_1.Schema {
                 return { valid: false, error: "Each Cunning step must target a different room or monster card" };
             }
             usedTargetKeys.add(stepTargetKey);
+            if (stepSelections[0].kind === "room") {
+                const roomStepSelections = stepSelections;
+                const roomIndex = roomStepSelections[0].roomIndex;
+                const room = this.rooms[roomIndex];
+                if (!room) {
+                    return { valid: false, error: "Cunning includes an invalid room square" };
+                }
+                const hasRequiredAdjacency = roomStepSelections.some((selection) => this.isAdjacentToEntranceOrCrossedSquare(room, selection.x, selection.y));
+                if (!hasRequiredAdjacency) {
+                    return {
+                        valid: false,
+                        error: "At least one square in each Cunning room step must be adjacent to the entrance or an existing crossed square"
+                    };
+                }
+            }
             for (let i = 1; i < stepSelections.length; i++) {
                 const previous = stepSelections[i - 1];
                 const current = stepSelections[i];
@@ -1692,6 +1773,14 @@ class DungeonState extends schema_1.Schema {
                 return { success: false, error: "Square already selected", invalidSquare: true };
             }
             stepSelections.push({ kind: "room", roomIndex, x: targetX, y });
+        }
+        const hasRequiredAdjacency = stepSelections.some((selection) => this.isAdjacentToEntranceOrCrossedSquare(room, selection.x, selection.y));
+        if (!hasRequiredAdjacency) {
+            return {
+                success: false,
+                error: "At least one square in the Cunning step must be adjacent to the entrance or an existing crossed square",
+                invalidSquare: true
+            };
         }
         const updatedSelections = [...currentSelections, ...stepSelections];
         this.setSelections(sessionId, updatedSelections);
@@ -1886,6 +1975,21 @@ class DungeonState extends schema_1.Schema {
             return { success: false, error: "Cannot select wall squares", invalidSquare: true };
         }
         if (selectionMode === "horizontal_pair_twice") {
+            if (roomSelections.length % 2 !== 0) {
+                return {
+                    success: false,
+                    error: "Horizontal pair selection is in an invalid state. Cancel and replay this card.",
+                    invalidSquare: true
+                };
+            }
+            const maxSelections = card.maxSelections || 0;
+            if (maxSelections > 0 && roomSelections.length + 2 > maxSelections) {
+                return {
+                    success: false,
+                    error: `Maximum of ${maxSelections} squares can be selected for this card`,
+                    invalidSquare: true
+                };
+            }
             const rightX = x + 1;
             const rightY = y;
             if (!room.isValidPosition(rightX, rightY)) {
@@ -1913,8 +2017,16 @@ class DungeonState extends schema_1.Schema {
                     invalidSquare: true
                 };
             }
-            const hasRequiredAdjacency = this.isAdjacentToEntranceOrCrossedSquare(room, x, y) ||
-                this.isAdjacentToEntranceOrCrossedSquare(room, rightX, rightY);
+            const alreadySelected = roomSelections.some((pos) => pos.roomIndex === roomIndex && pos.x === x && pos.y === y) ||
+                roomSelections.some((pos) => pos.roomIndex === roomIndex && pos.x === rightX && pos.y === rightY);
+            if (alreadySelected) {
+                return { success: false, error: "Square already selected", invalidSquare: true };
+            }
+            const pendingRoomSquares = roomSelections
+                .filter((pos) => pos.roomIndex === roomIndex)
+                .map((pos) => ({ x: pos.x, y: pos.y }));
+            const hasRequiredAdjacency = this.isAdjacentToEntranceOrCrossedSquare(room, x, y, pendingRoomSquares) ||
+                this.isAdjacentToEntranceOrCrossedSquare(room, rightX, rightY, pendingRoomSquares);
             if (!hasRequiredAdjacency) {
                 return {
                     success: false,
@@ -1922,36 +2034,18 @@ class DungeonState extends schema_1.Schema {
                     invalidSquare: true
                 };
             }
-            const alreadySelected = roomSelections.some((pos) => pos.roomIndex === roomIndex && pos.x === x && pos.y === y) ||
-                roomSelections.some((pos) => pos.roomIndex === roomIndex && pos.x === rightX && pos.y === rightY);
-            if (alreadySelected) {
-                return { success: false, error: "Square already selected", invalidSquare: true };
-            }
             const pairSelections = [
                 { kind: "room", roomIndex, x, y },
                 { kind: "room", roomIndex, x: rightX, y: rightY }
             ];
-            const crossedExits = [];
-            for (const selection of pairSelections) {
-                this.crossRoomSquare(sessionId, selection.roomIndex, selection.x, selection.y, crossedExits);
-            }
-            this.resolveCrossedExits(crossedExits);
             const updatedSelections = [...currentSelections, ...pairSelections];
             this.setSelections(sessionId, updatedSelections);
+            const pairLimit = maxSelections > 0 ? Math.ceil(maxSelections / 2) : 0;
             const placementsCompleted = Math.floor(updatedSelections.length / 2);
-            if (placementsCompleted >= 2) {
-                const completed = this.completeCardAction(sessionId, []);
-                if (!completed.success) {
-                    return completed;
-                }
-                return {
-                    ...completed,
-                    message: "Second horizontal pair crossed. Card action completed."
-                };
-            }
+            const placementLabel = pairLimit > 0 ? `${placementsCompleted}/${pairLimit}` : `${placementsCompleted}`;
             return {
                 success: true,
-                message: "First horizontal pair crossed. Place one more horizontal pair.",
+                message: `Horizontal pair selected (${placementLabel}). Use confirm button to commit move.`,
                 completed: false
             };
         }
@@ -2195,8 +2289,9 @@ class DungeonState extends schema_1.Schema {
     areOrthogonallyAdjacent(ax, ay, bx, by) {
         return (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
     }
-    isAdjacentToEntranceOrCrossedSquare(room, x, y) {
+    isAdjacentToEntranceOrCrossedSquare(room, x, y, pendingSquares = []) {
         const isOrthAdjacent = (ax, ay, bx, by) => (Math.abs(ax - bx) === 1 && ay === by) || (Math.abs(ay - by) === 1 && ax === bx);
+        const pendingSquareKeys = new Set(pendingSquares.map((square) => `${square.x},${square.y}`));
         if (room.entranceX !== -1 && room.entranceY !== -1) {
             if (isOrthAdjacent(x, y, room.entranceX, room.entranceY)) {
                 return true;
@@ -2204,6 +2299,9 @@ class DungeonState extends schema_1.Schema {
         }
         for (let checkY = 0; checkY < room.height; checkY++) {
             for (let checkX = 0; checkX < room.width; checkX++) {
+                if (pendingSquareKeys.has(`${checkX},${checkY}`) && isOrthAdjacent(x, y, checkX, checkY)) {
+                    return true;
+                }
                 const square = room.getSquare(checkX, checkY);
                 if (square?.checked && isOrthAdjacent(x, y, checkX, checkY)) {
                     return true;
@@ -2437,8 +2535,7 @@ class DungeonState extends schema_1.Schema {
             return { success: false, error: "Select a player for Inspiration before confirming" };
         }
         const selectionMode = card.selectionMode || "squares";
-        if (selectionMode === "horizontal_pair_twice" ||
-            selectionMode === "room_2x2_choose_two_twice" ||
+        if (selectionMode === "room_2x2_choose_two_twice" ||
             selectionMode === "centered_monster_3x3" ||
             selectionMode === "monster_swipe_l") {
             return {
@@ -2799,6 +2896,21 @@ class DungeonState extends schema_1.Schema {
             return { success: false, error: "Cannot select squares from multiple monsters in the same card action", invalidSquare: true };
         }
         if (selectionMode === "horizontal_pair_twice") {
+            if (monsterSelections.length % 2 !== 0) {
+                return {
+                    success: false,
+                    error: "Horizontal pair selection is in an invalid state. Cancel and replay this card.",
+                    invalidSquare: true
+                };
+            }
+            const maxSelections = card.maxSelections || 0;
+            if (maxSelections > 0 && monsterSelections.length + 2 > maxSelections) {
+                return {
+                    success: false,
+                    error: `Maximum of ${maxSelections} squares can be selected for this card`,
+                    invalidSquare: true
+                };
+            }
             const rightX = x + 1;
             const rightY = y;
             const leftSquare = monster.getSquare(x, y);
@@ -2817,28 +2929,18 @@ class DungeonState extends schema_1.Schema {
             if (alreadySelected) {
                 return { success: false, error: "Square already selected", invalidSquare: true };
             }
-            leftSquare.checked = true;
-            rightSquare.checked = true;
             const pairSelections = [
                 { kind: "monster", monsterId: monster.id, x, y },
                 { kind: "monster", monsterId: monster.id, x: rightX, y: rightY }
             ];
             const updatedSelections = [...currentSelections, ...pairSelections];
             this.setSelections(sessionId, updatedSelections);
+            const pairLimit = maxSelections > 0 ? Math.ceil(maxSelections / 2) : 0;
             const placementsCompleted = Math.floor(updatedSelections.length / 2);
-            if (placementsCompleted >= 2) {
-                const completed = this.completeCardAction(sessionId, []);
-                if (!completed.success) {
-                    return completed;
-                }
-                return {
-                    ...completed,
-                    message: "Second horizontal pair crossed. Card action completed."
-                };
-            }
+            const placementLabel = pairLimit > 0 ? `${placementsCompleted}/${pairLimit}` : `${placementsCompleted}`;
             return {
                 success: true,
-                message: "First horizontal pair crossed. Place one more horizontal pair.",
+                message: `Horizontal pair selected (${placementLabel}). Use confirm button to commit move.`,
                 completed: false
             };
         }

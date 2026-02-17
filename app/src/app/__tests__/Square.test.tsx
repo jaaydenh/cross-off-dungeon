@@ -132,7 +132,7 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
       const exitSquare = createMockSquare({ exit: true, checked: false });
       const mockOnClick = jest.fn();
 
-      render(
+      const { container } = render(
         <Square
           x={0}
           y={0}
@@ -143,7 +143,10 @@ describe('Square Component - Exit Highlighting and Visual Feedback', () => {
         />
       );
 
+      const square = container.firstChild as HTMLElement;
       expect(screen.getByText('X')).toBeInTheDocument();
+      expect(square).toHaveClass('bg-blue-600');
+      expect(square).toHaveClass('border-blue-400');
     });
   });
 

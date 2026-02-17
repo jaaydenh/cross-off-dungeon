@@ -152,6 +152,52 @@ describe('ConfirmMoveButton', () => {
     });
   });
 
+  it('preserves horizontal pair placement order for Heroic Double Sweep room payloads', () => {
+    const send = jest.fn();
+    const room: any = {
+      send,
+      state: {
+        displayedRoomIndices: [10],
+        currentRoomIndex: 10
+      }
+    };
+    const player: any = {
+      drawnCards: [
+        {
+          id: 'heroic-double-sweep',
+          isActive: true,
+          selectionMode: 'horizontal_pair_twice'
+        }
+      ]
+    };
+
+    render(
+      <ConfirmMoveButton
+        player={player}
+        room={room}
+        selectedCount={4}
+        isVisible={true}
+        isReady={true}
+        selectedSquares={[
+          { roomIndex: 0, x: 4, y: 1 },
+          { roomIndex: 0, x: 5, y: 1 },
+          { roomIndex: 0, x: 2, y: 1 },
+          { roomIndex: 0, x: 3, y: 1 }
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /confirm move/i }));
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith('confirmCardAction', {
+      roomSquares: [
+        { roomIndex: 10, x: 4, y: 1 },
+        { roomIndex: 10, x: 2, y: 1 }
+      ]
+    });
+  });
+
   it('submits horizontal pair monster anchors for Heroic Double Sweep', () => {
     const send = jest.fn();
     const room: any = {

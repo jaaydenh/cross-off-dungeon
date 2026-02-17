@@ -1503,6 +1503,10 @@ export default function Game() {
         console.log(`Maximum of ${maxSelectionsForMonster} squares can be selected for this card`);
         return;
       }
+      if (x < 0 || x >= monster.width || y < 0 || y >= monster.height || rightX >= monster.width) {
+        console.log('Invalid monster horizontal pair placement');
+        return;
+      }
 
       const leftSquare = monster.squares[y * monster.width + x];
       const rightSquare = monster.squares[y * monster.width + rightX];
