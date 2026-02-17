@@ -14,8 +14,11 @@ const Room_1 = require("./Room");
 const NavigationValidator_1 = require("../NavigationValidator");
 const MonsterCard_1 = require("./MonsterCard");
 const MonsterFactory_1 = require("../MonsterFactory");
+const roomShapeTemplates_1 = require("../data/roomShapeTemplates");
 const CardRegistry_1 = require("../cards/CardRegistry");
 const BOARD_WIDTH = 4;
+const DEFAULT_ROOM_GENERATION_MODE = "hybrid";
+const HYBRID_TEMPLATE_CHANCE = 0.55;
 class DungeonState extends schema_1.Schema {
     constructor() {
         super(...arguments);
@@ -172,24 +175,91 @@ class DungeonState extends schema_1.Schema {
         }
     }
     /**
-     * Create a new room with random dimensions and wall placement
+     * Create a new room based on configured generation mode.
      * @param entranceDirection Optional entrance direction for the room
      * @param isBossRoom Whether this room is the boss room from the room deck
      * @returns A new Room instance
      */
     createNewRoom(entranceDirection, isBossRoom = false) {
-        // Generate random dimensions
-        const width = Math.floor(Math.random() * 3) + 6; // 6-8
-        const height = Math.floor(Math.random() * 3) + 4; // 4-6
-        const room = new Room_1.Room(width, height);
-        room.isBossRoom = isBossRoom;
-        // Add random inner walls
-        this.addRandomWalls(room);
+        const room = this.generateRoomByMode(isBossRoom);
         // Generate exits with entrance direction if provided
         if (entranceDirection) {
             room.generateExits(entranceDirection);
         }
         return room;
+    }
+    /**
+     * Room generation supports:
+     * - random: dimensions + random walls
+     * - template: data-file room size/shape masks
+     * - hybrid: mix of both (default)
+     */
+    generateRoomByMode(isBossRoom) {
+        const mode = this.getRoomGenerationMode();
+        if (mode === "template") {
+            return this.createTemplateRoom(isBossRoom) || this.createRandomRoom(isBossRoom);
+        }
+        if (mode === "hybrid") {
+            if (Math.random() < HYBRID_TEMPLATE_CHANCE) {
+                const templateRoom = this.createTemplateRoom(isBossRoom);
+                if (templateRoom) {
+                    return templateRoom;
+                }
+            }
+            return this.createRandomRoom(isBossRoom);
+        }
+        return this.createRandomRoom(isBossRoom);
+    }
+    getRoomGenerationMode() {
+        const configuredMode = (process.env.ROOM_GENERATION_MODE || DEFAULT_ROOM_GENERATION_MODE)
+            .trim()
+            .toLowerCase();
+        if (configuredMode === "random" || configuredMode === "template" || configuredMode === "hybrid") {
+            return configuredMode;
+        }
+        return DEFAULT_ROOM_GENERATION_MODE;
+    }
+    createRandomRoom(isBossRoom) {
+        const width = Math.floor(Math.random() * 3) + 6; // 6-8
+        const height = Math.floor(Math.random() * 3) + 4; // 4-6
+        const room = new Room_1.Room(width, height);
+        room.isBossRoom = isBossRoom;
+        this.addRandomWalls(room);
+        return room;
+    }
+    createTemplateRoom(isBossRoom) {
+        const template = this.selectRandomRoomTemplate();
+        if (!template) {
+            return null;
+        }
+        const room = new Room_1.Room(template.width, template.height);
+        room.isBossRoom = isBossRoom;
+        this.applyRoomTemplate(room, template);
+        return room;
+    }
+    selectRandomRoomTemplate() {
+        if (roomShapeTemplates_1.ROOM_SHAPE_TEMPLATES.length === 0) {
+            return null;
+        }
+        const templateIndex = Math.floor(Math.random() * roomShapeTemplates_1.ROOM_SHAPE_TEMPLATES.length);
+        return roomShapeTemplates_1.ROOM_SHAPE_TEMPLATES[templateIndex];
+    }
+    applyRoomTemplate(room, template) {
+        for (let y = 0; y < template.height; y++) {
+            const row = template.rows[y];
+            for (let x = 0; x < template.width; x++) {
+                const square = room.getSquare(x, y);
+                if (!square) {
+                    continue;
+                }
+                square.checked = false;
+                square.entrance = false;
+                square.exit = false;
+                square.treasure = false;
+                square.monster = false;
+                square.wall = row[x] === "#";
+            }
+        }
     }
     /**
      * Add random walls to a room, avoiding entrance and exit areas

@@ -34,6 +34,11 @@ body {
 
 /* Card System Animations */
 @layer components {
+  .pencil-map-surface {
+    background-color: #101214;
+    background-image: none;
+  }
+
   /* Glow effect for undrawn deck */
   .deck-glow {
     animation: deck-glow 2s ease-in-out infinite alternate;

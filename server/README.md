@@ -10,6 +10,14 @@ This project has been created using [⚔️ `create-colyseus-app`](https://githu
 npm start
 ```
 
+## Room Generation Modes
+
+Set `ROOM_GENERATION_MODE` to control how rooms are generated:
+
+- `hybrid` (default): mix random and template-driven rooms
+- `random`: random size and random inner walls
+- `template`: use data-file room masks from `src/rooms/data/roomShapeTemplates.ts`
+
 ## Structure
 
 - `index.ts`: main entry point, register an empty room handler and attach [`@colyseus/monitor`](https://github.com/colyseus/colyseus-monitor)

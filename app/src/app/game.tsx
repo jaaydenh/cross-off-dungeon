@@ -2659,7 +2659,7 @@ export default function Game() {
           </div>
 
           {/* Main content area for dungeon map */}
-          <div className="flex-1 min-h-0 min-w-0 bg-slate-900 flex flex-col">
+          <div className="flex-1 min-h-0 min-w-0 flex flex-col pencil-map-surface">
             {/* Card Action Buttons - fixed header above room scroll area */}
             <div className="z-50 shrink-0 flex w-full justify-center px-4 pt-4 pb-2 pointer-events-none">
               <div className="flex flex-wrap items-center justify-center gap-4 pointer-events-auto">
@@ -2687,7 +2687,7 @@ export default function Game() {
               </div>
             </div>
 
-            <div ref={mapScrollRef} className="flex-1 min-h-0 min-w-0 overflow-auto relative">
+            <div ref={mapScrollRef} className="flex-1 min-h-0 min-w-0 overflow-auto relative pencil-map-surface">
               {displayedRooms.length > 0 && (
                 <DungeonMap
                   rooms={displayedRooms}

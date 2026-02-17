@@ -34,6 +34,8 @@ const BASE_CONTENT_PADDING = 200;
 const ROOM_TILE_INNER_PADDING = 12;
 const ROOM_TITLE_SAFE_HEIGHT = 28;
 const ROOM_TITLE_BADGE_GUTTER = 88;
+const PENCIL_ROOM_TEXTURE =
+  'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2728%27 height=%2728%27 viewBox=%270 0 28 28%27%3E%3Cg fill=%27%23000000%27 fill-opacity=%270.14%27%3E%3Ccircle cx=%274%27 cy=%276%27 r=%270.7%27/%3E%3Ccircle cx=%2713%27 cy=%275%27 r=%270.6%27/%3E%3Ccircle cx=%2722%27 cy=%279%27 r=%270.65%27/%3E%3Ccircle cx=%278%27 cy=%2717%27 r=%270.6%27/%3E%3Ccircle cx=%2718%27 cy=%2715%27 r=%270.7%27/%3E%3Ccircle cx=%2725%27 cy=%2722%27 r=%270.55%27/%3E%3Ccircle cx=%2710%27 cy=%2724%27 r=%270.65%27/%3E%3C/g%3E%3C/svg%3E")';
 
 const buildInterleavedTracks = (count: number, roomSizePx: number, hallwaySizePx: number): string => {
   const sizes: string[] = [];
@@ -325,12 +327,17 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
             }}
           >
             <div
-              className="bg-slate-700 border border-slate-600 rounded-md shadow-inner"
-              style={
-                delta.orientation === 'horizontal'
+              className="rounded-md"
+              style={{
+                ...(delta.orientation === 'horizontal'
                   ? { width: '100%', height: `${HALLWAY_THICKNESS}px` }
-                  : { width: `${HALLWAY_THICKNESS}px`, height: '100%' }
-              }
+                  : { width: `${HALLWAY_THICKNESS}px`, height: '100%' }),
+                backgroundColor: '#d9d1c0',
+                backgroundImage: PENCIL_ROOM_TEXTURE,
+                backgroundSize: '24px 24px',
+                border: '1px solid rgba(0, 0, 0, 0.75)',
+                boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.08)'
+              }}
             />
           </div>
         );
@@ -341,7 +348,10 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
   };
 
   return (
-    <div ref={containerRef} className="min-w-full min-h-full bg-slate-900 relative">
+    <div
+      ref={containerRef}
+      className="min-w-full min-h-full relative pencil-map-surface"
+    >
       <div className="relative" style={{ width: `${contentWidth}px`, height: `${contentHeight}px` }}>
         <div
           className="absolute"
@@ -387,17 +397,22 @@ const DungeonMap: React.FC<DungeonMapProps> = ({
               <div
                 key={`room-${index}`}
                 data-testid={`room-tile-${room.gridX}-${room.gridY}`}
-                className="relative border-2 border-slate-600 rounded-lg bg-slate-800 overflow-visible"
+                className="relative border-2 border-black rounded-lg overflow-visible"
                 style={{
                   width: `${ROOM_TILE_SIZE}px`,
                   height: `${ROOM_TILE_SIZE}px`,
                   gridColumnStart,
                   gridRowStart,
-                  zIndex: 2
+                  zIndex: 2,
+                  backgroundColor: '#e2dac9',
+                  backgroundImage: PENCIL_ROOM_TEXTURE,
+                  backgroundSize: '28px 28px',
+                  boxShadow:
+                    'inset 0 0 0 1px rgba(0, 0, 0, 0.08), 0 4px 0 rgba(0, 0, 0, 0.32)'
                 }}
               >
                 <div
-                  className="absolute top-2 left-2 text-xs text-slate-200 select-none pointer-events-none whitespace-nowrap overflow-hidden text-ellipsis"
+                  className="absolute top-2 left-2 text-xs text-black select-none pointer-events-none whitespace-nowrap overflow-hidden text-ellipsis"
                   style={{ right: `${ROOM_TITLE_BADGE_GUTTER}px` }}
                   title={roomTitle}
                 >

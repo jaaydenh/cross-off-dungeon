@@ -7,6 +7,7 @@ import { NavigationValidator } from "../NavigationValidator";
 import { MonsterCard } from "./MonsterCard";
 import { MonsterFactory } from "../MonsterFactory";
 import { Card } from "./Card";
+import { ROOM_SHAPE_TEMPLATES, type RoomShapeTemplate } from "../data/roomShapeTemplates";
 import {
   HEROIC_MOVE_AND_FIGHT_CARD_ID,
   COMBAT_CARD_ID,
@@ -55,6 +56,11 @@ type DrawnRoomCard = {
   drawIndex: number;
   isBossRoom: boolean;
 };
+
+type RoomGenerationMode = "random" | "template" | "hybrid";
+
+const DEFAULT_ROOM_GENERATION_MODE: RoomGenerationMode = "hybrid";
+const HYBRID_TEMPLATE_CHANCE = 0.55;
 
 export class DungeonState extends Schema {
 
@@ -238,21 +244,13 @@ export class DungeonState extends Schema {
   }
 
   /**
-   * Create a new room with random dimensions and wall placement
+   * Create a new room based on configured generation mode.
    * @param entranceDirection Optional entrance direction for the room
    * @param isBossRoom Whether this room is the boss room from the room deck
    * @returns A new Room instance
    */
   createNewRoom(entranceDirection?: string, isBossRoom: boolean = false): Room {
-    // Generate random dimensions
-    const width = Math.floor(Math.random() * 3) + 6; // 6-8
-    const height = Math.floor(Math.random() * 3) + 4; // 4-6
-
-    const room = new Room(width, height);
-    room.isBossRoom = isBossRoom;
-
-    // Add random inner walls
-    this.addRandomWalls(room);
+    const room = this.generateRoomByMode(isBossRoom);
 
     // Generate exits with entrance direction if provided
     if (entranceDirection) {
@@ -260,6 +258,94 @@ export class DungeonState extends Schema {
     }
 
     return room;
+  }
+
+  /**
+   * Room generation supports:
+   * - random: dimensions + random walls
+   * - template: data-file room size/shape masks
+   * - hybrid: mix of both (default)
+   */
+  private generateRoomByMode(isBossRoom: boolean): Room {
+    const mode = this.getRoomGenerationMode();
+
+    if (mode === "template") {
+      return this.createTemplateRoom(isBossRoom) || this.createRandomRoom(isBossRoom);
+    }
+
+    if (mode === "hybrid") {
+      if (Math.random() < HYBRID_TEMPLATE_CHANCE) {
+        const templateRoom = this.createTemplateRoom(isBossRoom);
+        if (templateRoom) {
+          return templateRoom;
+        }
+      }
+
+      return this.createRandomRoom(isBossRoom);
+    }
+
+    return this.createRandomRoom(isBossRoom);
+  }
+
+  private getRoomGenerationMode(): RoomGenerationMode {
+    const configuredMode = (process.env.ROOM_GENERATION_MODE || DEFAULT_ROOM_GENERATION_MODE)
+      .trim()
+      .toLowerCase();
+
+    if (configuredMode === "random" || configuredMode === "template" || configuredMode === "hybrid") {
+      return configuredMode;
+    }
+
+    return DEFAULT_ROOM_GENERATION_MODE;
+  }
+
+  private createRandomRoom(isBossRoom: boolean): Room {
+    const width = Math.floor(Math.random() * 3) + 6; // 6-8
+    const height = Math.floor(Math.random() * 3) + 4; // 4-6
+    const room = new Room(width, height);
+    room.isBossRoom = isBossRoom;
+    this.addRandomWalls(room);
+    return room;
+  }
+
+  private createTemplateRoom(isBossRoom: boolean): Room | null {
+    const template = this.selectRandomRoomTemplate();
+    if (!template) {
+      return null;
+    }
+
+    const room = new Room(template.width, template.height);
+    room.isBossRoom = isBossRoom;
+    this.applyRoomTemplate(room, template);
+    return room;
+  }
+
+  private selectRandomRoomTemplate(): RoomShapeTemplate | null {
+    if (ROOM_SHAPE_TEMPLATES.length === 0) {
+      return null;
+    }
+
+    const templateIndex = Math.floor(Math.random() * ROOM_SHAPE_TEMPLATES.length);
+    return ROOM_SHAPE_TEMPLATES[templateIndex];
+  }
+
+  private applyRoomTemplate(room: Room, template: RoomShapeTemplate): void {
+    for (let y = 0; y < template.height; y++) {
+      const row = template.rows[y];
+      for (let x = 0; x < template.width; x++) {
+        const square = room.getSquare(x, y);
+        if (!square) {
+          continue;
+        }
+
+        square.checked = false;
+        square.entrance = false;
+        square.exit = false;
+        square.treasure = false;
+        square.monster = false;
+        square.wall = row[x] === "#";
+      }
+    }
   }
 
   /**
