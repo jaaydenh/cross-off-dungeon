@@ -22,7 +22,7 @@ const toHorizontalRoomPairAnchors = (
   }
 
   const anchors: Array<{ roomIndex: number; x: number; y: number }> = [];
-  for (const groupSquares of grouped.values()) {
+  for (const groupSquares of Array.from(grouped.values())) {
     const byKey = new Map<string, { roomIndex: number; x: number; y: number }>();
     for (const square of groupSquares) {
       byKey.set(`${square.x},${square.y}`, square);
@@ -70,7 +70,7 @@ const toHorizontalMonsterPairAnchors = (
   }
 
   const anchors: Array<{ monsterId: string; x: number; y: number }> = [];
-  for (const groupSquares of grouped.values()) {
+  for (const groupSquares of Array.from(grouped.values())) {
     const byKey = new Map<string, { monsterId: string; x: number; y: number }>();
     for (const square of groupSquares) {
       byKey.set(`${square.x},${square.y}`, square);
