@@ -3,7 +3,6 @@
 import { Player } from '@/types/Player';
 import { Card } from '@/types/Card';
 import { Room } from '@colyseus/sdk';
-import { useState, useEffect, useRef } from 'react';
 import CardFaceContent from './CardFaceContent';
 
 interface DrawnCardProps {
@@ -17,38 +16,12 @@ export default function DrawnCard({
   room,
   showExtraUseBadge = false
 }: DrawnCardProps) {
-  const [drawnCard, setDrawnCard] = useState<Card | null>(null);
-  const [isNewCard, setIsNewCard] = useState(false);
-  const lastCardIdRef = useRef<string | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-
-  useEffect(() => {
-    if (player) {
-      if (player.drawnCards.length > 0) {
-        const card = player.drawnCards[player.drawnCards.length - 1];
-
-        if (lastCardIdRef.current !== card.id) {
-          setIsNewCard(true);
-          lastCardIdRef.current = card.id;
-          setTimeout(() => setIsNewCard(false), 500);
-        }
-
-        setDrawnCard(card);
-      } else {
-        setDrawnCard(null);
-        lastCardIdRef.current = null;
-      }
-    } else {
-      setDrawnCard(null);
-      lastCardIdRef.current = null;
-    }
-  }, [player]);
+  const drawnCard =
+    player && player.drawnCards.length > 0
+      ? player.drawnCards[player.drawnCards.length - 1]
+      : null;
 
   const handleCardClick = () => {
-    if (isDragging) {
-      return;
-    }
-
     if (room && drawnCard && !drawnCard.isActive) {
       room.send('playCard', { cardId: drawnCard.id });
     }
@@ -60,7 +33,6 @@ export default function DrawnCard({
       return;
     }
 
-    setIsDragging(true);
     event.dataTransfer.setData(
       'application/json',
       JSON.stringify({
@@ -69,10 +41,6 @@ export default function DrawnCard({
       })
     );
     event.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragEnd = () => {
-    setIsDragging(false);
   };
 
   const cardTitle = (card: Card): string => {
@@ -123,15 +91,13 @@ export default function DrawnCard({
             ? 'border-yellow-400 bg-yellow-100 shadow-lg shadow-yellow-400/50 cursor-grab active:cursor-grabbing'
             : 'border-gray-300 cursor-pointer hover:border-blue-400'
           }
-          ${isDragging ? 'opacity-75 scale-95' : ''}
         `}
         role="button"
         tabIndex={0}
         onClick={handleCardClick}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleCardClick(); } }}
-        draggable={drawnCard.isActive}
+        draggable={true}
         onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
         title={cardTitle(drawnCard)}
       >
         {/* Card content */}
@@ -151,14 +117,6 @@ export default function DrawnCard({
         )}
       </div>
 
-      {/* Card status text */}
-      <div className="text-center text-sm text-gray-300">
-        {drawnCard.isActive ? (
-          <p className="text-yellow-400">Card Active (drag to discard)</p>
-        ) : (
-          <p className="text-blue-400">Click to play</p>
-        )}
-      </div>
     </div>
   );
 }

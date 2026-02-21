@@ -19,6 +19,7 @@ import { MonsterAttackAnimation } from '@/types/MonsterAttack';
 import CardFaceContent from './CardFaceContent';
 import MonsterCard from './MonsterCard';
 import CardLibraryScreen from './CardLibraryScreen';
+import PlayerDeckModal from './PlayerDeckModal';
 
 export const dynamic = 'force-dynamic';
 
@@ -175,6 +176,7 @@ export default function Game() {
   const [connectionStatusMessage, setConnectionStatusMessage] = useState<string | null>(null);
   const [openMonsterPopoverFor, setOpenMonsterPopoverFor] = useState<string | null>(null);
   const [isCardLibraryOpen, setIsCardLibraryOpen] = useState(false);
+  const [isPlayerDeckModalOpen, setIsPlayerDeckModalOpen] = useState(false);
   const [monsterCompletionFxById, setMonsterCompletionFxById] = useState<Record<string, MonsterCompletionFxPhase>>({});
   const [hiddenCompletedMonsterIds, setHiddenCompletedMonsterIds] = useState<string[]>([]);
   const [xpFlyAnimations, setXpFlyAnimations] = useState<XpFlyAnimation[]>([]);
@@ -723,6 +725,7 @@ export default function Game() {
     if (!inRoom) {
       setOpenMonsterPopoverFor(null);
       setIsCardLibraryOpen(false);
+      setIsPlayerDeckModalOpen(false);
       resetMonsterCompletionUi();
       if (monsterPopoverCloseTimeoutRef.current) {
         clearTimeout(monsterPopoverCloseTimeoutRef.current);
@@ -2055,6 +2058,7 @@ export default function Game() {
         setDeckReturnAnimations([]);
         setOpenMonsterPopoverFor(null);
         setIsCardLibraryOpen(false);
+        setIsPlayerDeckModalOpen(false);
         resetMonsterCompletionUi();
         roomRef.current = undefined;
 
@@ -2121,6 +2125,7 @@ export default function Game() {
       setCunningSelectionOrder([]);
       setMonsterAttackAnimations([]);
       setDeckReturnAnimations([]);
+      setIsPlayerDeckModalOpen(false);
       setRoomCodeInput('');
       lastAnnouncedDayRef.current = null;
       lastGameStatusRef.current = null;
@@ -3083,7 +3088,11 @@ export default function Game() {
               <div className="flex-1 flex gap-4 min-h-0 items-center">
                 <div className="bg-slate-700 border-2 border-slate-600 p-4 rounded flex-1 h-full flex items-center">
                   <div className="flex justify-start gap-6 items-center">
-                    <CardDeck player={currentPlayer} room={roomRef.current} />
+                    <CardDeck
+                      player={currentPlayer}
+                      room={roomRef.current}
+                      onOpenDeckModal={() => setIsPlayerDeckModalOpen(true)}
+                    />
                     <DrawnCard
                       player={currentPlayer}
                       room={roomRef.current}
@@ -3139,6 +3148,11 @@ export default function Game() {
         debugMode={isDebugModeEnabled}
         onToggleDebugMode={handleToggleDebugMode}
         onClose={() => setIsCardLibraryOpen(false)}
+      />
+      <PlayerDeckModal
+        isOpen={inRoom && isPlayerDeckModalOpen}
+        player={currentPlayer}
+        onClose={() => setIsPlayerDeckModalOpen(false)}
       />
 
       {inRoom && dayBanner && (
