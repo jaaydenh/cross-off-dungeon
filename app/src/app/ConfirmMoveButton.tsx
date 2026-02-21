@@ -11,6 +11,9 @@ interface ConfirmMoveButtonProps {
   selectedMonsterSquares?: Array<{ monsterId: string; x: number; y: number }>;
 }
 
+const EMPTY_SELECTED_SQUARES: Array<{ roomIndex: number; x: number; y: number; serverRoomIndex?: number }> = [];
+const EMPTY_MONSTER_SQUARES: Array<{ monsterId: string; x: number; y: number }> = [];
+
 const toHorizontalRoomPairAnchors = (
   squares: Array<{ roomIndex: number; x: number; y: number }>
 ): Array<{ roomIndex: number; x: number; y: number }> => {
@@ -113,8 +116,8 @@ const ConfirmMoveButton: React.FC<ConfirmMoveButtonProps> = ({
   selectedCount,
   isVisible,
   isReady,
-  selectedSquares = [],
-  selectedMonsterSquares = []
+  selectedSquares = EMPTY_SELECTED_SQUARES,
+  selectedMonsterSquares = EMPTY_MONSTER_SQUARES
 }) => {
   const activeCard = player?.drawnCards?.find((c) => c.isActive);
 

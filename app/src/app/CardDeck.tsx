@@ -16,19 +16,13 @@ export default function CardDeck({ player, room }: CardDeckProps) {
   useEffect(() => {    
     if (player) {
       const newDeckCount = player.deck.length;
-      const wasCardDrawn = deckCount > newDeckCount && deckCount > 0;
       const gameStatus = (room as any)?.state?.gameStatus || 'in_progress';
       const shouldShowGlow = gameStatus === 'in_progress' && player.turnStatus === "not_started" && !player.hasDrawnCard;
       
       setDeckCount(newDeckCount);
-      
-      if (showGlow !== shouldShowGlow) {
-        setShowGlow(shouldShowGlow);
-      }
-    } else {
-      console.log('  ❌ No player data available');
+      setShowGlow(shouldShowGlow);
     }
-  }, [player, player?.turnStatus, player?.hasDrawnCard, player?.deck?.length, deckCount, showGlow, room]);
+  }, [player, player?.turnStatus, player?.hasDrawnCard, player?.deck?.length, room]);
 
   const handleDeckClick = () => {
     const gameStatus = (room as any)?.state?.gameStatus || 'in_progress';
@@ -61,7 +55,10 @@ export default function CardDeck({ player, room }: CardDeckProps) {
           ${deckCount === 0 ? 'opacity-50 cursor-not-allowed' : ''}
         `}
         data-player-deck-card="true"
+        role="button"
+        tabIndex={0}
         onClick={handleDeckClick}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDeckClick(); } }}
       >
         {/* Card back design */}
         <div className="absolute inset-2 bg-blue-800 rounded border border-blue-600">

@@ -3,7 +3,7 @@
 import { Player } from '@/types/Player';
 import { Card } from '@/types/Card';
 import { Room } from '@colyseus/sdk';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import CardFaceContent from './CardFaceContent';
 
 interface DrawnCardProps {
@@ -19,35 +19,30 @@ export default function DrawnCard({
 }: DrawnCardProps) {
   const [drawnCard, setDrawnCard] = useState<Card | null>(null);
   const [isNewCard, setIsNewCard] = useState(false);
-  const [lastCardId, setLastCardId] = useState<string | null>(null);
+  const lastCardIdRef = useRef<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     if (player) {
       if (player.drawnCards.length > 0) {
-        // Get the most recently drawn card (last in array)
         const card = player.drawnCards[player.drawnCards.length - 1];
 
-        // Check if this is a new card being drawn (different ID from last tracked)
-        const isNewCardDrawn = lastCardId !== card.id;
-        if (isNewCardDrawn) {
+        if (lastCardIdRef.current !== card.id) {
           setIsNewCard(true);
-          setLastCardId(card.id);
-          setTimeout(() => setIsNewCard(false), 500); // Match animation duration
+          lastCardIdRef.current = card.id;
+          setTimeout(() => setIsNewCard(false), 500);
         }
 
         setDrawnCard(card);
       } else {
-        console.log('No drawn cards, setting to null');
         setDrawnCard(null);
-        setLastCardId(null);
+        lastCardIdRef.current = null;
       }
     } else {
-      console.log('No player, setting drawn card to null');
       setDrawnCard(null);
-      setLastCardId(null);
+      lastCardIdRef.current = null;
     }
-  }, [player, lastCardId]);
+  }, [player]);
 
   const handleCardClick = () => {
     if (isDragging) {
@@ -130,7 +125,10 @@ export default function DrawnCard({
           }
           ${isDragging ? 'opacity-75 scale-95' : ''}
         `}
+        role="button"
+        tabIndex={0}
         onClick={handleCardClick}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleCardClick(); } }}
         draggable={drawnCard.isActive}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}

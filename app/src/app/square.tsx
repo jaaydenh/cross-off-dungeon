@@ -195,7 +195,10 @@ const Square: React.FC<SquareProps> = ({
 
   return (
     <div
+      role="button"
+      tabIndex={clickable ? 0 : -1}
       onClick={() => onClick(x, y)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(x, y); } }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={`relative flex items-center justify-center font-bold ${textColorClass} border ${bgColor} ${borderColor} ${clickable ? `cursor-pointer ${hoverEffect}` : ''} ${additionalClasses}`}

@@ -24,18 +24,23 @@ interface PlayerMonstersProps {
   onDebugCompleteMonster?: (monsterId: string) => void;
 }
 
+const EMPTY_MONSTER_SQUARES: Array<{ monsterId: string; x: number; y: number }> = [];
+const EMPTY_ATTACK_ANIMATIONS: MonsterAttackAnimation[] = [];
+const EMPTY_HIDDEN_IDS: string[] = [];
+const EMPTY_COMPLETION_FX: Record<string, 'skull' | 'fade'> = {};
+
 export default function PlayerMonsters({
   gameState,
   currentPlayer,
   colyseusRoom,
   isMonsterBeingDragged = false,
-  selectedMonsterSquares = [],
+  selectedMonsterSquares = EMPTY_MONSTER_SQUARES,
   onMonsterSquareClick,
   onMonsterDrop,
   cunningPreviewStepLength = null,
-  attackAnimations = [],
-  completionFxByMonsterId = {},
-  hiddenCompletedMonsterIds = [],
+  attackAnimations = EMPTY_ATTACK_ANIMATIONS,
+  completionFxByMonsterId = EMPTY_COMPLETION_FX,
+  hiddenCompletedMonsterIds = EMPTY_HIDDEN_IDS,
   debugModeEnabled = false,
   onDebugCompleteMonster
 }: PlayerMonstersProps) {

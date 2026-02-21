@@ -2915,7 +2915,10 @@ export default function Game() {
                     <li
                       key={sessionId}
                       data-player-row-id={sessionId}
+                      role="button"
+                      tabIndex={isSelectingInspirationTarget ? 0 : -1}
                       onClick={() => handleInspirationTargetPick(sessionId)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleInspirationTargetPick(sessionId); } }}
                       className={`relative p-2 rounded flex justify-between items-center gap-2 bg-slate-700 transition-colors ${
                         isSelectingInspirationTarget ? 'cursor-pointer hover:bg-slate-600' : ''
                       } ${isSelectedInspirationTarget ? 'ring-2 ring-emerald-300' : ''}`}

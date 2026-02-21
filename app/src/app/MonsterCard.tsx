@@ -30,6 +30,9 @@ interface MonsterCardProps {
   onDebugComplete?: (monsterId: string) => void;
 }
 
+const EMPTY_SQUARES: Array<{ x: number; y: number }> = [];
+const EMPTY_ATTACK_ANIMATIONS: MonsterAttackAnimation[] = [];
+
 const ATTACK_CARD_WIDTH_PX = 121;
 const ATTACK_CARD_BASE_TOP_OFFSET_PX = -128;
 const ATTACK_CARD_STACK_OFFSET_PX = 10;
@@ -48,12 +51,12 @@ export default function MonsterCard({
   onDrop,
   position,
   className = '',
-  selectedSquares = [],
+  selectedSquares = EMPTY_SQUARES,
   horizontalPairPreviewEnabled = false,
   cunningStepPreviewLength = null,
   combatBlastPreviewEnabled = false,
   swipePreviewEnabled = false,
-  attackAnimations = [],
+  attackAnimations = EMPTY_ATTACK_ANIMATIONS,
   disableHoverZoom = false,
   completionFxPhase = null,
   debugModeEnabled = false,
@@ -476,6 +479,8 @@ export default function MonsterCard({
                       lineHeight: 1,
                       transition: 'all 0.2s ease'
                     }}
+                    role="button"
+                    tabIndex={canSelect && isFilled && !isChecked ? 0 : -1}
                     onMouseEnter={() => {
                       if (
                         horizontalPairPreviewEnabled ||
@@ -487,6 +492,7 @@ export default function MonsterCard({
                       }
                     }}
                     onClick={() => handleSquareClick(x, y)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSquareClick(x, y); } }}
                   >
                     {(isChecked || isSelected) && 'X'}
                   </div>
