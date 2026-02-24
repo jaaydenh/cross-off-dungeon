@@ -88,6 +88,88 @@ body {
     }
   }
 
+  .player-card-transfer-draw {
+    animation: player-card-transfer-draw var(--player-transfer-duration, 620ms)
+      cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    transform-origin: top left;
+    will-change: transform, opacity;
+  }
+
+  .player-card-transfer-discard {
+    animation: player-card-transfer-discard var(--player-transfer-duration, 620ms)
+      cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+    transform-origin: top left;
+    will-change: transform, opacity;
+  }
+
+  @keyframes player-card-transfer-draw {
+    0% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0)
+        scale(
+          var(--player-transfer-start-scale-x, 1),
+          var(--player-transfer-start-scale-y, 1)
+        )
+        rotate(-6deg);
+    }
+    68% {
+      opacity: 1;
+      transform: translate3d(
+          calc(var(--player-transfer-dx) * 0.9),
+          calc(var(--player-transfer-dy) * 0.9),
+          0
+        )
+        scale(
+          calc((var(--player-transfer-start-scale-x, 1) + var(--player-transfer-end-scale-x, 1)) * 0.5),
+          calc((var(--player-transfer-start-scale-y, 1) + var(--player-transfer-end-scale-y, 1)) * 0.5)
+        )
+        rotate(-1.5deg);
+    }
+    100% {
+      opacity: 1;
+      transform: translate3d(var(--player-transfer-dx), var(--player-transfer-dy), 0)
+        scale(
+          var(--player-transfer-end-scale-x, 1),
+          var(--player-transfer-end-scale-y, 1)
+        )
+        rotate(0deg);
+    }
+  }
+
+  @keyframes player-card-transfer-discard {
+    0% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0)
+        scale(
+          var(--player-transfer-start-scale-x, 1),
+          var(--player-transfer-start-scale-y, 1)
+        )
+        rotate(0deg);
+    }
+    74% {
+      opacity: 1;
+      transform: translate3d(
+          calc(var(--player-transfer-dx) * 0.92),
+          calc(var(--player-transfer-dy) * 0.92),
+          0
+        )
+        scale(
+          calc((var(--player-transfer-start-scale-x, 1) + var(--player-transfer-end-scale-x, 1)) * 0.5),
+          calc((var(--player-transfer-start-scale-y, 1) + var(--player-transfer-end-scale-y, 1)) * 0.5)
+        )
+        rotate(4deg);
+    }
+    100% {
+      opacity: 1;
+      transform: translate3d(var(--player-transfer-dx), var(--player-transfer-dy), 0)
+        scale(
+          var(--player-transfer-end-scale-x, 1),
+          var(--player-transfer-end-scale-y, 1)
+        )
+        rotate(0deg);
+    }
+  }
+
   /* Red highlight animation for invalid square selection */
   .invalid-square-highlight {
     animation: invalid-square-pulse 0.5s ease-in-out;

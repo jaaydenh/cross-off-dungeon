@@ -70,6 +70,11 @@ const MONSTER_COMPLETION_HIDE_BUFFER_MS = 80;
 const XP_FLY_ANIMATION_MS = 1100;
 const XP_FLY_CLEANUP_BUFFER_MS = 220;
 const XP_BADGE_PULSE_MS = 900;
+const PLAYER_CARD_WIDTH_PX = 121;
+const PLAYER_CARD_HEIGHT_PX = 176;
+const PLAYER_CARD_TRANSFER_DURATION_MS = 620;
+const PLAYER_CARD_TRANSFER_CLEANUP_BUFFER_MS = 120;
+const PLAYER_CARD_TRANSFER_HANDOFF_MS = 70;
 
 type MonsterCompletionFxPhase = 'skull' | 'fade';
 type XpFlyAnimation = {
@@ -84,6 +89,34 @@ type XpFlyAnimation = {
 type CunningLocalSelection =
   | { kind: 'room'; roomIndex: number; serverRoomIndex?: number; x: number; y: number }
   | { kind: 'monster'; monsterId: string; x: number; y: number };
+type PlayerCardSnapshot = {
+  deckCount: number;
+  drawnCount: number;
+  discardCount: number;
+  topDrawnCardId: string;
+  activeCardId: string;
+  topDiscardCardId: string;
+};
+type PlayerCardTransferAnimation = {
+  id: string;
+  kind: 'deck_to_active' | 'active_to_discard';
+  cardId: string;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  startScaleX: number;
+  startScaleY: number;
+  endScaleX: number;
+  endScaleY: number;
+  card: {
+    type: string;
+    name: string;
+    description: string;
+    defenseSymbol: string;
+    color: string;
+  };
+};
 
 const isMonsterCardCompleted = (monster: any): boolean => {
   if (!monster?.squares) return false;
@@ -165,6 +198,9 @@ export default function Game() {
     endScaleY?: number;
     card: { type: string; name: string; description: string; defenseSymbol: string; color: string };
   }>>([]);
+  const [playerCardTransferAnimations, setPlayerCardTransferAnimations] = useState<PlayerCardTransferAnimation[]>([]);
+  const [hiddenActiveCardIdList, setHiddenActiveCardIdList] = useState<string[]>([]);
+  const [hiddenDiscardCardIdList, setHiddenDiscardCardIdList] = useState<string[]>([]);
   const [dayBanner, setDayBanner] = useState<string | null>(null);
   const [gameResultBanner, setGameResultBanner] = useState<string | null>(null);
   const [persistedReconnection, setPersistedReconnection] = useState<PersistedReconnection | null>(null);
@@ -191,6 +227,10 @@ export default function Game() {
   const monsterCompletionTimeoutsRef = useRef<Map<string, { toFade: any; toHide: any }>>(new Map());
   const xpFlyTimeoutsRef = useRef<Map<string, any>>(new Map());
   const xpPulseTimeoutsRef = useRef<Map<string, any>>(new Map());
+  const playerCardTransferTimeoutsRef = useRef<Map<string, { reveal: any; cleanup: any }>>(new Map());
+  const hiddenActiveCardCountsRef = useRef<Map<string, number>>(new Map());
+  const hiddenDiscardCardCountsRef = useRef<Map<string, number>>(new Map());
+  const playerCardSnapshotRef = useRef<PlayerCardSnapshot | null>(null);
   const lastAnnouncedDayRef = useRef<number | null>(null);
   const lastGameStatusRef = useRef<string | null>(null);
   const roomRef = useRef<Room>();
@@ -200,6 +240,14 @@ export default function Game() {
   const isDebugModeEnabled = !!gameState?.debugMode;
 
   const activeCard = currentPlayer?.drawnCards?.find((card) => card.isActive) || null;
+  const hiddenActiveCardIds = useMemo(
+    () => new Set(hiddenActiveCardIdList),
+    [hiddenActiveCardIdList]
+  );
+  const hiddenDiscardCardIds = useMemo(
+    () => new Set(hiddenDiscardCardIdList),
+    [hiddenDiscardCardIdList]
+  );
   const cardAllowsMonsterSelection = (card: any): boolean =>
     card?.selectionTarget === 'monster' ||
     card?.selectionTarget === 'room_or_monster' ||
@@ -322,6 +370,179 @@ export default function Game() {
     });
     xpPulseTimeoutsRef.current.clear();
   }, []);
+
+  const refreshHiddenCardLists = useCallback(() => {
+    setHiddenActiveCardIdList(
+      Array.from(hiddenActiveCardCountsRef.current.entries())
+        .filter(([, count]) => count > 0)
+        .map(([cardId]) => cardId)
+    );
+    setHiddenDiscardCardIdList(
+      Array.from(hiddenDiscardCardCountsRef.current.entries())
+        .filter(([, count]) => count > 0)
+        .map(([cardId]) => cardId)
+    );
+  }, []);
+
+  const incrementHiddenCardId = useCallback(
+    (kind: 'deck_to_active' | 'active_to_discard', cardId: string) => {
+      if (!cardId) {
+        return;
+      }
+
+      const targetMap =
+        kind === 'deck_to_active' ? hiddenActiveCardCountsRef.current : hiddenDiscardCardCountsRef.current;
+      targetMap.set(cardId, (targetMap.get(cardId) || 0) + 1);
+      refreshHiddenCardLists();
+    },
+    [refreshHiddenCardLists]
+  );
+
+  const decrementHiddenCardId = useCallback(
+    (kind: 'deck_to_active' | 'active_to_discard', cardId: string) => {
+      if (!cardId) {
+        return;
+      }
+
+      const targetMap =
+        kind === 'deck_to_active' ? hiddenActiveCardCountsRef.current : hiddenDiscardCardCountsRef.current;
+      const currentCount = targetMap.get(cardId) || 0;
+      if (currentCount <= 1) {
+        targetMap.delete(cardId);
+      } else {
+        targetMap.set(cardId, currentCount - 1);
+      }
+      refreshHiddenCardLists();
+    },
+    [refreshHiddenCardLists]
+  );
+
+  const clearHiddenCardIds = useCallback(() => {
+    hiddenActiveCardCountsRef.current.clear();
+    hiddenDiscardCardCountsRef.current.clear();
+    setHiddenActiveCardIdList([]);
+    setHiddenDiscardCardIdList([]);
+  }, []);
+
+  const clearPlayerCardTransferTimeouts = useCallback(() => {
+    playerCardTransferTimeoutsRef.current.forEach((timeouts) => {
+      clearTimeout(timeouts.reveal);
+      clearTimeout(timeouts.cleanup);
+    });
+    playerCardTransferTimeoutsRef.current.clear();
+  }, []);
+
+  const toTransferCardVisual = useCallback(
+    (card: any): { type: string; name: string; description: string; defenseSymbol: string; color: string } => ({
+      type: String(card?.type || ''),
+      name: String(card?.name || ''),
+      description: String(card?.description || ''),
+      defenseSymbol:
+        card?.defenseSymbol === 'block' ||
+        card?.defenseSymbol === 'counter' ||
+        card?.defenseSymbol === 'dodge'
+          ? card.defenseSymbol
+          : 'empty',
+      color:
+        card?.color === 'red' || card?.color === 'blue' || card?.color === 'green'
+          ? card.color
+          : 'clear'
+    }),
+    []
+  );
+
+  const getPlayerCardSnapshot = useCallback((player: any): PlayerCardSnapshot => {
+    const topDrawnCard = player?.drawnCards?.length
+      ? player.drawnCards[player.drawnCards.length - 1]
+      : null;
+    const topDiscardCard = player?.discardPile?.length
+      ? player.discardPile[player.discardPile.length - 1]
+      : null;
+    const activeDrawnCard = player?.drawnCards?.find?.((card: any) => !!card?.isActive) || null;
+
+    return {
+      deckCount: Number(player?.deck?.length || 0),
+      drawnCount: Number(player?.drawnCards?.length || 0),
+      discardCount: Number(player?.discardPile?.length || 0),
+      topDrawnCardId: String(topDrawnCard?.id || ''),
+      activeCardId: String(activeDrawnCard?.id || ''),
+      topDiscardCardId: String(topDiscardCard?.id || '')
+    };
+  }, []);
+
+  const queuePlayerCardTransferAnimation = useCallback(
+    (params: {
+      kind: 'deck_to_active' | 'active_to_discard';
+      cardId: string;
+      fromSelector: string;
+      toSelector: string;
+      card: { type: string; name: string; description: string; defenseSymbol: string; color: string };
+    }) => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+
+      const fromEl = document.querySelector(params.fromSelector) as HTMLElement | null;
+      const toEl = document.querySelector(params.toSelector) as HTMLElement | null;
+      const fromRect = fromEl?.getBoundingClientRect() || null;
+      const toRect = toEl?.getBoundingClientRect() || null;
+
+      if (!fromRect || !toRect) {
+        return;
+      }
+
+      const id = `${params.kind}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const nextAnimation: PlayerCardTransferAnimation = {
+        id,
+        kind: params.kind,
+        cardId: params.cardId,
+        fromX: fromRect.left,
+        fromY: fromRect.top,
+        toX: toRect.left,
+        toY: toRect.top,
+        startScaleX: fromRect.width / PLAYER_CARD_WIDTH_PX,
+        startScaleY: fromRect.height / PLAYER_CARD_HEIGHT_PX,
+        endScaleX: toRect.width / PLAYER_CARD_WIDTH_PX,
+        endScaleY: toRect.height / PLAYER_CARD_HEIGHT_PX,
+        card: params.card
+      };
+
+      if (params.cardId) {
+        incrementHiddenCardId(params.kind, params.cardId);
+      }
+
+      setPlayerCardTransferAnimations((previous) => [...previous, nextAnimation]);
+
+      let hasRevealedDestinationCard = false;
+      const revealTimeoutId = setTimeout(() => {
+        if (params.cardId) {
+          decrementHiddenCardId(params.kind, params.cardId);
+        }
+        hasRevealedDestinationCard = true;
+      }, Math.max(0, PLAYER_CARD_TRANSFER_DURATION_MS - PLAYER_CARD_TRANSFER_HANDOFF_MS));
+
+      const cleanupTimeoutId = setTimeout(() => {
+        setPlayerCardTransferAnimations((previous) => previous.filter((anim) => anim.id !== id));
+        if (!hasRevealedDestinationCard && params.cardId) {
+          decrementHiddenCardId(params.kind, params.cardId);
+        }
+        playerCardTransferTimeoutsRef.current.delete(id);
+      }, PLAYER_CARD_TRANSFER_DURATION_MS + PLAYER_CARD_TRANSFER_CLEANUP_BUFFER_MS);
+
+      playerCardTransferTimeoutsRef.current.set(id, {
+        reveal: revealTimeoutId,
+        cleanup: cleanupTimeoutId
+      });
+    },
+    [incrementHiddenCardId, decrementHiddenCardId]
+  );
+
+  const resetPlayerCardTransferUi = useCallback(() => {
+    clearPlayerCardTransferTimeouts();
+    clearHiddenCardIds();
+    setPlayerCardTransferAnimations([]);
+    playerCardSnapshotRef.current = null;
+  }, [clearPlayerCardTransferTimeouts, clearHiddenCardIds]);
 
   const resetMonsterCompletionUi = useCallback(() => {
     clearMonsterCompletionTimeouts();
@@ -639,8 +860,9 @@ export default function Game() {
     return () => {
       clearMonsterCompletionTimeouts();
       clearXpAnimationTimeouts();
+      clearPlayerCardTransferTimeouts();
     };
-  }, [clearMonsterCompletionTimeouts, clearXpAnimationTimeouts]);
+  }, [clearMonsterCompletionTimeouts, clearXpAnimationTimeouts, clearPlayerCardTransferTimeouts]);
 
   const readPersistedReconnection = useCallback((): PersistedReconnection | null => {
     if (typeof window === 'undefined') {
@@ -727,12 +949,13 @@ export default function Game() {
       setIsCardLibraryOpen(false);
       setIsPlayerDeckModalOpen(false);
       resetMonsterCompletionUi();
+      resetPlayerCardTransferUi();
       if (monsterPopoverCloseTimeoutRef.current) {
         clearTimeout(monsterPopoverCloseTimeoutRef.current);
         monsterPopoverCloseTimeoutRef.current = null;
       }
     }
-  }, [inRoom, resetMonsterCompletionUi]);
+  }, [inRoom, resetMonsterCompletionUi, resetPlayerCardTransferUi]);
 
   useEffect(() => {
     return () => {
@@ -2056,6 +2279,7 @@ export default function Game() {
         setCunningSelectionOrder([]);
         setMonsterAttackAnimations([]);
         setDeckReturnAnimations([]);
+        resetPlayerCardTransferUi();
         setOpenMonsterPopoverFor(null);
         setIsCardLibraryOpen(false);
         setIsPlayerDeckModalOpen(false);
@@ -2105,11 +2329,53 @@ export default function Game() {
             console.log('Player deck length:', player.deck.length);
             console.log('Player drawnCards length:', player.drawnCards.length);
             console.log('Player hasDrawnCard:', player.hasDrawnCard);
+
+            const nextSnapshot = getPlayerCardSnapshot(player);
+            const previousSnapshot = playerCardSnapshotRef.current;
+
+            if (previousSnapshot) {
+              const drewCardFromDeck =
+                nextSnapshot.deckCount < previousSnapshot.deckCount &&
+                !!nextSnapshot.topDrawnCardId &&
+                nextSnapshot.topDrawnCardId !== previousSnapshot.topDrawnCardId;
+
+              if (drewCardFromDeck && player.drawnCards.length > 0) {
+                const drawnCard = player.drawnCards[player.drawnCards.length - 1];
+                queuePlayerCardTransferAnimation({
+                  kind: 'deck_to_active',
+                  cardId: String(drawnCard?.id || ''),
+                  fromSelector: '[data-player-deck-card="true"]',
+                  toSelector: '[data-player-active-card-slot="true"]',
+                  card: toTransferCardVisual(drawnCard)
+                });
+              }
+
+              const movedCardToDiscard =
+                nextSnapshot.discardCount > previousSnapshot.discardCount &&
+                nextSnapshot.topDiscardCardId !== previousSnapshot.topDiscardCardId &&
+                (!!previousSnapshot.activeCardId || previousSnapshot.drawnCount > nextSnapshot.drawnCount);
+
+              if (movedCardToDiscard && player.discardPile.length > 0) {
+                const discardedCard = player.discardPile[player.discardPile.length - 1];
+                queuePlayerCardTransferAnimation({
+                  kind: 'active_to_discard',
+                  cardId: String(discardedCard?.id || ''),
+                  fromSelector: '[data-player-active-card-slot="true"]',
+                  toSelector: '[data-player-discard-card="true"]',
+                  card: toTransferCardVisual(discardedCard)
+                });
+              }
+            }
+
+            playerCardSnapshotRef.current = nextSnapshot;
+          } else {
+            playerCardSnapshotRef.current = null;
           }
           setCurrentPlayer(player || null);
         }
       };
 
+      resetPlayerCardTransferUi();
       resetMonsterCompletionUi();
 
       // Register state listener immediately on join to avoid missing initial state on late join.
@@ -3098,11 +3364,13 @@ export default function Game() {
                       room={roomRef.current}
                       key={updateCounter}
                       showExtraUseBadge={showCurrentPlayerExtraUseBadge}
+                      hiddenCardIds={hiddenActiveCardIds}
                     />
                     <DiscardPile
                       player={currentPlayer}
                       room={roomRef.current}
                       onDiscardDrop={handleCancelCleanup}
+                      hiddenTopCardIds={hiddenDiscardCardIds}
                     />
                   </div>
                 </div>
@@ -3176,6 +3444,35 @@ export default function Game() {
           </div>
         </div>
       )}
+
+      {playerCardTransferAnimations.map((anim) => (
+        <div
+          key={anim.id}
+          className={`fixed z-[190] pointer-events-none w-[121px] h-[176px] rounded-lg border-2 border-gray-300 bg-white ${
+            anim.kind === 'deck_to_active' ? 'player-card-transfer-draw' : 'player-card-transfer-discard'
+          }`}
+          style={{
+            left: `${anim.fromX}px`,
+            top: `${anim.fromY}px`,
+            ['--player-transfer-dx' as any]: `${anim.toX - anim.fromX}px`,
+            ['--player-transfer-dy' as any]: `${anim.toY - anim.fromY}px`,
+            ['--player-transfer-start-scale-x' as any]: `${anim.startScaleX}`,
+            ['--player-transfer-start-scale-y' as any]: `${anim.startScaleY}`,
+            ['--player-transfer-end-scale-x' as any]: `${anim.endScaleX}`,
+            ['--player-transfer-end-scale-y' as any]: `${anim.endScaleY}`,
+            ['--player-transfer-duration' as any]: `${PLAYER_CARD_TRANSFER_DURATION_MS}ms`
+          }}
+          title={`${(anim.card.name || '').trim() || 'Heroic'}: ${anim.card.description}`}
+        >
+          <CardFaceContent
+            type={anim.card.type}
+            name={anim.card.name}
+            description={anim.card.description}
+            defenseSymbol={anim.card.defenseSymbol}
+            color={anim.card.color}
+          />
+        </div>
+      ))}
 
       {xpFlyAnimations.map((anim) => (
         <div

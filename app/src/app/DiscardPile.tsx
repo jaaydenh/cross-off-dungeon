@@ -2,72 +2,24 @@
 
 import { Player } from '@/types/Player';
 import { Card } from '@/types/Card';
-import { Room, getStateCallbacks } from '@colyseus/sdk';
-import { useState, useEffect } from 'react';
+import { Room } from '@colyseus/sdk';
+import { useState, type DragEvent } from 'react';
 import CardFaceContent from './CardFaceContent';
 
 interface DiscardPileProps {
   player: Player | null;
   room: Room | undefined;
   onDiscardDrop?: () => void;
+  hiddenTopCardIds?: Set<string>;
 }
 
-export default function DiscardPile({ player, room, onDiscardDrop }: DiscardPileProps) {
-  const [discardCount, setDiscardCount] = useState(0);
-  const [topCard, setTopCard] = useState<Card | null>(null);
+export default function DiscardPile({ player, room, onDiscardDrop, hiddenTopCardIds }: DiscardPileProps) {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const cardTitle = (card: Card): string => {
     const name = (card.name || '').trim() || 'Heroic';
     return `${name}: ${card.description}`;
   };
-
-  useEffect(() => {
-    if (player) {
-      console.log("SetDiscardPile - Initial setup")
-
-      // Update initial state
-      setDiscardCount(player.discardPile.length);
-      if (player.discardPile.length > 0) {
-        setTopCard(player.discardPile[player.discardPile.length - 1]);
-      } else {
-        setTopCard(null);
-      }
-
-      if (!room) {
-        return;
-      }
-
-      const $ = getStateCallbacks(room);
-
-      // Listen for changes to the discard pile
-      const onDiscardPileAdd = (card: Card, index: number) => {
-        console.log("Card added to discard pile:", card, "at index:", index);
-        setDiscardCount(player.discardPile.length);
-        setTopCard(player.discardPile[player.discardPile.length - 1]);
-      };
-
-      const onDiscardPileRemove = (card: Card, index: number) => {
-        console.log("Card removed from discard pile:", card, "at index:", index);
-        setDiscardCount(player.discardPile.length);
-        if (player.discardPile.length > 0) {
-          setTopCard(player.discardPile[player.discardPile.length - 1]);
-        } else {
-          setTopCard(null);
-        }
-      };
-
-      // Set up listeners - these return cleanup functions
-      const removeAddListener = $(player).discardPile.onAdd(onDiscardPileAdd);
-      const removeRemoveListener = $(player).discardPile.onRemove(onDiscardPileRemove);
-
-      // Cleanup function to remove listeners
-      return () => {
-        removeAddListener();
-        removeRemoveListener();
-      };
-    }
-  }, [player, room]);
 
   if (!player) {
     return (
@@ -77,9 +29,16 @@ export default function DiscardPile({ player, room, onDiscardDrop }: DiscardPile
     );
   }
 
+  const discardCount = player.discardPile.length;
+  const topCard = discardCount > 0 ? player.discardPile[discardCount - 1] : null;
   const hasActiveCard = player.drawnCards.some((card) => card.isActive);
+  const isTopCardHidden = !!topCard?.id && !!hiddenTopCardIds?.has(topCard.id);
+  const previousTopCard =
+    player.discardPile.length > 1 ? player.discardPile[player.discardPile.length - 2] : null;
+  const visibleTopCard = isTopCardHidden ? previousTopCard : topCard;
+  const visibleDiscardCount = isTopCardHidden ? Math.max(0, discardCount - 1) : discardCount;
 
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     if (!hasActiveCard) {
       return;
     }
@@ -89,14 +48,14 @@ export default function DiscardPile({ player, room, onDiscardDrop }: DiscardPile
     setIsDragOver(true);
   };
 
-  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     if (!event.currentTarget.contains(event.relatedTarget as Node)) {
       setIsDragOver(false);
     }
   };
 
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsDragOver(false);
 
@@ -123,7 +82,7 @@ export default function DiscardPile({ player, room, onDiscardDrop }: DiscardPile
       <div
         className={`
           card-discard relative w-[121px] h-[176px] border-2 rounded-lg transition-all duration-200
-          ${discardCount === 0
+          ${visibleDiscardCount === 0
             ? 'bg-gray-700 border-gray-600 opacity-50'
             : 'bg-white border-gray-300 card-zoom'
           }
@@ -132,23 +91,24 @@ export default function DiscardPile({ player, room, onDiscardDrop }: DiscardPile
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        title={topCard ? cardTitle(topCard) : undefined}
+        title={visibleTopCard ? cardTitle(visibleTopCard) : undefined}
+        data-player-discard-card="true"
       >
-        {topCard ? (
+        {visibleTopCard ? (
           <>
             {/* Face-up card content */}
             <CardFaceContent
-              type={topCard.type}
-              name={topCard.name}
-              description={topCard.description}
-              defenseSymbol={topCard.defenseSymbol}
-              color={topCard.color}
+              type={visibleTopCard.type}
+              name={visibleTopCard.name}
+              description={visibleTopCard.description}
+              defenseSymbol={visibleTopCard.defenseSymbol}
+              color={visibleTopCard.color}
             />
 
             {/* Card count badge */}
-            {discardCount > 1 && (
+            {visibleDiscardCount > 1 && (
               <div className="card-count-badge absolute -top-2 -right-2 bg-green-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
-                {discardCount}
+                {visibleDiscardCount}
               </div>
             )}
           </>

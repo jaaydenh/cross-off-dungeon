@@ -9,17 +9,25 @@ interface DrawnCardProps {
   player: Player | null;
   room: Room | undefined;
   showExtraUseBadge?: boolean;
+  hiddenCardIds?: Set<string>;
 }
 
 export default function DrawnCard({
   player,
   room,
-  showExtraUseBadge = false
+  showExtraUseBadge = false,
+  hiddenCardIds
 }: DrawnCardProps) {
-  const drawnCard =
+  const topDrawnCard =
     player && player.drawnCards.length > 0
       ? player.drawnCards[player.drawnCards.length - 1]
       : null;
+  const previousDrawnCard =
+    player && player.drawnCards.length > 1
+      ? player.drawnCards[player.drawnCards.length - 2]
+      : null;
+  const isTopDrawnCardHidden = !!topDrawnCard?.id && !!hiddenCardIds?.has(topDrawnCard.id);
+  const drawnCard = isTopDrawnCardHidden ? previousDrawnCard : topDrawnCard;
 
   const handleCardClick = () => {
     if (room && drawnCard && !drawnCard.isActive) {
@@ -62,7 +70,10 @@ export default function DrawnCard({
             </span>
           ) : null}
         </h3>
-        <div className="w-[121px] h-[176px] bg-gray-700 border-2 border-gray-600 rounded-lg flex items-center justify-center">
+        <div
+          className="w-[121px] h-[176px] bg-gray-700 border-2 border-gray-600 rounded-lg flex items-center justify-center"
+          data-player-active-card-slot="true"
+        >
           <p className="text-gray-400 text-xs text-center">No card drawn</p>
         </div>
       </div>
@@ -99,6 +110,7 @@ export default function DrawnCard({
         draggable={true}
         onDragStart={handleDragStart}
         title={cardTitle(drawnCard)}
+        data-player-active-card-slot="true"
       >
         {/* Card content */}
         <CardFaceContent
